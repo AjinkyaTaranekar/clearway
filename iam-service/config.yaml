@@ -1,0 +1,25 @@
+server:
+  port: 8082
+  timeout: 30s
+
+database:
+  master:
+    host: "db.qrbwcyidxadcahvxxbja.supabase.co"
+    port: 5432
+    user: "postgres"
+    password: "3uuzHVMpT2CqxuwJ"
+    dbname: "postgres"
+    max_open_conns: 25
+    max_idle_conns: 5
+  slave:
+    host: "db.qrbwcyidxadcahvxxbja.supabase.co"
+    port: 5432
+    user: "postgres"
+    password: "3uuzHVMpT2CqxuwJ"
+    dbname: "postgres"
+    max_open_conns: 50
+    max_idle_conns: 10
+
+logging:
+  level: "info"
+  format: "console"
