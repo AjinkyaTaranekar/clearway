@@ -13,6 +13,33 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Services ServicesConfig `mapstructure:"services"`
+	Business BusinessConfig `mapstructure:"business"`
+}
+
+// RedisConfig holds Redis connection configuration
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+}
+
+// ServicesConfig holds URLs for co-located services
+type ServicesConfig struct {
+	CapacityURL string `mapstructure:"capacity_url"`
+	MapURL      string `mapstructure:"map_url"`
+	IAMURL      string `mapstructure:"iam_url"`
+	JWTSecret   string `mapstructure:"jwt_secret"`
+}
+
+// BusinessConfig holds business rule configuration
+type BusinessConfig struct {
+	MinAdvanceBookingMinutes     int `mapstructure:"min_advance_booking_minutes"`
+	MinCancellationWindowMinutes int `mapstructure:"min_cancellation_window_minutes"`
+	ActivationGraceWindowMinutes int `mapstructure:"activation_grace_window_minutes"`
+	RouteCacheTTLHours           int `mapstructure:"route_cache_ttl_hours"`
+	MaxCapacityRetries           int `mapstructure:"max_capacity_retries"`
 }
 
 // ServerConfig holds server configuration

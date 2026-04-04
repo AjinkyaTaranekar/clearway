@@ -58,8 +58,7 @@ export default function JourneyDetailPage() {
 
   const handleAction = async (action: 'active' | 'completed' | 'cancelled') => {
     setActionLoading(action);
-    await new Promise((r) => setTimeout(r, 700));
-    updateJourneyStatus(journey.id, action);
+    await updateJourneyStatus(journey.id, action);
     setActionLoading(null);
     setShowCancelConfirm(false);
   };
