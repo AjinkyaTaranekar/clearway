@@ -1,7 +1,11 @@
 # Infrastructure Setup Guide
 
-> Full walkthrough: from zero to a running 3-node Docker Swarm cluster on Azure
-> with PostgreSQL replication, load balancing, and Cloudflare CDN for the frontend.
+> Full walkthrough: from zero to a running 3-node Docker Swarm cluster on
+> **Azure**, **GCP**, or **AWS** with PostgreSQL replication, load balancing,
+> and Cloudflare CDN for the frontend.
+>
+> Sections 1–3 are provider-specific. Sections 4 onwards are identical
+> regardless of cloud.
 
 ---
 
@@ -12,19 +16,19 @@
                         │            Cloudflare (CDN)              │
                         │  - Serves React SPA (HTML/JS/CSS)        │
                         │  - Caches static assets at edge globally  │
-                        │  - Forwards /api/* to Azure LB           │
+                        │  - Forwards /api/* to cloud LB           │
                         └─────────────────┬───────────────────────┘
                                           │ HTTPS (api.yourdomain.com)
                         ┌─────────────────▼───────────────────────┐
-                        │         Azure Load Balancer              │
-                        │  - Public IP, TCP port 80                │
+                        │         Cloud Load Balancer              │
+                        │  - Public IP/DNS, TCP port 80            │
                         │  - Health probe: GET /nginx-health        │
                         │  - Algorithm: round-robin                │
                         └───────┬─────────────┬─────────────┬──────┘
                                 │             │             │
                     ┌───────────▼──┐  ┌───────▼──────┐  ┌──▼───────────┐
                     │   VM-A       │  │   VM-B       │  │   VM-C       │
-                    │  (manager)   │  │  (worker)    │  │  (worker)    │
+                    │  (manager)   │  │  (manager)   │  │  (manager)   │
                     │              │  │              │  │              │
                     │  nginx:80    │  │  nginx:80    │  │  nginx:80    │
                     │  iam:8082    │  │  iam:8082    │  │  iam:8082    │
@@ -42,136 +46,157 @@
 ```
 
 **Key points:**
-- All 3 VMs live in the **same Azure region** (West Europe / Ireland) — this is
-  one *cell*. Cross-region is a future extension.
-- The frontend React SPA is served by **Cloudflare** as a static site (free).
-  The browser downloads the app from the nearest Cloudflare edge, then makes
-  API calls to `api.yourdomain.com` which resolves to the Azure Load Balancer.
-- Each VM runs every service. The Swarm `mode: global` ensures this automatically.
-- PostgreSQL replication is **logical** (row-level, not streaming) so all 3
-  instances stay in sync. Each VM reads/writes its *local* PostgreSQL — no
-  cross-VM DB calls.
-- Redis is **local per VM** — no cross-VM Redis sync. Route caches and event
-  streams are local.
+- All 3 VMs are in the **same region** (Ireland/EU) — one *cell*. Cross-region is a future extension.
+- All 3 VMs are **Swarm managers**. Raft quorum = 2/3, so the cluster survives losing any single node — a new leader is elected automatically within ~5 seconds.
+- The frontend React SPA is served by **Cloudflare Pages** (free). The browser downloads the app from the nearest Cloudflare edge, then makes API calls to `api.yourdomain.com` which resolves to the cloud load balancer.
+- Each VM runs every service (`mode: global` in docker-stack.yml).
+- PostgreSQL replication is **logical** (all-to-all). Each VM reads/writes its local PostgreSQL — no cross-VM DB calls at runtime.
+- Redis is local per VM — no cross-VM Redis sync.
 
 ---
 
 ## 1. VM selection
 
-### What to get
+### Recommended specs
 
-| Option | vCPU | RAM | Cost (West EU) | Verdict |
-|--------|------|-----|----------------|---------|
-| **B1ms** (recommended) | 1 | 2 GB | ~€15/month × 3 = €45/mo | Best balance for prototype |
-| B2s | 2 | 4 GB | ~€30/month × 3 = €90/mo | Comfortable but expensive |
-| B1s (minimum) | 1 | 1 GB | ~€7/month × 3 = €21/mo | Very tight; may OOM |
+| Cloud | SKU | vCPU | RAM | Est. cost/mo (×3) | Best region |
+|-------|-----|------|-----|-------------------|-------------|
+| **Azure** | Standard_B2s | 2 | 4 GB | ~€90 | `northeurope` (Dublin) |
+| **GCP** | e2-medium | 2 | 4 GB | ~$75 | `europe-west1` (Belgium) |
+| **AWS** | t3.small | 2 | 2 GB | ~$45 | `eu-west-1` (Ireland) |
 
-**Recommendation: 3 × Standard_B1ms**  
-With €80 in Azure credits at €45/month, you get ~1.5–2 months of runtime.
-To extend budget: stop VMs when not in use (€0 compute when deallocated, only
-storage ~€1/month per VM).
+> **AWS t3.small has 2 GB RAM.** That's tight — upgrade to `t3.medium` (4 GB, ~$30/mo each) if services OOM.
 
-**OS:** Ubuntu 24.04 LTS (free, widely documented)
+**OS:** Ubuntu 22.04 LTS on all providers (free, consistent tooling)  
+**Disk:** 30 GB SSD per VM (keeps PostgreSQL I/O fast)
 
-**Disk:** 30 GB Premium SSD per VM (default, keeps PostgreSQL I/O fast)
+### Memory budget per VM
 
-### Why not B1s?
-Memory budget at runtime on B1s (1 GB total):
 ```
-PostgreSQL:          ~250 MB (shared_buffers=128MB default)
-Redis:               ~100 MB
-5 Go services:       ~30 MB each = 150 MB
-nginx:               ~20 MB
-OS + Docker:         ~200 MB
-────────────────────────────────
-Total:               ~720 MB   ← tight but workable
-Peak (busy booking): ~900 MB   ← OOM risk
+PostgreSQL:        ~250 MB (shared_buffers default)
+Redis:             ~100 MB (maxmemory 96mb in docker-stack.yml)
+5 Go services:     ~150 MB (30 MB each)
+nginx:              ~20 MB
+OS + Docker:       ~200 MB
+─────────────────────────
+Total:             ~720 MB   ← fits in 2 GB (t3.small) with ~1.3 GB headroom
+Peak (busy):       ~900 MB   ← still safe on 2 GB
 ```
-B1ms (2 GB) gives a comfortable 2× headroom.
 
 ---
 
-## 2. Azure setup
+## 2. CLI setup and authentication
 
-### 2.1 Install Azure CLI and log in
+### Azure
 
 ```bash
-# macOS
-brew install azure-cli
-
-# Windows (PowerShell)
-winget install Microsoft.AzureCLI
+# Install
+brew install azure-cli          # macOS
+winget install Microsoft.AzureCLI  # Windows
 
 # Log in
 az login
+az account set --subscription "<your-subscription-id>"
 ```
 
-### 2.2 Create resource group and VNet
+### GCP
 
 ```bash
-REGION="westeurope"
+# Install
+brew install --cask google-cloud-sdk  # macOS
+# Windows: download installer from cloud.google.com/sdk
+
+# Log in and set project
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud config set compute/region europe-west1
+gcloud config set compute/zone europe-west1-b
+```
+
+### AWS
+
+```bash
+# Install
+brew install awscli   # macOS
+winget install Amazon.AWSCLI  # Windows
+
+# Configure (needs IAM user with EC2 + ELB permissions)
+aws configure
+# AWS Access Key ID:     <your-key>
+# AWS Secret Access Key: <your-secret>
+# Default region:        eu-west-1
+# Default output format: json
+```
+
+---
+
+## 3. Provision infrastructure
+
+> **Terraform alternative:** `terraform/azure/`, `terraform/gcp/`, `terraform/aws/`
+> do all of the below automatically. See `terraform/README.md`.
+> The manual steps below are for understanding what Terraform creates.
+
+### 3.1 SSH key (all providers)
+
+```bash
+ssh-keygen -t ed25519 -C "vcs-deploy" -f ~/.ssh/vcs_key
+# Public key: ~/.ssh/vcs_key.pub
+# Private key: ~/.ssh/vcs_key  (never commit this)
+```
+
+---
+
+### Azure
+
+#### 3.2a Resource group + VNet + NSG
+
+```bash
+REGION="northeurope"
 RG="vcs-rg"
-VNET="vcs-vnet"
-SUBNET="vcs-subnet"
 
 az group create --name $RG --location $REGION
 
 az network vnet create \
-  --resource-group $RG \
-  --name $VNET \
+  --resource-group $RG --name vcs-vnet \
   --address-prefix 10.0.0.0/16 \
-  --subnet-name $SUBNET \
-  --subnet-prefix 10.0.1.0/24
-```
+  --subnet-name vcs-subnet --subnet-prefix 10.0.1.0/24
 
-### 2.3 Create Network Security Group
-
-```bash
 NSG="vcs-nsg"
 az network nsg create --resource-group $RG --name $NSG
 
-# Allow SSH (your IP only — replace YOUR_IP)
+# SSH — your IP only
 az network nsg rule create --resource-group $RG --nsg-name $NSG \
   --name AllowSSH --priority 100 \
   --source-address-prefixes YOUR_IP/32 \
   --destination-port-ranges 22 --protocol Tcp --access Allow
 
-# Allow HTTP from internet (Azure LB health probe + user traffic)
+# HTTP
 az network nsg rule create --resource-group $RG --nsg-name $NSG \
   --name AllowHTTP --priority 110 \
   --source-address-prefixes Internet \
   --destination-port-ranges 80 --protocol Tcp --access Allow
 
-# Allow Docker Swarm ports between VMs (within VNet only)
+# Swarm + Postgres (internal subnet only)
 az network nsg rule create --resource-group $RG --nsg-name $NSG \
-  --name AllowSwarmInternal --priority 120 \
+  --name AllowInternal --priority 120 \
   --source-address-prefixes 10.0.1.0/24 \
-  --destination-port-ranges 2376 2377 7946 4789 \
+  --destination-port-ranges 2377 7946 4789 5432 \
   --protocol '*' --access Allow
-
-# Allow PostgreSQL between VMs (within VNet only)
-az network nsg rule create --resource-group $RG --nsg-name $NSG \
-  --name AllowPostgres --priority 130 \
-  --source-address-prefixes 10.0.1.0/24 \
-  --destination-port-ranges 5432 --protocol Tcp --access Allow
 ```
 
-### 2.4 Create 3 VMs
+#### 3.3a Create 3 VMs
 
 ```bash
-# SSH key (if you don't have one)
-ssh-keygen -t ed25519 -C "vcs-deploy" -f ~/.ssh/vcs_key
-
 for i in A B C; do
   az vm create \
     --resource-group $RG \
     --name "vcs-vm-${i}" \
-    --image Ubuntu2404 \
-    --size Standard_B1ms \
+    --image Ubuntu2204 \
+    --size Standard_B2s \
     --admin-username deploy \
     --ssh-key-values ~/.ssh/vcs_key.pub \
-    --vnet-name $VNET \
-    --subnet $SUBNET \
+    --vnet-name vcs-vnet \
+    --subnet vcs-subnet \
     --nsg $NSG \
     --public-ip-sku Standard \
     --os-disk-size-gb 30 \
@@ -179,24 +204,292 @@ for i in A B C; do
     --no-wait
 done
 
-# Wait for all to be running, then get IPs
+# Wait, then get IPs
 az vm list-ip-addresses --resource-group $RG --output table
 ```
 
-Note the **private IPs** (e.g. 10.0.1.4, 10.0.1.5, 10.0.1.6) — used for
-Swarm and Postgres replication. Note the **public IPs** for SSH access.
+#### 3.4a Azure Load Balancer
+
+```bash
+az network public-ip create \
+  --resource-group $RG --name vcs-lb-pip \
+  --sku Standard --allocation-method Static
+
+az network lb create \
+  --resource-group $RG --name vcs-lb --sku Standard \
+  --public-ip-address vcs-lb-pip \
+  --frontend-ip-name vcs-frontend \
+  --backend-pool-name vcs-backend
+
+az network lb probe create \
+  --resource-group $RG --lb-name vcs-lb \
+  --name http-probe --protocol Http \
+  --port 80 --path /nginx-health \
+  --interval 10 --threshold 2
+
+az network lb rule create \
+  --resource-group $RG --lb-name vcs-lb \
+  --name http-rule --protocol Tcp \
+  --frontend-port 80 --backend-port 80 \
+  --frontend-ip-name vcs-frontend \
+  --backend-pool-name vcs-backend \
+  --probe-name http-probe
+
+# Add each VM NIC to the backend pool
+for NIC in vcs-vm-AVMNic vcs-vm-BVMNic vcs-vm-CVMNic; do
+  az network nic ip-config address-pool add \
+    --resource-group $RG --nic-name $NIC \
+    --ip-config-name ipconfig1 \
+    --lb-name vcs-lb --address-pool vcs-backend
+done
+
+# Get LB public IP
+az network public-ip show \
+  --resource-group $RG --name vcs-lb-pip \
+  --query ipAddress -o tsv
+```
 
 ---
 
-## 3. Install Docker on all 3 VMs
+### GCP
 
-Run this on **each VM** (SSH in with `ssh -i ~/.ssh/vcs_key deploy@<PUBLIC-IP>`):
+#### 3.2b VPC + Firewall rules
 
 ```bash
-# Update and install Docker
-sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl gnupg
+gcloud compute networks create vcs-vpc --subnet-mode=custom
 
+gcloud compute networks subnets create vcs-subnet \
+  --network=vcs-vpc \
+  --region=europe-west1 \
+  --range=10.0.1.0/24
+
+# SSH — your IP only
+gcloud compute firewall-rules create vcs-allow-ssh \
+  --network=vcs-vpc --allow=tcp:22 \
+  --source-ranges=YOUR_IP/32 \
+  --target-tags=vcs-node
+
+# HTTP — open
+gcloud compute firewall-rules create vcs-allow-http \
+  --network=vcs-vpc --allow=tcp:80 \
+  --source-ranges=0.0.0.0/0 \
+  --target-tags=vcs-node
+
+# Swarm + Postgres (internal subnet only)
+gcloud compute firewall-rules create vcs-allow-internal \
+  --network=vcs-vpc \
+  --allow=tcp:2377,tcp:7946,udp:7946,udp:4789,tcp:5432 \
+  --source-ranges=10.0.1.0/24 \
+  --target-tags=vcs-node
+```
+
+#### 3.3b Create 3 VMs
+
+```bash
+for i in 1 2 3; do
+  gcloud compute instances create vcs-vm${i} \
+    --zone=europe-west1-b \
+    --machine-type=e2-medium \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=30GB \
+    --boot-disk-type=pd-balanced \
+    --network-interface="subnet=vcs-subnet,private-network-ip=10.0.1.1${i}" \
+    --tags=vcs-node \
+    --metadata="ssh-keys=deploy:$(cat ~/.ssh/vcs_key.pub)"
+done
+
+# Get external IPs
+gcloud compute instances list --filter="name~vcs-vm"
+```
+
+#### 3.4b GCP Network Load Balancer
+
+```bash
+# Reserve a static external IP
+gcloud compute addresses create vcs-lb-ip --region=europe-west1
+
+# Health check
+gcloud compute http-health-checks create vcs-health-check \
+  --request-path=/nginx-health --port=80 \
+  --check-interval=10s --timeout=5s
+
+# Target pool
+gcloud compute target-pools create vcs-pool \
+  --region=europe-west1 \
+  --health-checks=vcs-health-check
+
+gcloud compute target-pools add-instances vcs-pool \
+  --instances=vcs-vm1,vcs-vm2,vcs-vm3 \
+  --instances-zone=europe-west1-b
+
+# Forwarding rule (binds the static IP to the pool)
+LB_IP=$(gcloud compute addresses describe vcs-lb-ip \
+  --region=europe-west1 --format='value(address)')
+
+gcloud compute forwarding-rules create vcs-fwd-rule \
+  --region=europe-west1 \
+  --load-balancing-scheme=EXTERNAL \
+  --address=$LB_IP \
+  --target-pool=vcs-pool \
+  --ports=80
+
+echo "LB IP: $LB_IP"
+```
+
+---
+
+### AWS
+
+#### 3.2c VPC + Security Group
+
+```bash
+# VPC
+VPC_ID=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 \
+  --query 'Vpc.VpcId' --output text)
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
+
+# Internet Gateway
+IGW_ID=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text)
+aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID
+
+# Subnet (single AZ — all 3 VMs on same subnet for Swarm overlay)
+SUBNET_ID=$(aws ec2 create-subnet \
+  --vpc-id $VPC_ID --cidr-block 10.0.1.0/24 \
+  --availability-zone eu-west-1a \
+  --query 'Subnet.SubnetId' --output text)
+aws ec2 modify-subnet-attribute --subnet-id $SUBNET_ID --map-public-ip-on-launch
+
+# Route table
+RT_ID=$(aws ec2 create-route-table --vpc-id $VPC_ID \
+  --query 'RouteTable.RouteTableId' --output text)
+aws ec2 create-route --route-table-id $RT_ID \
+  --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_ID
+aws ec2 associate-route-table --route-table-id $RT_ID --subnet-id $SUBNET_ID
+
+# Security Group
+SG_ID=$(aws ec2 create-security-group \
+  --group-name vcs-sg --description "VCS nodes" \
+  --vpc-id $VPC_ID --query 'GroupId' --output text)
+
+# SSH — your IP only
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 22 --cidr YOUR_IP/32
+
+# HTTP — open
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 80 --cidr 0.0.0.0/0
+
+# Swarm + Postgres (internal subnet only)
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 2377 --cidr 10.0.1.0/24
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 7946 --cidr 10.0.1.0/24
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol udp --port 7946 --cidr 10.0.1.0/24
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol udp --port 4789 --cidr 10.0.1.0/24
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 5432 --cidr 10.0.1.0/24
+```
+
+#### 3.3c Create 3 EC2 instances
+
+```bash
+# Import SSH key
+aws ec2 import-key-pair --key-name vcs-key \
+  --public-key-material fileb://~/.ssh/vcs_key.pub
+
+# Get latest Ubuntu 22.04 AMI ID
+AMI_ID=$(aws ec2 describe-images \
+  --owners 099720109477 \
+  --filters 'Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*' \
+            'Name=state,Values=available' \
+  --query 'sort_by(Images,&CreationDate)[-1].ImageId' \
+  --output text)
+
+# Launch 3 instances with fixed private IPs
+for i in 1 2 3; do
+  ENI_ID=$(aws ec2 create-network-interface \
+    --subnet-id $SUBNET_ID \
+    --private-ip-address "10.0.1.1${i}" \
+    --groups $SG_ID \
+    --query 'NetworkInterface.NetworkInterfaceId' --output text)
+
+  aws ec2 run-instances \
+    --image-id $AMI_ID \
+    --instance-type t3.small \
+    --key-name vcs-key \
+    --network-interfaces "NetworkInterfaceId=${ENI_ID},DeviceIndex=0" \
+    --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3}' \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=vcs-vm${i}}]"
+done
+
+# Allocate and associate Elastic IPs (stable public IPs for SSH)
+INSTANCE_IDS=$(aws ec2 describe-instances \
+  --filters 'Name=tag:Name,Values=vcs-vm*' 'Name=instance-state-name,Values=running' \
+  --query 'Reservations[*].Instances[*].InstanceId' --output text)
+
+for INSTANCE_ID in $INSTANCE_IDS; do
+  EIP=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
+  aws ec2 associate-address --instance-id $INSTANCE_ID --allocation-id $EIP
+done
+
+# List IPs
+aws ec2 describe-instances \
+  --filters 'Name=tag:Name,Values=vcs-vm*' \
+  --query 'Reservations[*].Instances[*].[Tags[?Key==`Name`].Value|[0],PublicIpAddress,PrivateIpAddress]' \
+  --output table
+```
+
+#### 3.4c AWS Network Load Balancer
+
+```bash
+# Create NLB
+NLB_ARN=$(aws elbv2 create-load-balancer \
+  --name vcs-nlb --type network \
+  --subnets $SUBNET_ID \
+  --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+
+NLB_DNS=$(aws elbv2 describe-load-balancers \
+  --load-balancer-arns $NLB_ARN \
+  --query 'LoadBalancers[0].DNSName' --output text)
+
+# Target group (HTTP health check on /nginx-health)
+TG_ARN=$(aws elbv2 create-target-group \
+  --name vcs-http-tg --protocol TCP --port 80 \
+  --vpc-id $VPC_ID --target-type instance \
+  --health-check-protocol HTTP \
+  --health-check-path /nginx-health \
+  --health-check-interval-seconds 10 \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+# Register all 3 instances
+for INSTANCE_ID in $INSTANCE_IDS; do
+  aws elbv2 register-targets \
+    --target-group-arn $TG_ARN \
+    --targets Id=$INSTANCE_ID,Port=80
+done
+
+# Listener
+aws elbv2 create-listener \
+  --load-balancer-arn $NLB_ARN \
+  --protocol TCP --port 80 \
+  --default-actions Type=forward,TargetGroupArn=$TG_ARN
+
+echo "LB DNS: $NLB_DNS"
+# Point Cloudflare CNAME to this DNS name
+```
+
+---
+
+## 4. Install Docker on all 3 VMs
+
+Run on **each VM** (SSH: `ssh -i ~/.ssh/vcs_key deploy@<PUBLIC-IP>`,
+or `ubuntu@` for AWS):
+
+```bash
+sudo apt-get update -y
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -207,34 +500,39 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
   | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 sudo apt-get update -y
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
 
-# Allow deploy user to run docker without sudo
-sudo usermod -aG docker deploy
-
-# Verify
-docker run hello-world
+sudo usermod -aG docker $USER
+# Log out and back in for group change to take effect
 ```
 
 ---
 
-## 4. Initialize Docker Swarm
+## 5. Initialize Docker Swarm
 
-### On VM-A only (becomes the manager):
+All 3 VMs join as **managers** — Raft quorum is 2/3, so the cluster survives
+losing any single node and automatically elects a new leader within ~5 seconds.
+
+### On VM-A only (becomes the initial leader):
 
 ```bash
-# Use the VM's private IP as the advertise address
-PRIVATE_IP=$(hostname -I | awk '{print $1}')
+PRIVATE_IP=$(hostname -I | awk '{print $1}')   # e.g. 10.0.1.11
 docker swarm init --advertise-addr $PRIVATE_IP
 
-# Copy the output — it looks like:
-# docker swarm join --token SWMTKN-1-xxx... 10.0.1.4:2377
+# Save MANAGER join token (VM-B and VM-C need this)
+docker swarm join-token manager -q > /root/swarm-manager-token
+cat /root/swarm-manager-token
+# e.g. SWMTKN-1-abc...xyz
 ```
 
-### On VM-B and VM-C (run the join command from above):
+### On VM-B and VM-C — join as managers:
 
 ```bash
-docker swarm join --token SWMTKN-1-xxx... 10.0.1.4:2377
+# Get the token from VM-A first:
+#   ssh deploy@<VM-A-IP> cat /root/swarm-manager-token
+
+docker swarm join --token SWMTKN-1-abc...xyz <VM-A-PRIVATE-IP>:2377
 ```
 
 ### Verify on VM-A:
@@ -243,15 +541,18 @@ docker swarm join --token SWMTKN-1-xxx... 10.0.1.4:2377
 docker node ls
 # ID                STATUS    AVAILABILITY   MANAGER STATUS
 # abc123 *          Ready     Active         Leader
-# def456            Ready     Active
-# ghi789            Ready     Active
+# def456            Ready     Active         Reachable
+# ghi789            Ready     Active         Reachable
 ```
+
+All three nodes must show a `MANAGER STATUS`. If VM-A goes down, one of the
+`Reachable` nodes is automatically promoted to `Leader` by Raft.
 
 ---
 
-## 5. Create Docker secrets
+## 6. Create Docker secrets
 
-Run **on VM-A** (Swarm manager). Secrets are distributed to all nodes automatically:
+Run on **VM-A** (secrets are distributed to all nodes by Swarm automatically):
 
 ```bash
 # Database password
@@ -264,39 +565,30 @@ openssl rand -base64 32 | docker secret create jwt_secret -
 cat /path/to/firebase-service-account.json | docker secret create firebase_credentials -
 ```
 
-### Create Docker configs
-
-```bash
-# Upload nginx config so it can be injected into containers at deploy time
-docker config create nginx_conf /path/to/nginx/nginx.conf
-```
-
 ---
 
-## 6. GHCR authentication on all nodes
-
-The Swarm needs to pull images from GitHub Container Registry.
-Either use `--with-registry-auth` in the deploy command (recommended) or log in on each node:
+## 7. GHCR authentication on all nodes
 
 ```bash
 # On each VM (A, B, C):
 echo $GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 ```
 
-Where `$GITHUB_PAT` is a GitHub Personal Access Token with `read:packages` scope.
+`$GITHUB_PAT` = GitHub Personal Access Token with `read:packages` scope.
+
+Alternatively, pass `--with-registry-auth` when deploying the stack (section 8)
+and the manager distributes credentials automatically.
 
 ---
 
-## 7. Deploy the stack
+## 8. Deploy the stack
 
-Back on **VM-A**:
+On **VM-A**:
 
 ```bash
-# Clone the repo (or copy the stack file)
 git clone https://github.com/YOUR_ORG/distributed-vehicle-capacity-system.git /opt/vcs
 cd /opt/vcs
 
-# Set variables
 export GITHUB_REPOSITORY="your-org/distributed-vehicle-capacity-system"
 export IMAGE_TAG="latest"
 
@@ -308,50 +600,38 @@ docker stack deploy \
 
 # Watch services come up
 watch docker service ls
+# All services should reach 3/3 replicas within ~2 minutes
 ```
-
-All services should reach `3/3` replicas (one per node) within ~2 minutes.
 
 ---
 
-## 8. PostgreSQL logical replication
+## 9. PostgreSQL logical replication
 
-This runs *inside* each VM's PostgreSQL container. You must do this once after
-first deploy.
+This runs inside each VM's PostgreSQL container. Do this **once** after first deploy.
 
-### 8.1 Configure PostgreSQL for logical replication
+### 9.1 Configure PostgreSQL for logical replication
 
-On **each VM**, edit PostgreSQL's configuration:
+On **each VM**:
 
 ```bash
-# Get the postgres container name
 PG_CONTAINER=$(docker ps --filter name=vcs_db --format '{{.Names}}')
-
-# Enter the container
 docker exec -it $PG_CONTAINER bash
 
-# Edit postgresql.conf
 echo "wal_level = logical
 max_replication_slots = 10
 max_wal_senders = 10
 listen_addresses = '*'" >> /var/lib/postgresql/data/postgresql.conf
 
-# Edit pg_hba.conf to allow replication from other VMs
 echo "host replication replicator 10.0.1.0/24 md5
 host all all 10.0.1.0/24 md5" >> /var/lib/postgresql/data/pg_hba.conf
 
 exit
-```
-
-Restart the postgres container on each VM:
-
-```bash
 docker service update --force vcs_db
 ```
 
-### 8.2 Create the replication user and publication
+### 9.2 Create replication user and publication
 
-On **each VM** (connect to the local postgres container):
+On **each VM**:
 
 ```bash
 PG_CONTAINER=$(docker ps --filter name=vcs_db --format '{{.Names}}')
@@ -359,219 +639,119 @@ docker exec -it $PG_CONTAINER psql -U postgres trafficservice
 ```
 
 ```sql
--- Create replication user (run on each VM)
 CREATE USER replicator WITH REPLICATION LOGIN PASSWORD 'ReplicatorPass123!';
-
--- Grant access to all tables
 GRANT SELECT ON ALL TABLES IN SCHEMA journey TO replicator;
 GRANT SELECT ON ALL TABLES IN SCHEMA capacity TO replicator;
 GRANT SELECT ON ALL TABLES IN SCHEMA iam TO replicator;
--- (add other schemas as needed)
-
--- Create publication (run on each VM)
 CREATE PUBLICATION vcs_pub FOR ALL TABLES;
 ```
 
-### 8.3 Create subscriptions
+### 9.3 Create subscriptions (all-to-all)
 
-Get the private IPs of your 3 VMs first (e.g. 10.0.1.4, 10.0.1.5, 10.0.1.6).
+Private IPs used below: VM-A = `10.0.1.11`, VM-B = `10.0.1.12`, VM-C = `10.0.1.13`
+(adjust if your provider assigned different IPs — check with `hostname -I`).
 
-**On VM-A** — subscribe to VM-B and VM-C:
+**On VM-A:**
 ```sql
 CREATE SUBSCRIPTION vcs_sub_vmb
-  CONNECTION 'host=10.0.1.5 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
+  CONNECTION 'host=10.0.1.12 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
   PUBLICATION vcs_pub;
 
 CREATE SUBSCRIPTION vcs_sub_vmc
-  CONNECTION 'host=10.0.1.6 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
+  CONNECTION 'host=10.0.1.13 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
   PUBLICATION vcs_pub;
 ```
 
-**On VM-B** — subscribe to VM-A and VM-C:
+**On VM-B:**
 ```sql
 CREATE SUBSCRIPTION vcs_sub_vma
-  CONNECTION 'host=10.0.1.4 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
+  CONNECTION 'host=10.0.1.11 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
   PUBLICATION vcs_pub;
 
 CREATE SUBSCRIPTION vcs_sub_vmc
-  CONNECTION 'host=10.0.1.6 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
+  CONNECTION 'host=10.0.1.13 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
   PUBLICATION vcs_pub;
 ```
 
-**On VM-C** — subscribe to VM-A and VM-B:
+**On VM-C:**
 ```sql
 CREATE SUBSCRIPTION vcs_sub_vma
-  CONNECTION 'host=10.0.1.4 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
+  CONNECTION 'host=10.0.1.11 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
   PUBLICATION vcs_pub;
 
 CREATE SUBSCRIPTION vcs_sub_vmb
-  CONNECTION 'host=10.0.1.5 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
+  CONNECTION 'host=10.0.1.12 port=5432 dbname=trafficservice user=replicator password=ReplicatorPass123!'
   PUBLICATION vcs_pub;
 ```
 
-### 8.4 Verify replication is working
+### 9.4 Verify replication
 
 ```sql
 -- On any VM:
 SELECT * FROM pg_stat_subscription;
--- Should show 2 rows (subscriptions to the other 2 VMs), status = 'streaming'
+-- Should show 2 rows, status = 'streaming'
 
 SELECT * FROM pg_stat_replication;
--- Shows your subscribers (other VMs reading from you)
+-- Shows your subscribers (the other 2 VMs)
 ```
 
-Write a row on VM-A and verify it appears on VM-B within <100ms.
-
----
-
-## 9. Azure Load Balancer setup
-
-The Azure LB distributes incoming HTTP traffic (port 80) across all 3 VMs.
-
-### Create the LB
-
-```bash
-# Public IP for the LB
-az network public-ip create \
-  --resource-group $RG \
-  --name vcs-lb-pip \
-  --sku Standard \
-  --allocation-method Static
-
-# Create the load balancer
-az network lb create \
-  --resource-group $RG \
-  --name vcs-lb \
-  --sku Standard \
-  --public-ip-address vcs-lb-pip \
-  --frontend-ip-name vcs-frontend \
-  --backend-pool-name vcs-backend
-
-# Health probe — checks nginx /nginx-health on each VM
-az network lb probe create \
-  --resource-group $RG \
-  --lb-name vcs-lb \
-  --name http-probe \
-  --protocol Http \
-  --port 80 \
-  --path /nginx-health \
-  --interval 15 \
-  --threshold 2
-
-# Load balancing rule: port 80 → port 80
-az network lb rule create \
-  --resource-group $RG \
-  --lb-name vcs-lb \
-  --name http-rule \
-  --protocol Tcp \
-  --frontend-port 80 \
-  --backend-port 80 \
-  --frontend-ip-name vcs-frontend \
-  --backend-pool-name vcs-backend \
-  --probe-name http-probe
-
-# Add each VM's NIC to the backend pool
-for NIC in vcs-vm-AVMNic vcs-vm-BVMNic vcs-vm-CVMNic; do
-  az network nic ip-config address-pool add \
-    --resource-group $RG \
-    --nic-name $NIC \
-    --ip-config-name ipconfig1 \
-    --lb-name vcs-lb \
-    --address-pool vcs-backend
-done
-```
-
-### Get the LB public IP
-
-```bash
-az network public-ip show \
-  --resource-group $RG \
-  --name vcs-lb-pip \
-  --query ipAddress -o tsv
-# e.g. 51.105.123.45
-```
-
-The API is now reachable at `http://51.105.123.45/api/v1/...`
+Write a row on VM-A and confirm it appears on VM-B within < 100 ms.
 
 ---
 
 ## 10. Cloudflare CDN — frontend + API routing
-
-This is how the frontend gets to users globally and how API calls reach your VMs.
 
 ### Architecture
 
 ```
 Browser (anywhere in the world)
     │
-    ├── GET https://vcs-app.com/           → Cloudflare edge (nearest)
-    │       Cloudflare serves cached React SPA (HTML/JS/CSS)
-    │       Cache-Control: public, max-age=3600
+    ├── GET https://vcs-app.com/
+    │       → Cloudflare edge (nearest PoP) serves cached React SPA
     │
     └── POST https://api.vcs-app.com/api/v1/journeys
-            → Cloudflare (passes through, no caching for API)
-            → Azure Load Balancer (51.105.123.45)
+            → Cloudflare passes through (no API caching)
+            → Cloud Load Balancer
             → One of 3 VMs (round-robin)
             → nginx → journey-service:8083
 ```
 
-### 10.1 Set up Cloudflare (free plan is sufficient)
-
-1. Create account at cloudflare.com
-2. Add your domain (e.g. `vcs-app.com`) — follow their nameserver instructions
-3. Your domain's DNS is now managed by Cloudflare
-
-### 10.2 Deploy frontend to Cloudflare Pages (free)
+### 10.1 Deploy frontend to Cloudflare Pages (free)
 
 ```bash
-# Build the frontend
 cd frontend && npm run build
 
-# Install Wrangler (Cloudflare CLI)
 npm install -g wrangler
 wrangler login
 
-# Deploy to Cloudflare Pages
 wrangler pages deploy dist \
   --project-name vcs-frontend \
   --branch main
 ```
 
-Cloudflare Pages gives you:
-- A free `*.pages.dev` URL immediately
-- Custom domain via `vcs-app.com` (add a CNAME in Cloudflare DNS)
-- Automatic HTTPS (Let's Encrypt managed by Cloudflare)
-- Edge caching of all static assets in 300+ cities globally
-- Automatic redeployment from GitHub (connect the repo in Pages settings)
+### 10.2 Configure API subdomain
 
-The frontend is now served from Cloudflare's edge. A user in Tokyo loads the
-JS bundle from Tokyo's Cloudflare PoP — not from your Azure VM in Ireland.
+In **Cloudflare DNS**, add an A record (Azure/GCP — use the LB public IP)
+or a CNAME record (AWS — use the NLB DNS name):
 
-### 10.3 Configure API subdomain
+| Provider | Record type | Name | Value |
+|----------|-------------|------|-------|
+| Azure | A | `api` | `<LB public IP>` |
+| GCP | A | `api` | `<LB public IP>` |
+| AWS | CNAME | `api` | `<NLB DNS name>` |
 
-In Cloudflare DNS dashboard, add:
-```
-Type: A
-Name: api
-Value: 51.105.123.45  ← your Azure LB public IP
-Proxied: YES (orange cloud)  ← enables Cloudflare's network for the API too
-```
+Set **Proxied = ON** (orange cloud) — hides VM IPs, enables free HTTPS on `api.vcs-app.com`.
 
-Cloudflare proxied means:
-- Your VM IPs are hidden (DDoS protection)
-- Cloudflare handles TLS termination (free HTTPS for `api.vcs-app.com`)
-- API responses are NOT cached (correct — you don't want booking responses cached)
+### 10.3 Update frontend API base URL
 
-### 10.4 Update the frontend API base URL
-
-In `frontend/src/app/services/journeyApi.ts`, change:
+In `frontend/src/app/services/journeyApi.ts`:
 ```ts
 const BASE_URL = 'https://api.vcs-app.com';
 ```
 
-### 10.5 Update nginx CORS
+### 10.4 Update nginx CORS
 
-In `nginx/nginx.conf`, ensure CORS allows the Cloudflare Pages domain:
+In `nginx/nginx.conf`:
 ```nginx
 add_header Access-Control-Allow-Origin "https://vcs-app.com";
 add_header Access-Control-Allow-Methods "GET, POST, PUT, OPTIONS";
@@ -580,87 +760,108 @@ add_header Access-Control-Allow-Headers "Authorization, Content-Type, Idempotenc
 
 ---
 
-## 11. Full request flow — end to end
+## 11. Cost summary
 
-### Driver books a journey
+### Azure (northeurope — Dublin)
 
-```
-1. Driver opens https://vcs-app.com on their phone (anywhere in world)
-   → Cloudflare edge (e.g. Frankfurt PoP) serves React SPA from cache
-   → App loads in ~200ms
+| Resource | SKU | Monthly cost |
+|----------|-----|-------------|
+| 3 × VM Standard_B2s | 2 vCPU / 4 GB | ~€90 |
+| 3 × Premium SSD 30 GB | P4 | ~€15 |
+| Standard Load Balancer | hourly | ~€16 |
+| 4 Public IPs (3 VMs + LB) | Standard static | ~€12 |
+| Egress ~10 GB | West EU | ~€1 |
+| **Total** | | **~€134/mo** |
 
-2. Driver fills form, clicks "Submit booking"
-   → Browser: POST https://api.vcs-app.com/api/v1/journeys
-   → Cloudflare: passes through to origin (no cache for POST)
-   → Azure LB: routes to VM-B (round-robin or least-conn)
-   → VM-B nginx: routes to journey-service:8083
-   → Journey Service:
-       a. Validates JWT (local HMAC, <1ms)
-       b. Checks active journey (local postgres, 5ms)
-       c. Redis route cache hit → skips Map Service call
-       d. Calls capacity-service:8081 (same VM, Docker overlay, <2ms)
-       e. Capacity Service: SELECT FOR UPDATE → reserves slots (20ms)
-       f. Journey Service: INSERT into journey.journeys (10ms)
-       g. Returns 201 APPROVED to nginx → LB → Cloudflare → browser
+> Stop VMs overnight to save ~60% compute cost: `az vm deallocate --name vcs-vm-A ...`
 
-3. Journey Service (async, after response):
-   → Publishes journey.booked to Redis Streams (VM-B's local Redis, <1ms)
-   → notification-service on VM-B consumes event → sends Firebase push
+### GCP (europe-west1 — Belgium)
 
-4. PostgreSQL on VM-B replicates new journey row to VM-A and VM-C
-   → Takes <100ms on Azure intra-region LAN
-   → Driver can now query journey from any VM
-```
+| Resource | SKU | Monthly cost |
+|----------|-----|-------------|
+| 3 × e2-medium | 2 vCPU / 4 GB | ~$75 |
+| 3 × pd-balanced 30 GB | | ~$18 |
+| Network Load Balancer | forwarding rule | ~$18 |
+| 1 Static external IP (LB) | | ~$7 |
+| Egress ~10 GB | EU | ~$1 |
+| **Total** | | **~$119/mo** |
 
----
+> Preemptible VMs (70% discount) not suitable — Swarm managers must be stable.
 
-## 12. Cost summary
+### AWS (eu-west-1 — Ireland)
 
-| Resource | SKU | Monthly cost (est.) |
-|----------|-----|---------------------|
-| 3 × VM Standard_B1ms | West Europe | €45 |
-| 3 × Premium SSD OS disk 30GB | P4 | €15 |
-| Azure Standard LB | (hourly) | €16 |
-| Public IPs (4: 3 VMs + LB) | Standard static | €12 |
-| Egress (10 GB/month) | West Europe | €1 |
-| Cloudflare (free plan) | — | €0 |
-| Cloudflare Pages (free) | — | €0 |
-| **Total** | | **~€89/month** |
+| Resource | SKU | Monthly cost |
+|----------|-----|-------------|
+| 3 × t3.small | 2 vCPU / 2 GB | ~$46 |
+| 3 × gp3 30 GB | | ~$9 |
+| Network Load Balancer | hourly | ~$16 |
+| 3 Elastic IPs | (free when attached) | $0 |
+| Egress ~10 GB | EU | ~$1 |
+| **Total** | | **~$72/mo** |
 
-**To stay within €80 credits:**
-- Stop VMs overnight/weekends: `az vm deallocate --name vcs-vm-A ...`
-  (saves ~60% of VM cost; disk still charged)
-- Use B1s instead of B1ms: saves €24/month (€65 total) — tight on RAM
-- Remove LB and use one VM as primary for demos: saves €28/month (€61 total)
+> Upgrade to t3.medium (+$45/mo) if memory is tight.
 
 ---
 
-## 13. Verification checklist
+## 12. Verification checklist
 
-After setup, run these to confirm everything is working:
+Run these after setup to confirm everything works:
 
 ```bash
-# 1. All Swarm services running (3/3 replicas each)
+# 1. All 3 nodes are Swarm managers
+docker node ls
+
+# 2. All services running (3/3 replicas each)
 docker service ls
 
-# 2. Postgres replication active
+# 3. Postgres replication active (2 subscriptions per VM)
 docker exec -it $(docker ps -q -f name=vcs_db) \
-  psql -U postgres -c "SELECT * FROM pg_stat_subscription;"
+  psql -U postgres -c "SELECT subname, subenabled, received_lsn FROM pg_stat_subscription;"
 
-# 3. LB health probe passing
-curl http://<LB-IP>/nginx-health
+# 4. LB health probe passing
+curl http://<LB-IP-or-DNS>/nginx-health
+# → "ok"
 
-# 4. API reachable through Cloudflare
+# 5. API reachable through Cloudflare
 curl https://api.vcs-app.com/health
 
-# 5. Frontend loads from CDN (check CF-Cache-Status header)
+# 6. Frontend loads from CDN
 curl -I https://vcs-app.com
-# CF-Cache-Status: HIT  ← means Cloudflare is serving from edge cache
+# CF-Cache-Status: HIT  ← Cloudflare serving from edge
 
-# 6. End-to-end booking (replace with real JWT)
+# 7. End-to-end booking
 curl -X POST https://api.vcs-app.com/api/v1/journeys \
   -H "Authorization: Bearer <JWT>" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"origin":{"lat":53.3498,"lng":-6.2603},"destination":{"lat":51.8985,"lng":-8.4756},"departure_time":"2026-04-16T10:00:00Z","vehicle_type":"car"}'
+# → 201 {"journey_id": "...", "status": "APPROVED"}
+```
+
+---
+
+## 13. Full request flow — end to end
+
+```
+1. Driver opens https://vcs-app.com on their phone
+   → Cloudflare edge (nearest PoP) serves React SPA from cache in ~200ms
+
+2. Driver submits booking
+   → POST https://api.vcs-app.com/api/v1/journeys
+   → Cloudflare passes through to origin
+   → Cloud LB routes to e.g. VM-B (round-robin)
+   → VM-B nginx → journey-service:8083
+       a. JWT validation (local HMAC, <1ms)
+       b. Active journey check (local postgres, 5ms)
+       c. Redis route cache hit → skips Map Service
+       d. capacity-service:8081 (same VM, Docker overlay, <2ms)
+       e. SELECT FOR UPDATE → reserve slots (20ms)
+       f. INSERT journey (10ms)
+       g. 201 APPROVED → browser (~94ms p50, ~300ms p99)
+
+3. Async (after response sent):
+   → Redis Streams → notification-service → Firebase push to driver
+
+4. PostgreSQL on VM-B replicates new row to VM-A and VM-C in <100ms
+   → Driver can query their journey from any VM immediately after
 ```
