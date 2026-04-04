@@ -9,12 +9,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/event"
 	httpHandler "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/http"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/http/handlers"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/repository"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/config"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/postgres"
-)
+	"github.com/redis/go-redis/v9"
+) // TODO: check imports
 
 // @title Capacity Microservice API
 // @version 1.0
@@ -59,23 +63,92 @@ func main() {
 		},
 	)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize database connections")
+		log.Fatal().Err(err).Msg("failed to initialize database connections")
 	}
 	defer dbPools.Close()
+	log.Info().Msg("database connections established")
 
-	log.Info().Msg("Database connections established")
+	// Initialize Redis (optional — service degrades gracefully without it)
+	var redisClient *redis.Client
+	if cfg.Redis.Host != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:     cfg.Redis.Host,
+			Password: cfg.Redis.Password,
+		})
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer pingCancel()
+		if err := redisClient.Ping(pingCtx).Err(); err != nil {
+			log.Warn().Err(err).Msg("Redis ping failed — caching and stream consumer disabled")
+			redisClient = nil
+		} else {
+			log.Info().Str("host", cfg.Redis.Host).Msg("Redis connected")
+		}
+	}
 
-	// Initialize audit client
-	ctx := context.Background()
+	// Apply config defaults
+	cacheTTL := cfg.Capacity.AvailabilityCacheTTL
+	if cacheTTL == 0 {
+		cacheTTL = 30 * time.Second
+	}
+	cleanupInterval := cfg.Capacity.OrphanCleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = 30 * time.Minute
+	}
+	orphanThreshold := cfg.Capacity.OrphanThreshold
+	if orphanThreshold == 0 {
+		orphanThreshold = time.Hour
+	}
+	vmID := cfg.Capacity.VMID
+	if vmID == "" {
+		vmID = "vm-a"
+	}
+
+	// Wire up repositories
+	segmentRepo := repository.NewSegmentRepo(dbPools.Slave)
+	reservRepo := repository.NewReservationRepo(dbPools.Master, dbPools.Slave)
+	idempRepo := repository.NewIdempotencyRepo(dbPools.Master)
+
+	// Wire up services
+	reservSvc := service.NewReservationService(
+		dbPools.Master,
+		segmentRepo,
+		reservRepo,
+		idempRepo,
+		redisClient,
+		cacheTTL,
+		log,
+	)
+	cleanupSvc := service.NewCleanupService(
+		reservRepo,
+		idempRepo,
+		redisClient,
+		cleanupInterval,
+		orphanThreshold,
+		log,
+	)
+
+	// Background context for long-running goroutines
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+
+	// Start background cleanup jobs
+	cleanupSvc.Start(bgCtx)
+
+	// Start Redis Streams event consumer (only if Redis is available)
+	if redisClient != nil {
+		consumerName := vmID + "-capacity"
+		consumer := event.NewConsumer(redisClient, reservRepo, reservSvc, consumerName, log)
+		go consumer.Start(bgCtx)
+		log.Info().Str("consumer", consumerName).Msg("event consumer started")
+	}
 
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler()
+	capacityHandler := handlers.NewCapacityHandler(reservSvc, log)
+	occupancyHandler := handlers.NewOccupancyHandler(reservSvc, log)
 
 	// Setup router
-	router := httpHandler.NewRouter(
-		healthHandler,
-		log,
-	)
+	router := httpHandler.NewRouter(healthHandler, capacityHandler, occupancyHandler, log)
 	mux := router.Setup()
 
 	// Create HTTP server
@@ -89,10 +162,7 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Info().
-			Int("port", cfg.Server.Port).
-			Msg("server starting")
-
+		log.Info().Int("port", cfg.Server.Port).Msg("server starting")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("server failed")
 		}
@@ -104,13 +174,17 @@ func main() {
 	<-quit
 
 	log.Info().Msg("shutting down server...")
+	bgCancel()
 
-	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Fatal().Err(err).Msg("server forced to shutdown")
+	}
+
+	if redisClient != nil {
+		redisClient.Close()
 	}
 
 	log.Info().Msg("server exited")

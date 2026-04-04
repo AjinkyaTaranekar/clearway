@@ -2,23 +2,35 @@ server:
   port: 8081
   timeout: 30s
 
+# TODO:write db config below
+
 database:
   master:
-    host: "db.qrbwcyidxadcahvxxbja.supabase.co"
+    host: ""
     port: 5432
     user: "postgres"
-    password: "3uuzHVMpT2CqxuwJ"
+    password: ""
     dbname: "postgres"
     max_open_conns: 25
     max_idle_conns: 5
   slave:
-    host: "db.qrbwcyidxadcahvxxbja.supabase.co"
+    host: ""
     port: 5432
     user: "postgres"
-    password: "3uuzHVMpT2CqxuwJ"
+    password: ""
     dbname: "postgres"
     max_open_conns: 50
     max_idle_conns: 10
+
+redis:
+  host: "localhost:6379"
+  password: ""
+
+capacity:
+  vm_id: "vm-a"
+  availability_cache_ttl: 30s
+  orphan_cleanup_interval: 30m
+  orphan_threshold: 1h
 
 logging:
   level: "info"
