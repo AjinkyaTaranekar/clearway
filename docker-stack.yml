@@ -1,0 +1,365 @@
+# Docker Swarm production stack — VCS
+#
+# Topology: 3-node Swarm (1 manager + 2 workers) on Azure B1s VMs.
+# Each VM runs one replica of every service (mode: global).
+# PostgreSQL instances replicate to each other via logical replication
+# (configured separately — see docs/postgres-replication.md).
+# Redis is local to each node; no cross-node Redis sync.
+#
+# Deploy: docker stack deploy -c docker-stack.yml vcs
+# Update:  docker stack deploy -c docker-stack.yml vcs  (rolling, zero-downtime)
+#
+# Required secrets (create with `docker secret create`):
+#   db_password          — PostgreSQL user password
+#   jwt_secret           — HS256 JWT signing secret
+#   firebase_credentials — Firebase service account JSON (for notification-service)
+#
+# Required configs (create with `docker config create`):
+#   nginx_conf           — nginx/nginx.conf
+
+version: "3.9"
+
+secrets:
+  db_password:
+    external: true
+  jwt_secret:
+    external: true
+  firebase_credentials:
+    external: true
+
+configs:
+  nginx_conf:
+    external: true
+
+networks:
+  vcs-internal:
+    driver: overlay
+    attachable: true
+
+volumes:
+  pg_data:
+    driver: local
+
+services:
+
+  # ── Data layer ─────────────────────────────────────────────────────────────
+
+  db:
+    image: postgres:16-alpine
+    # mode: global ensures one PostgreSQL per Swarm node.
+    # Each node owns its data via a local named volume.
+    # Logical replication between nodes is configured via SQL (see docs/).
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+      resources:
+        limits:
+          memory: 400M
+        reservations:
+          memory: 200M
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: trafficservice
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --maxmemory 96mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Application services ───────────────────────────────────────────────────
+  # All use mode: global so each Swarm node runs exactly one replica,
+  # matching the "every VM runs all services" architecture.
+
+  iam-service:
+    image: ghcr.io/${GITHUB_REPOSITORY}/iam-service:${IMAGE_TAG:-latest}
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 15s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    environment:
+      VCS_SERVER_PORT: "8082"
+      VCS_DATABASE_MASTER_HOST: db
+      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_USER: postgres
+      VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_DATABASE_SLAVE_HOST: db
+      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_USER: postgres
+      VCS_DATABASE_SLAVE_DBNAME: trafficservice
+      VCS_REDIS_HOST: redis:6379
+      VCS_LOGGING_LEVEL: info
+      VCS_LOGGING_FORMAT: json
+    secrets:
+      - source: db_password
+        target: /run/secrets/db_password
+      - source: jwt_secret
+        target: /run/secrets/jwt_secret
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  capacity-service:
+    image: ghcr.io/${GITHUB_REPOSITORY}/capacity-service:${IMAGE_TAG:-latest}
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 15s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    environment:
+      VCS_SERVER_PORT: "8081"
+      VCS_DATABASE_MASTER_HOST: db
+      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_USER: postgres
+      VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_DATABASE_SLAVE_HOST: db
+      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_USER: postgres
+      VCS_DATABASE_SLAVE_DBNAME: trafficservice
+      VCS_REDIS_HOST: redis:6379
+      VCS_LOGGING_LEVEL: info
+      VCS_LOGGING_FORMAT: json
+    secrets:
+      - source: db_password
+        target: /run/secrets/db_password
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  map-service:
+    image: ghcr.io/${GITHUB_REPOSITORY}/map-service:${IMAGE_TAG:-latest}
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 15s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    environment:
+      VCS_SERVER_PORT: "8084"
+      VCS_DATABASE_MASTER_HOST: db
+      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_USER: postgres
+      VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_DATABASE_SLAVE_HOST: db
+      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_USER: postgres
+      VCS_DATABASE_SLAVE_DBNAME: trafficservice
+      VCS_REDIS_HOST: redis:6379
+      VCS_LOGGING_LEVEL: info
+      VCS_LOGGING_FORMAT: json
+    secrets:
+      - source: db_password
+        target: /run/secrets/db_password
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  journey-service:
+    image: ghcr.io/${GITHUB_REPOSITORY}/journey-service:${IMAGE_TAG:-latest}
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 20s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    environment:
+      VCS_SERVER_PORT: "8083"
+      VCS_DATABASE_MASTER_HOST: db
+      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_USER: postgres
+      VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_DATABASE_SLAVE_HOST: db
+      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_USER: postgres
+      VCS_DATABASE_SLAVE_DBNAME: trafficservice
+      VCS_REDIS_HOST: redis:6379
+      VCS_SERVICES_CAPACITY_URL: http://capacity-service:8081
+      VCS_SERVICES_MAP_URL: http://map-service:8084
+      VCS_SERVICES_IAM_URL: http://iam-service:8082
+      VCS_LOGGING_LEVEL: info
+      VCS_LOGGING_FORMAT: json
+    secrets:
+      - source: db_password
+        target: /run/secrets/db_password
+      - source: jwt_secret
+        target: /run/secrets/jwt_secret
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  notification-service:
+    image: ghcr.io/${GITHUB_REPOSITORY}/notification-service:${IMAGE_TAG:-latest}
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 15s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+      resources:
+        limits:
+          memory: 96M
+        reservations:
+          memory: 48M
+    environment:
+      VCS_SERVER_PORT: "8085"
+      VCS_DATABASE_MASTER_HOST: db
+      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_USER: postgres
+      VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_REDIS_HOST: redis:6379
+      VCS_LOGGING_LEVEL: info
+      VCS_LOGGING_FORMAT: json
+    secrets:
+      - source: db_password
+        target: /run/secrets/db_password
+      - source: firebase_credentials
+        target: /run/secrets/firebase_credentials
+    networks:
+      - vcs-internal
+
+  # ── API Gateway ────────────────────────────────────────────────────────────
+
+  nginx:
+    image: ghcr.io/${GITHUB_REPOSITORY}/nginx:${IMAGE_TAG:-latest}
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host          # host mode: each node accepts on port 80 directly
+    configs:
+      - source: nginx_conf
+        target: /etc/nginx/conf.d/vcs.conf
+    networks:
+      - vcs-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/nginx-health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
