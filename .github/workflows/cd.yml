@@ -8,6 +8,30 @@ on:
       image_tag:
         description: "Image tag to deploy (default: git SHA)"
         required: false
+      deploy_iam_service:
+        description: "Deploy iam-service"
+        type: boolean
+        default: false
+      deploy_journey_service:
+        description: "Deploy journey-service"
+        type: boolean
+        default: false
+      deploy_capacity_service:
+        description: "Deploy capacity-service"
+        type: boolean
+        default: false
+      deploy_map_service:
+        description: "Deploy map-service"
+        type: boolean
+        default: false
+      deploy_notification_service:
+        description: "Deploy notification-service"
+        type: boolean
+        default: false
+      deploy_nginx:
+        description: "Deploy nginx (also rebuilds frontend)"
+        type: boolean
+        default: false
 
 # Only one deployment at a time
 concurrency:
@@ -16,15 +40,70 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  # Swarm manager SSH target — set in repo secrets
   SWARM_HOST: ${{ secrets.SWARM_HOST }}
 
 jobs:
 
-  # ── Build frontend ────────────────────────────────────────────────────────
+  # ── Compute which services to build/deploy ────────────────────────────────
+  setup:
+    name: Compute deploy matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+      needs_frontend: ${{ steps.build-matrix.outputs.needs_frontend }}
+      is_full_deploy: ${{ steps.build-matrix.outputs.is_full_deploy }}
+    steps:
+      - id: build-matrix
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            MATRIX='{"include":[
+              {"service":"iam-service","context":"iam-service"},
+              {"service":"journey-service","context":"journey-service"},
+              {"service":"capacity-service","context":"capacity-service"},
+              {"service":"map-service","context":"map-service"},
+              {"service":"notification-service","context":"notification-service"},
+              {"service":"nginx","context":"nginx"}
+            ]}'
+            echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+            echo "needs_frontend=true"  >> "$GITHUB_OUTPUT"
+            echo "is_full_deploy=true"  >> "$GITHUB_OUTPUT"
+          else
+            INCLUDES=()
+            NEEDS_FRONTEND=false
+
+            [[ "${{ inputs.deploy_iam_service }}"          == "true" ]] && \
+              INCLUDES+=('{"service":"iam-service","context":"iam-service"}')
+            [[ "${{ inputs.deploy_journey_service }}"      == "true" ]] && \
+              INCLUDES+=('{"service":"journey-service","context":"journey-service"}')
+            [[ "${{ inputs.deploy_capacity_service }}"     == "true" ]] && \
+              INCLUDES+=('{"service":"capacity-service","context":"capacity-service"}')
+            [[ "${{ inputs.deploy_map_service }}"          == "true" ]] && \
+              INCLUDES+=('{"service":"map-service","context":"map-service"}')
+            [[ "${{ inputs.deploy_notification_service }}" == "true" ]] && \
+              INCLUDES+=('{"service":"notification-service","context":"notification-service"}')
+            if [[ "${{ inputs.deploy_nginx }}" == "true" ]]; then
+              INCLUDES+=('{"service":"nginx","context":"nginx"}')
+              NEEDS_FRONTEND=true
+            fi
+
+            if [[ ${#INCLUDES[@]} -eq 0 ]]; then
+              echo "::error::No services selected — tick at least one service checkbox."
+              exit 1
+            fi
+
+            JOINED=$(IFS=,; echo "${INCLUDES[*]}")
+            MATRIX="{\"include\":[${JOINED}]}"
+            echo "matrix=${MATRIX}"          >> "$GITHUB_OUTPUT"
+            echo "needs_frontend=${NEEDS_FRONTEND}" >> "$GITHUB_OUTPUT"
+            echo "is_full_deploy=false"      >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Build frontend (only when nginx is included) ──────────────────────────
   build-frontend:
     name: Build frontend
     runs-on: ubuntu-latest
+    needs: [setup]
+    if: needs.setup.outputs.needs_frontend == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -50,27 +129,19 @@ jobs:
   build-push:
     name: "Build & push — ${{ matrix.service }}"
     runs-on: ubuntu-latest
-    needs: [build-frontend]
+    needs: [setup, build-frontend]
+    # build-frontend is skipped when nginx is not selected — that is fine
+    if: >-
+      always() &&
+      needs.setup.result == 'success' &&
+      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
     permissions:
       contents: read
       packages: write
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - service: iam-service
-            context: iam-service
-          - service: journey-service
-            context: journey-service
-          - service: capacity-service
-            context: capacity-service
-          - service: map-service
-            context: map-service
-          - service: notification-service
-            context: notification-service
-          - service: nginx
-            context: nginx
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +188,8 @@ jobs:
   deploy:
     name: Deploy to Swarm
     runs-on: ubuntu-latest
-    needs: [build-push]
+    needs: [setup, build-push]
+    if: always() && needs.setup.result == 'success' && needs.build-push.result == 'success'
     environment: production
 
     steps:
@@ -136,12 +208,15 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }}
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS }}
 
+      # ── Full stack deploy (push to main) ──────────────────────────────────
       - name: Copy stack file to manager
+        if: needs.setup.outputs.is_full_deploy == 'true'
         run: |
           scp docker-stack.yml \
             deploy@${{ env.SWARM_HOST }}:/opt/vcs/docker-stack.yml
 
-      - name: Deploy stack
+      - name: Deploy full stack
+        if: needs.setup.outputs.is_full_deploy == 'true'
         env:
           IMAGE_TAG: ${{ steps.tag.outputs.tag }}
           GITHUB_REPOSITORY: ${{ steps.tag.outputs.repo_lc }}
@@ -154,6 +229,37 @@ jobs:
                -c /opt/vcs/docker-stack.yml \
                vcs"
 
+      # ── Selective service update (workflow_dispatch) ───────────────────────
+      - name: Update selected services
+        if: needs.setup.outputs.is_full_deploy == 'false'
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+          REPO_LC: ${{ steps.tag.outputs.repo_lc }}
+        run: |
+          REGISTRY="${{ env.REGISTRY }}"
+          CMD=""
+
+          declare -A SELECTED=(
+            [iam-service]="${{ inputs.deploy_iam_service }}"
+            [journey-service]="${{ inputs.deploy_journey_service }}"
+            [capacity-service]="${{ inputs.deploy_capacity_service }}"
+            [map-service]="${{ inputs.deploy_map_service }}"
+            [notification-service]="${{ inputs.deploy_notification_service }}"
+            [nginx]="${{ inputs.deploy_nginx }}"
+          )
+
+          for SVC in "${!SELECTED[@]}"; do
+            if [[ "${SELECTED[$SVC]}" == "true" ]]; then
+              echo "Queuing update for vcs_${SVC} → ${IMAGE_TAG}"
+              CMD+="docker service update --with-registry-auth \
+                --image ${REGISTRY}/${REPO_LC}/${SVC}:${IMAGE_TAG} \
+                vcs_${SVC}; "
+            fi
+          done
+
+          ssh deploy@${{ env.SWARM_HOST }} "${CMD}"
+
+      # ── Wait & smoke test ─────────────────────────────────────────────────
       - name: Wait for rollout
         run: |
           ssh deploy@${{ env.SWARM_HOST }} "
