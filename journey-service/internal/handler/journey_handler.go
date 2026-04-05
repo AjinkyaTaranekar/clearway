@@ -33,7 +33,23 @@ type createJourneyRequest struct {
 	VehicleType   string            `json:"vehicle_type"`
 }
 
-// CreateJourney handles POST /api/v1/journeys
+// CreateJourney godoc
+// @Summary Book a new journey
+// @Description Creates a journey booking. The capacity service reserves all route segments atomically. Returns APPROVED (201) or REJECTED (200).
+// @Tags Journeys
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param Idempotency-Key header string false "Client-generated idempotency key (UUID) for safe retries"
+// @Param body body createJourneyRequest true "Journey booking payload"
+// @Success 201 {object} model.Journey "Journey approved"
+// @Success 200 {object} model.Journey "Journey rejected (capacity unavailable)"
+// @Failure 400 {object} response.Response "Invalid request body or missing fields"
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Failure 409 {object} response.Response "Driver already has an APPROVED or ACTIVE journey"
+// @Failure 422 {object} response.Response "Departure time less than 1 hour from now"
+// @Failure 502 {object} response.Response "Map or Capacity service unavailable"
+// @Router /api/v1/journeys [post]
 func (h *JourneyHandler) CreateJourney(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 
@@ -83,7 +99,17 @@ func (h *JourneyHandler) CreateJourney(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, statusCode, journey, traceID)
 }
 
-// GetJourney handles GET /api/v1/journeys/{id}
+// GetJourney godoc
+// @Summary Get journey details
+// @Description Returns a journey by ID. Drivers can only retrieve their own journeys.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID (e.g. jrn_a1b2c3d4)"
+// @Success 200 {object} model.Journey
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Failure 404 {object} response.Response "Journey not found or not owned by this driver"
+// @Router /api/v1/journeys/{id} [get]
 func (h *JourneyHandler) GetJourney(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	journeyID := mux.Vars(r)["id"]
@@ -97,7 +123,18 @@ func (h *JourneyHandler) GetJourney(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, journey, traceID)
 }
 
-// ListJourneys handles GET /api/v1/journeys
+// ListJourneys godoc
+// @Summary List my journeys
+// @Description Returns a paginated list of journeys for the authenticated driver.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Filter by status (APPROVED, ACTIVE, COMPLETED, CANCELLED, REJECTED, EXPIRED)"
+// @Param page query int false "Page number (default 1)"
+// @Param limit query int false "Page size, max 100 (default 20)"
+// @Success 200 {object} map[string]interface{} "journeys array, total count, page, limit"
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Router /api/v1/journeys [get]
 func (h *JourneyHandler) ListJourneys(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	driverID := middleware.GetDriverID(r.Context())
@@ -127,7 +164,18 @@ func (h *JourneyHandler) ListJourneys(w http.ResponseWriter, r *http.Request) {
 	}, traceID)
 }
 
-// CancelJourney handles PUT /api/v1/journeys/{id}/cancel
+// CancelJourney godoc
+// @Summary Cancel a journey
+// @Description Cancels an APPROVED journey. Only allowed more than 30 minutes before departure.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID"
+// @Success 200 {object} model.Journey
+// @Failure 400 {object} response.Response "Journey not in APPROVED state"
+// @Failure 403 {object} response.Response "Less than 30 minutes before departure"
+// @Failure 404 {object} response.Response "Journey not found or not owned by this driver"
+// @Router /api/v1/journeys/{id}/cancel [put]
 func (h *JourneyHandler) CancelJourney(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	journeyID := mux.Vars(r)["id"]
@@ -141,7 +189,18 @@ func (h *JourneyHandler) CancelJourney(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, journey, traceID)
 }
 
-// ActivateJourney handles PUT /api/v1/journeys/{id}/activate
+// ActivateJourney godoc
+// @Summary Activate a journey
+// @Description Transitions an APPROVED journey to ACTIVE. Only allowed from departure_time up to departure_time + 30 minutes.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID"
+// @Success 200 {object} model.Journey
+// @Failure 400 {object} response.Response "Journey not in APPROVED state"
+// @Failure 403 {object} response.Response "Too early (before departure_time) or too late (30+ min after departure_time)"
+// @Failure 404 {object} response.Response "Journey not found or not owned by this driver"
+// @Router /api/v1/journeys/{id}/activate [put]
 func (h *JourneyHandler) ActivateJourney(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	journeyID := mux.Vars(r)["id"]
@@ -155,7 +214,17 @@ func (h *JourneyHandler) ActivateJourney(w http.ResponseWriter, r *http.Request)
 	response.Success(w, journey, traceID)
 }
 
-// CompleteJourney handles PUT /api/v1/journeys/{id}/complete
+// CompleteJourney godoc
+// @Summary Complete a journey
+// @Description Transitions an ACTIVE journey to COMPLETED. Call when the driver reaches the destination.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID"
+// @Success 200 {object} model.Journey
+// @Failure 400 {object} response.Response "Journey not in ACTIVE state"
+// @Failure 404 {object} response.Response "Journey not found or not owned by this driver"
+// @Router /api/v1/journeys/{id}/complete [put]
 func (h *JourneyHandler) CompleteJourney(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	journeyID := mux.Vars(r)["id"]

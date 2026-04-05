@@ -1,3 +1,4 @@
+
 package service
 
 import (
@@ -413,6 +414,39 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID strin
 	})
 
 	return j, nil
+}
+
+// EnforcementVerifyResult is the response for the enforcement verify endpoint
+type EnforcementVerifyResult struct {
+	Authorized      bool       `json:"authorized"`
+	JourneyID       string     `json:"journey_id,omitempty"`
+	DriverID        string     `json:"driver_id,omitempty"`
+	Status          string     `json:"status,omitempty"`
+	SegmentID       string     `json:"segment_id"`
+	TimeWindowStart *time.Time `json:"time_window_start,omitempty"`
+	TimeWindowEnd   *time.Time `json:"time_window_end,omitempty"`
+	Timestamp       time.Time  `json:"timestamp"`
+}
+
+// EnforcementVerify checks whether an ACTIVE journey covers segmentID at the given timestamp.
+func (s *JourneyService) EnforcementVerify(ctx context.Context, segmentID string, ts time.Time) (*EnforcementVerifyResult, error) {
+	rec, err := s.repo.FindActiveJourneyForSegment(ctx, segmentID, ts)
+	if err != nil {
+		return nil, err
+	}
+	result := &EnforcementVerifyResult{
+		SegmentID: segmentID,
+		Timestamp: ts,
+	}
+	if rec != nil {
+		result.Authorized = true
+		result.JourneyID = rec.JourneyID
+		result.DriverID = rec.DriverID
+		result.Status = rec.Status
+		result.TimeWindowStart = &rec.TimeWindowStart
+		result.TimeWindowEnd = &rec.TimeWindowEnd
+	}
+	return result, nil
 }
 
 // AdminListJourneys returns all journeys with filters

@@ -20,6 +20,519 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/admin/journeys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns paginated journeys across all drivers with optional filters. Requires admin role.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List all journeys (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by driver ID",
+                        "name": "driver_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, max 100 (default 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "journeys array, total count, page, limit",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid JWT",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin role required",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/journeys/{id}/cancel": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Force-cancels any APPROVED or ACTIVE journey. No 30-minute time restriction. Requires admin role.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Force-cancel a journey (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Journey ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "400": {
+                        "description": "Journey is not in a cancellable state",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid JWT",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin role required",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Journey not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/enforcement/verify": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Checks whether an ACTIVE journey covers the given road segment at the specified timestamp. Returns authorized=true with journey details if found. Requires enforcement or admin role.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enforcement"
+                ],
+                "summary": "Verify vehicle segment authorization",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Road segment ID to check (e.g. seg_m50)",
+                        "name": "segment_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Vehicle registration plate (hint from enforcement client; not verified server-side)",
+                        "name": "vehicle_plate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp to check (defaults to now)",
+                        "name": "timestamp",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.EnforcementVerifyResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing segment_id or invalid timestamp format",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid JWT",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Role is not enforcement or admin",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/journeys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a paginated list of journeys for the authenticated driver.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Journeys"
+                ],
+                "summary": "List my journeys",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by status (APPROVED, ACTIVE, COMPLETED, CANCELLED, REJECTED, EXPIRED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, max 100 (default 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "journeys array, total count, page, limit",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid JWT",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a journey booking. The capacity service reserves all route segments atomically. Returns APPROVED (201) or REJECTED (200).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Journeys"
+                ],
+                "summary": "Book a new journey",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client-generated idempotency key (UUID) for safe retries",
+                        "name": "Idempotency-Key",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Journey booking payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.createJourneyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Journey rejected (capacity unavailable)",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "201": {
+                        "description": "Journey approved",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or missing fields",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid JWT",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "Driver already has an APPROVED or ACTIVE journey",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "422": {
+                        "description": "Departure time less than 1 hour from now",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "502": {
+                        "description": "Map or Capacity service unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/journeys/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a journey by ID. Drivers can only retrieve their own journeys.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Journeys"
+                ],
+                "summary": "Get journey details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Journey ID (e.g. jrn_a1b2c3d4)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid JWT",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Journey not found or not owned by this driver",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/journeys/{id}/activate": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Transitions an APPROVED journey to ACTIVE. Only allowed from departure_time up to departure_time + 30 minutes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Journeys"
+                ],
+                "summary": "Activate a journey",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Journey ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "400": {
+                        "description": "Journey not in APPROVED state",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Too early (before departure_time) or too late (30+ min after departure_time)",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Journey not found or not owned by this driver",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/journeys/{id}/cancel": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cancels an APPROVED journey. Only allowed more than 30 minutes before departure.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Journeys"
+                ],
+                "summary": "Cancel a journey",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Journey ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "400": {
+                        "description": "Journey not in APPROVED state",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Less than 30 minutes before departure",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Journey not found or not owned by this driver",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/journeys/{id}/complete": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Transitions an ACTIVE journey to COMPLETED. Call when the driver reaches the destination.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Journeys"
+                ],
+                "summary": "Complete a journey",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Journey ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Journey"
+                        }
+                    },
+                    "400": {
+                        "description": "Journey not in ACTIVE state",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Journey not found or not owned by this driver",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Check if the service is healthy and running",
@@ -68,6 +581,31 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.createJourneyRequest": {
+            "type": "object",
+            "properties": {
+                "departure_time": {
+                    "$ref": "#/definitions/handler.jsonTime"
+                },
+                "destination": {
+                    "$ref": "#/definitions/model.Coordinates"
+                },
+                "origin": {
+                    "$ref": "#/definitions/model.Coordinates"
+                },
+                "vehicle_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.jsonTime": {
+            "type": "object",
+            "properties": {
+                "time.Time": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.HealthResponse": {
             "type": "object",
             "properties": {
@@ -81,6 +619,186 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "model.Coordinates": {
+            "type": "object",
+            "properties": {
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                }
+            }
+        },
+        "model.Journey": {
+            "type": "object",
+            "properties": {
+                "activated_at": {
+                    "type": "string"
+                },
+                "cancelled_at": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "departure_time": {
+                    "type": "string"
+                },
+                "destination": {
+                    "$ref": "#/definitions/model.Coordinates"
+                },
+                "driver_id": {
+                    "type": "string"
+                },
+                "estimated_arrival": {
+                    "type": "string"
+                },
+                "expired_at": {
+                    "type": "string"
+                },
+                "journey_id": {
+                    "type": "string"
+                },
+                "origin": {
+                    "$ref": "#/definitions/model.Coordinates"
+                },
+                "rejection_reason": {
+                    "type": "string"
+                },
+                "reservation_id": {
+                    "type": "string"
+                },
+                "segments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.JourneySegment"
+                    }
+                },
+                "status": {
+                    "$ref": "#/definitions/model.JourneyStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "vehicle_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.JourneySegment": {
+            "type": "object",
+            "properties": {
+                "region": {
+                    "type": "string"
+                },
+                "segment_id": {
+                    "type": "string"
+                },
+                "segment_name": {
+                    "type": "string"
+                },
+                "sequence_order": {
+                    "type": "integer"
+                },
+                "time_window_end": {
+                    "type": "string"
+                },
+                "time_window_start": {
+                    "type": "string"
+                },
+                "traversal_minutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.JourneyStatus": {
+            "type": "string",
+            "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED",
+                "ACTIVE",
+                "COMPLETED",
+                "EXPIRED"
+            ],
+            "x-enum-varnames": [
+                "StatusPending",
+                "StatusApproved",
+                "StatusRejected",
+                "StatusCancelled",
+                "StatusActive",
+                "StatusCompleted",
+                "StatusExpired"
+            ]
+        },
+        "response.ErrorInfo": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.Response": {
+            "type": "object",
+            "properties": {
+                "data": {},
+                "error": {
+                    "$ref": "#/definitions/response.ErrorInfo"
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.EnforcementVerifyResult": {
+            "type": "object",
+            "properties": {
+                "authorized": {
+                    "type": "boolean"
+                },
+                "driver_id": {
+                    "type": "string"
+                },
+                "journey_id": {
+                    "type": "string"
+                },
+                "segment_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "time_window_end": {
+                    "type": "string"
+                },
+                "time_window_start": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Enter \"Bearer\" followed by a space and the JWT token.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`
@@ -92,7 +810,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "",
 	Schemes:          []string{},
 	Title:            "Journey Microservice API",
-	Description:      "",
+	Description:      "Distributed Vehicle Capacity System — Journey Service. Manages journey bookings, state transitions, and enforcement checks.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

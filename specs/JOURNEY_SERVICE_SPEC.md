@@ -341,7 +341,58 @@ Force-cancel any journey. No 30-minute restriction. Requires admin role in JWT.
 
 ---
 
-### 5.3 Internal Endpoints (health + metrics)
+### 5.3 Enforcement Endpoints
+
+#### GET /api/v1/enforcement/verify
+Check whether a vehicle on a road segment has a valid, active journey booking.
+Used by traffic wardens, Gardaí, or automated roadside systems.
+
+**Headers:** `Authorization: Bearer <jwt>` with `role: enforcement` (or `admin`)
+
+**Query params:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `segment_id` | string | Yes | Road segment to check (e.g. `seg_m50`) |
+| `vehicle_plate` | string | No | Vehicle registration plate (hint from enforcement client) |
+| `timestamp` | ISO 8601 | No | Time to check; defaults to now |
+
+**Response (200 OK — authorized):**
+```json
+{
+  "authorized": true,
+  "journey_id": "jrn_a1b2c3d4",
+  "driver_id": "usr_x1y2z3",
+  "status": "ACTIVE",
+  "segment_id": "seg_m50",
+  "time_window_start": "2026-04-15T08:00:00Z",
+  "time_window_end": "2026-04-15T08:25:00Z",
+  "timestamp": "2026-04-15T08:10:00Z"
+}
+```
+
+**Response (200 OK — not authorized):**
+```json
+{
+  "authorized": false,
+  "segment_id": "seg_m50",
+  "timestamp": "2026-04-15T08:10:00Z"
+}
+```
+
+**Error responses:**
+- `400` — Missing `segment_id` or unparseable `timestamp`
+- `401` — Missing or invalid JWT
+- `403` — JWT role is not `enforcement` or `admin`
+
+**Implementation notes:**
+- Queries `journey.journey_segments` joined to `journey.journeys` where `status = 'ACTIVE'` and `time_window_start ≤ timestamp ≤ time_window_end`
+- Read-only — does not modify any journey state
+- `vehicle_plate` is accepted as a hint but not verified server-side (plate is stored in IAM, avoided to prevent a cross-service call on the enforcement critical path)
+
+---
+
+### 5.4 Internal Endpoints (health + metrics)
 
 #### GET /health
 Returns service health status. Used by Docker Swarm health checks.
@@ -631,6 +682,15 @@ Each VM has its own Redis instance used for:
 - Route cache (Map Service responses, 24h TTL)
 - Idempotency cache
 - Redis Streams (journey events for Notification Service + Capacity slot release)
+
+**Eviction policy: `allkeys-lru`**
+
+Redis is configured with `--maxmemory 96mb --maxmemory-policy allkeys-lru`. When the memory limit is reached, the Least Recently Used key is evicted regardless of whether it has a TTL set. This is the correct policy because Redis holds only cache data — all source-of-truth state is in PostgreSQL. An eviction is never a correctness issue, only a latency one (the next request triggers a fresh upstream call and re-populates the cache).
+
+| Key pattern | TTL | On eviction |
+|-------------|-----|-------------|
+| `route:{lat1}:{lng1}:{lat2}:{lng2}` | 24 h | Map Service call on next request |
+| `idempotency:{key}` | 24 h | Request re-processed; DB unique constraint catches duplicates |
 
 Since each VM's Redis is independent, the Notification Service on each VM only consumes events published by Journey Service on that same VM. A driver whose booking is handled by VM A receives their Firebase push notification from VM A's Notification Service. This is correct — no cross-VM Redis coordination needed.
 

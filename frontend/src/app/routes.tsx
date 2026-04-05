@@ -20,6 +20,7 @@ import AdminNotificationsPage from './pages/admin/AdminNotificationsPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AllJourneysPage from './pages/admin/AllJourneysPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
+import EnforcementPage from './pages/admin/EnforcementPage';
 import TrafficMapPage from './pages/admin/TrafficMapPage';
 
 function NotFound() {
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
       { path: 'journeys', Component: AllJourneysPage },
       { path: 'journeys/:id', Component: AdminJourneyDetailPage },
       { path: 'analytics', Component: AnalyticsPage },
+      { path: 'enforcement', Component: EnforcementPage },
       { path: 'map', Component: TrafficMapPage },
       { path: 'notifications', Component: AdminNotificationsPage },
       { path: 'settings', Component: AdminSettingsPage },

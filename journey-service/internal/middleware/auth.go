@@ -78,6 +78,19 @@ func AdminOnly(next http.Handler) http.Handler {
 	})
 }
 
+// EnforcementOnly returns middleware that requires the enforcement or admin role
+func EnforcementOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		traceID := tracing.GetTraceID(r.Context())
+		role := GetRole(r.Context())
+		if role != "enforcement" && role != "admin" {
+			response.Error(w, apperrors.Forbidden("enforcement role required"), traceID)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // GetDriverID extracts the driver ID from the request context
 func GetDriverID(ctx context.Context) string {
 	v, _ := ctx.Value(contextKeyDriverID).(string)

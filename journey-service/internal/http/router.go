@@ -74,5 +74,10 @@ func (r *Router) Setup() *mux.Router {
 	admin.HandleFunc("/journeys", r.adminHandler.ListJourneys).Methods("GET")
 	admin.HandleFunc("/journeys/{id}/cancel", r.adminHandler.CancelJourney).Methods("PUT", "OPTIONS")
 
+	// Enforcement subrouter — requires enforcement or admin role
+	enforcement := api.PathPrefix("/enforcement").Subrouter()
+	enforcement.Use(middleware.EnforcementOnly)
+	enforcement.HandleFunc("/verify", r.adminHandler.EnforcementVerify).Methods("GET")
+
 	return r.mux
 }

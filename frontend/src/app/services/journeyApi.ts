@@ -194,3 +194,25 @@ export async function adminCancelJourney(id: string): Promise<Journey> {
   const data = await apiFetch<any>(`/api/v1/admin/journeys/${id}/cancel`, { method: 'PUT' });
   return mapApiJourney(data);
 }
+
+export interface EnforcementVerifyResult {
+  authorized: boolean;
+  journey_id?: string;
+  driver_id?: string;
+  status?: string;
+  segment_id: string;
+  time_window_start?: string;
+  time_window_end?: string;
+  timestamp: string;
+}
+
+export async function enforcementVerify(params: {
+  segmentId: string;
+  vehiclePlate?: string;
+  timestamp?: string;
+}): Promise<EnforcementVerifyResult> {
+  const q = new URLSearchParams({ segment_id: params.segmentId });
+  if (params.vehiclePlate) q.set('vehicle_plate', params.vehiclePlate);
+  if (params.timestamp) q.set('timestamp', params.timestamp);
+  return apiFetch<EnforcementVerifyResult>(`/api/v1/enforcement/verify?${q}`);
+}

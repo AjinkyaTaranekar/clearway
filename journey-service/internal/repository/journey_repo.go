@@ -323,6 +323,41 @@ func (r *JourneyRepository) HasActiveJourney(ctx context.Context, driverID strin
 	return count > 0, nil
 }
 
+// SegmentAuthRecord holds the result of an enforcement segment lookup
+type SegmentAuthRecord struct {
+	JourneyID       string
+	DriverID        string
+	Status          string
+	SegmentID       string
+	TimeWindowStart time.Time
+	TimeWindowEnd   time.Time
+}
+
+// FindActiveJourneyForSegment returns the ACTIVE journey covering segmentID at ts, or nil if none.
+func (r *JourneyRepository) FindActiveJourneyForSegment(ctx context.Context, segmentID string, ts time.Time) (*SegmentAuthRecord, error) {
+	var rec SegmentAuthRecord
+	err := r.db.QueryRowContext(ctx, `
+		SELECT j.journey_id, j.driver_id, j.status,
+		       js.segment_id, js.time_window_start, js.time_window_end
+		FROM journey.journeys j
+		JOIN journey.journey_segments js ON j.journey_id = js.journey_id
+		WHERE js.segment_id = $1
+		  AND js.time_window_start <= $2
+		  AND js.time_window_end >= $2
+		  AND j.status = 'ACTIVE'
+		LIMIT 1`, segmentID, ts).Scan(
+		&rec.JourneyID, &rec.DriverID, &rec.Status,
+		&rec.SegmentID, &rec.TimeWindowStart, &rec.TimeWindowEnd,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, apperrors.DatabaseError("failed to query enforcement", err)
+	}
+	return &rec, nil
+}
+
 // GetExpiredJourneys returns APPROVED journeys where departure_time < NOW() - 30min
 func (r *JourneyRepository) GetExpiredJourneys(ctx context.Context) ([]model.Journey, error) {
 	rows, err := r.db.QueryContext(ctx, `

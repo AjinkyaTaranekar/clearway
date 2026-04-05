@@ -1,4 +1,20 @@
 definitions:
+  handler.createJourneyRequest:
+    properties:
+      departure_time:
+        $ref: '#/definitions/handler.jsonTime'
+      destination:
+        $ref: '#/definitions/model.Coordinates'
+      origin:
+        $ref: '#/definitions/model.Coordinates'
+      vehicle_type:
+        type: string
+    type: object
+  handler.jsonTime:
+    properties:
+      time.Time:
+        type: string
+    type: object
   handlers.HealthResponse:
     properties:
       status:
@@ -8,8 +24,127 @@ definitions:
       version:
         type: string
     type: object
+  model.Coordinates:
+    properties:
+      lat:
+        type: number
+      lng:
+        type: number
+    type: object
+  model.Journey:
+    properties:
+      activated_at:
+        type: string
+      cancelled_at:
+        type: string
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      departure_time:
+        type: string
+      destination:
+        $ref: '#/definitions/model.Coordinates'
+      driver_id:
+        type: string
+      estimated_arrival:
+        type: string
+      expired_at:
+        type: string
+      journey_id:
+        type: string
+      origin:
+        $ref: '#/definitions/model.Coordinates'
+      rejection_reason:
+        type: string
+      reservation_id:
+        type: string
+      segments:
+        items:
+          $ref: '#/definitions/model.JourneySegment'
+        type: array
+      status:
+        $ref: '#/definitions/model.JourneyStatus'
+      updated_at:
+        type: string
+      vehicle_type:
+        type: string
+    type: object
+  model.JourneySegment:
+    properties:
+      region:
+        type: string
+      segment_id:
+        type: string
+      segment_name:
+        type: string
+      sequence_order:
+        type: integer
+      time_window_end:
+        type: string
+      time_window_start:
+        type: string
+      traversal_minutes:
+        type: integer
+    type: object
+  model.JourneyStatus:
+    enum:
+    - PENDING
+    - APPROVED
+    - REJECTED
+    - CANCELLED
+    - ACTIVE
+    - COMPLETED
+    - EXPIRED
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusApproved
+    - StatusRejected
+    - StatusCancelled
+    - StatusActive
+    - StatusCompleted
+    - StatusExpired
+  response.ErrorInfo:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  response.Response:
+    properties:
+      data: {}
+      error:
+        $ref: '#/definitions/response.ErrorInfo'
+      success:
+        type: boolean
+      trace_id:
+        type: string
+    type: object
+  service.EnforcementVerifyResult:
+    properties:
+      authorized:
+        type: boolean
+      driver_id:
+        type: string
+      journey_id:
+        type: string
+      segment_id:
+        type: string
+      status:
+        type: string
+      time_window_end:
+        type: string
+      time_window_start:
+        type: string
+      timestamp:
+        type: string
+    type: object
 info:
   contact: {}
+  description: Distributed Vehicle Capacity System — Journey Service. Manages journey
+    bookings, state transitions, and enforcement checks.
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -17,6 +152,344 @@ info:
   title: Journey Microservice API
   version: "1.0"
 paths:
+  /api/v1/admin/journeys:
+    get:
+      description: Returns paginated journeys across all drivers with optional filters.
+        Requires admin role.
+      parameters:
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - description: Filter by driver ID
+        in: query
+        name: driver_id
+        type: string
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size, max 100 (default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: journeys array, total count, page, limit
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Missing or invalid JWT
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Admin role required
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List all journeys (admin)
+      tags:
+      - Admin
+  /api/v1/admin/journeys/{id}/cancel:
+    put:
+      description: Force-cancels any APPROVED or ACTIVE journey. No 30-minute time
+        restriction. Requires admin role.
+      parameters:
+      - description: Journey ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "400":
+          description: Journey is not in a cancellable state
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Missing or invalid JWT
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Admin role required
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Journey not found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Force-cancel a journey (admin)
+      tags:
+      - Admin
+  /api/v1/enforcement/verify:
+    get:
+      description: Checks whether an ACTIVE journey covers the given road segment
+        at the specified timestamp. Returns authorized=true with journey details if
+        found. Requires enforcement or admin role.
+      parameters:
+      - description: Road segment ID to check (e.g. seg_m50)
+        in: query
+        name: segment_id
+        required: true
+        type: string
+      - description: Vehicle registration plate (hint from enforcement client; not
+          verified server-side)
+        in: query
+        name: vehicle_plate
+        type: string
+      - description: ISO 8601 timestamp to check (defaults to now)
+        in: query
+        name: timestamp
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.EnforcementVerifyResult'
+        "400":
+          description: Missing segment_id or invalid timestamp format
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Missing or invalid JWT
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Role is not enforcement or admin
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Verify vehicle segment authorization
+      tags:
+      - Enforcement
+  /api/v1/journeys:
+    get:
+      description: Returns a paginated list of journeys for the authenticated driver.
+      parameters:
+      - description: Filter by status (APPROVED, ACTIVE, COMPLETED, CANCELLED, REJECTED,
+          EXPIRED)
+        in: query
+        name: status
+        type: string
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size, max 100 (default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: journeys array, total count, page, limit
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Missing or invalid JWT
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List my journeys
+      tags:
+      - Journeys
+    post:
+      consumes:
+      - application/json
+      description: Creates a journey booking. The capacity service reserves all route
+        segments atomically. Returns APPROVED (201) or REJECTED (200).
+      parameters:
+      - description: Client-generated idempotency key (UUID) for safe retries
+        in: header
+        name: Idempotency-Key
+        type: string
+      - description: Journey booking payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createJourneyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Journey rejected (capacity unavailable)
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "201":
+          description: Journey approved
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "400":
+          description: Invalid request body or missing fields
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Missing or invalid JWT
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Driver already has an APPROVED or ACTIVE journey
+          schema:
+            $ref: '#/definitions/response.Response'
+        "422":
+          description: Departure time less than 1 hour from now
+          schema:
+            $ref: '#/definitions/response.Response'
+        "502":
+          description: Map or Capacity service unavailable
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Book a new journey
+      tags:
+      - Journeys
+  /api/v1/journeys/{id}:
+    get:
+      description: Returns a journey by ID. Drivers can only retrieve their own journeys.
+      parameters:
+      - description: Journey ID (e.g. jrn_a1b2c3d4)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "401":
+          description: Missing or invalid JWT
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Journey not found or not owned by this driver
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get journey details
+      tags:
+      - Journeys
+  /api/v1/journeys/{id}/activate:
+    put:
+      description: Transitions an APPROVED journey to ACTIVE. Only allowed from departure_time
+        up to departure_time + 30 minutes.
+      parameters:
+      - description: Journey ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "400":
+          description: Journey not in APPROVED state
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Too early (before departure_time) or too late (30+ min after
+            departure_time)
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Journey not found or not owned by this driver
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Activate a journey
+      tags:
+      - Journeys
+  /api/v1/journeys/{id}/cancel:
+    put:
+      description: Cancels an APPROVED journey. Only allowed more than 30 minutes
+        before departure.
+      parameters:
+      - description: Journey ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "400":
+          description: Journey not in APPROVED state
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Less than 30 minutes before departure
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Journey not found or not owned by this driver
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Cancel a journey
+      tags:
+      - Journeys
+  /api/v1/journeys/{id}/complete:
+    put:
+      description: Transitions an ACTIVE journey to COMPLETED. Call when the driver
+        reaches the destination.
+      parameters:
+      - description: Journey ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Journey'
+        "400":
+          description: Journey not in ACTIVE state
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Journey not found or not owned by this driver
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Complete a journey
+      tags:
+      - Journeys
   /health:
     get:
       consumes:
@@ -47,4 +520,10 @@ paths:
       summary: Readiness check
       tags:
       - Health
+securityDefinitions:
+  BearerAuth:
+    description: Enter "Bearer" followed by a space and the JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

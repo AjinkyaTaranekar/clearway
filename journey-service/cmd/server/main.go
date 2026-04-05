@@ -25,9 +25,14 @@ import (
 
 // @title Journey Microservice API
 // @version 1.0
+// @description Distributed Vehicle Capacity System — Journey Service. Manages journey bookings, state transitions, and enforcement checks.
 // @termsOfService http://swagger.io/terms/
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer" followed by a space and the JWT token.
 func main() {
 	configPath := "config.yaml"
 	cfg, err := config.Load(configPath)
