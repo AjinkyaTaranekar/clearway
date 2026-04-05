@@ -15,17 +15,20 @@ import (
 type Router struct {
 	mux           *mux.Router
 	healthHandler *handlers.HealthHandler
+	mapHandler    *handlers.MapHandler
 	logger        *logger.Logger
 }
 
 // NewRouter creates a new router instance
 func NewRouter(
 	healthHandler *handlers.HealthHandler,
+	mapHandler *handlers.MapHandler,
 	log *logger.Logger,
 ) *Router {
 	return &Router{
 		mux:           mux.NewRouter(),
 		healthHandler: healthHandler,
+		mapHandler:    mapHandler,
 		logger:        log,
 	}
 }
@@ -43,6 +46,10 @@ func (r *Router) Setup() *mux.Router {
 	// Health check
 	r.mux.HandleFunc("/health", r.healthHandler.Health).Methods("GET")
 	r.mux.HandleFunc("/ready", r.healthHandler.Readiness).Methods("GET")
+
+	// Map APIs
+	r.mux.HandleFunc("/api/v1/map/nodes", r.mapHandler.GetNodes).Methods("GET")
+	r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET")
 
 	return r.mux
 }

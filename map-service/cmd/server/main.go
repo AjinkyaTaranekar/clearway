@@ -70,10 +70,12 @@ func main() {
 
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler()
+	mapHandler := handlers.NewMapHandler()
 
 	// Setup router
 	router := httpHandler.NewRouter(
 		healthHandler,
+		mapHandler,
 		log,
 	)
 	mux := router.Setup()
