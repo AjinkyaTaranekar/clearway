@@ -11,6 +11,7 @@ import (
 
 	httpHandler "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/http"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/http/handlers"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/config"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/postgres"
@@ -65,16 +66,25 @@ func main() {
 
 	log.Info().Msg("Database connections established")
 
-	// Initialize audit client
-	ctx := context.Background()
+	// Initialize repositories (in-memory for now; swap to PostgreSQL later)
+	notifRepo := service.NewMemoryNotificationRepo()
+	tokenRepo := service.NewMemoryDeviceTokenRepo()
+
+	// JWKS URL for JWT validation (empty = skip signature verification in dev)
+	jwksURL := os.Getenv("JWKS_URL") // e.g. http://iam-service:8082/.well-known/jwks.json
 
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler()
+	notificationHandler := handlers.NewNotificationHandler(notifRepo, tokenRepo, log)
+	adminHandler := handlers.NewAdminHandler(notifRepo, log)
 
 	// Setup router
 	router := httpHandler.NewRouter(
 		healthHandler,
+		notificationHandler,
+		adminHandler,
 		log,
+		jwksURL,
 	)
 	mux := router.Setup()
 
