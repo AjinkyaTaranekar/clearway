@@ -31,3 +31,9 @@ nginx/html/*
 .vscode/
 *.swp
 *.swo
+
+# Local AI / editor
+.claude/
+
+# IAM RSA keys (generate per environment; never commit private keys)
+iam-service/keys/*.pem

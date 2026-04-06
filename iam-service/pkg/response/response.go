@@ -50,7 +50,7 @@ func JSON(w http.ResponseWriter, statusCode int, data interface{}, traceID strin
 		TraceID: traceID,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp) //nolint:errcheck // Status and headers already committed.
 }
 
 // Error sends an error response
@@ -73,7 +73,7 @@ func Error(w http.ResponseWriter, err error, traceID string) {
 		TraceID: traceID,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp) //nolint:errcheck // Status and headers already committed.
 }
 
 // Paginated sends a paginated response
@@ -89,7 +89,7 @@ func Paginated(w http.ResponseWriter, data interface{}, pagination *Pagination, 
 		TraceID:    traceID,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp) //nolint:errcheck // Status and headers already committed.
 }
 
 // Success sends a success response with default status 200
