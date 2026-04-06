@@ -26,6 +26,8 @@ secrets:
     external: true
   firebase_credentials:
     external: true
+  iam_private_key:
+    external: true
 
 networks:
   vcs-internal:
@@ -134,6 +136,7 @@ services:
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
+      VCS_IAM_PRIVATE_KEY_PATH: /run/secrets/iam_private_key
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
     secrets:
@@ -141,6 +144,8 @@ services:
         target: /run/secrets/db_password
       - source: jwt_secret
         target: /run/secrets/jwt_secret
+      - source: iam_private_key
+        target: /run/secrets/iam_private_key
     networks:
       - vcs-internal
     healthcheck:
@@ -314,6 +319,10 @@ services:
       VCS_DATABASE_MASTER_PORT: "5432"
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_DATABASE_SLAVE_HOST: db
+      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_USER: postgres
+      VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
@@ -335,7 +344,7 @@ services:
         parallelism: 1
         delay: 10s
         failure_action: rollback
-        order: start-first
+        order: stop-first
       restart_policy:
         condition: on-failure
         delay: 5s
