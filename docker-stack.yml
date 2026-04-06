@@ -357,11 +357,12 @@ services:
       - target: 80
         published: 80
         protocol: tcp
-        mode: host          # host mode: each node accepts on port 80 directly
+        mode: ingress       # ingress routing mesh — works with Swarm overlay healthchecks
     networks:
       - vcs-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/nginx-health || exit 1"]
+      test: ["CMD-SHELL", "pgrep nginx > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
+      start_period: 5s
