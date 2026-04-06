@@ -156,17 +156,8 @@ jobs:
             echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
           "
 
-      - name: Copy stack file and nginx config
-        run: |
-          scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
-          scp nginx/nginx.conf deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/nginx.conf
-
-      - name: Upsert nginx_conf Docker config
-        run: |
-          ssh deploy@${{ secrets.SWARM_HOST_EU }} "
-            docker config rm nginx_conf 2>/dev/null || true
-            docker config create nginx_conf ~/vcs/nginx.conf
-          "
+      - name: Copy stack file
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
 
       - name: Deploy stack
         env:
@@ -236,17 +227,8 @@ jobs:
             echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
           "
 
-      - name: Copy stack file and nginx config
-        run: |
-          scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/docker-stack.yml
-          scp nginx/nginx.conf deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/nginx.conf
-
-      - name: Upsert nginx_conf Docker config
-        run: |
-          ssh deploy@${{ secrets.SWARM_HOST_US }} "
-            docker config rm nginx_conf 2>/dev/null || true
-            docker config create nginx_conf ~/vcs/nginx.conf
-          "
+      - name: Copy stack file
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/docker-stack.yml
 
       - name: Deploy stack
         env:
@@ -317,16 +299,7 @@ jobs:
           "
 
       - name: Copy stack file
-        run: |
-          scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/docker-stack.yml
-          scp nginx/nginx.conf deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/nginx.conf
-
-      - name: Upsert nginx_conf Docker config
-        run: |
-          ssh deploy@${{ secrets.SWARM_HOST_AP }} "
-            docker config rm nginx_conf 2>/dev/null || true
-            docker config create nginx_conf ~/vcs/nginx.conf
-          "
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/docker-stack.yml
 
       - name: Deploy stack
         env:

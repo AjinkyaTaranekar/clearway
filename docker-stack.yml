@@ -27,10 +27,6 @@ secrets:
   firebase_credentials:
     external: true
 
-configs:
-  nginx_conf:
-    external: true
-
 networks:
   vcs-internal:
     driver: overlay
@@ -353,9 +349,6 @@ services:
         published: 80
         protocol: tcp
         mode: host          # host mode: each node accepts on port 80 directly
-    configs:
-      - source: nginx_conf
-        target: /etc/nginx/conf.d/vcs.conf
     networks:
       - vcs-internal
     healthcheck:
