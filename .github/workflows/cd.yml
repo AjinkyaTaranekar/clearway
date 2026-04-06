@@ -150,10 +150,10 @@ jobs:
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_EU }}
 
       - name: Ensure deploy dir exists
-        run: ssh deploy@${{ secrets.SWARM_HOST_EU }} "mkdir -p /opt/vcs"
+        run: ssh deploy@${{ secrets.SWARM_HOST_EU }} "mkdir -p ~/vcs"
 
       - name: Copy stack file
-        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:/opt/vcs/docker-stack.yml
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
 
       - name: Deploy stack
         env:
@@ -165,7 +165,7 @@ jobs:
              docker stack deploy \
                --with-registry-auth \
                --prune \
-               -c /opt/vcs/docker-stack.yml \
+               -c ~/vcs/docker-stack.yml \
                vcs"
 
       - name: Wait for rollout
@@ -217,10 +217,10 @@ jobs:
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_US }}
 
       - name: Ensure deploy dir exists
-        run: ssh deploy@${{ secrets.SWARM_HOST_US }} "mkdir -p /opt/vcs"
+        run: ssh deploy@${{ secrets.SWARM_HOST_US }} "mkdir -p ~/vcs"
 
       - name: Copy stack file
-        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:/opt/vcs/docker-stack.yml
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/docker-stack.yml
 
       - name: Deploy stack
         env:
@@ -232,7 +232,7 @@ jobs:
              docker stack deploy \
                --with-registry-auth \
                --prune \
-               -c /opt/vcs/docker-stack.yml \
+               -c ~/vcs/docker-stack.yml \
                vcs"
 
       - name: Wait for rollout
@@ -284,10 +284,10 @@ jobs:
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_AP }}
 
       - name: Ensure deploy dir exists
-        run: ssh deploy@${{ secrets.SWARM_HOST_AP }} "mkdir -p /opt/vcs"
+        run: ssh deploy@${{ secrets.SWARM_HOST_AP }} "mkdir -p ~/vcs"
 
       - name: Copy stack file
-        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:/opt/vcs/docker-stack.yml
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/docker-stack.yml
 
       - name: Deploy stack
         env:
@@ -299,7 +299,7 @@ jobs:
              docker stack deploy \
                --with-registry-auth \
                --prune \
-               -c /opt/vcs/docker-stack.yml \
+               -c ~/vcs/docker-stack.yml \
                vcs"
 
       - name: Wait for rollout
