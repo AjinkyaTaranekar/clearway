@@ -13,20 +13,29 @@ import (
 
 // Router configures and returns the HTTP router
 type Router struct {
-	mux           *mux.Router
-	healthHandler *handlers.HealthHandler
-	logger        *logger.Logger
+	mux                 *mux.Router
+	healthHandler       *handlers.HealthHandler
+	notificationHandler *handlers.NotificationHandler
+	adminHandler        *handlers.AdminHandler
+	logger              *logger.Logger
+	jwksURL             string
 }
 
 // NewRouter creates a new router instance
 func NewRouter(
 	healthHandler *handlers.HealthHandler,
+	notificationHandler *handlers.NotificationHandler,
+	adminHandler *handlers.AdminHandler,
 	log *logger.Logger,
+	jwksURL string,
 ) *Router {
 	return &Router{
-		mux:           mux.NewRouter(),
-		healthHandler: healthHandler,
-		logger:        log,
+		mux:                 mux.NewRouter(),
+		healthHandler:       healthHandler,
+		notificationHandler: notificationHandler,
+		adminHandler:        adminHandler,
+		logger:              log,
+		jwksURL:             jwksURL,
 	}
 }
 
@@ -40,9 +49,22 @@ func (r *Router) Setup() *mux.Router {
 	// Swagger documentation
 	r.mux.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
-	// Health check
+	// Health check (no auth required)
 	r.mux.HandleFunc("/health", r.healthHandler.Health).Methods("GET")
 	r.mux.HandleFunc("/ready", r.healthHandler.Readiness).Methods("GET")
+
+	// Authenticated API routes
+	api := r.mux.PathPrefix("/api/v1").Subrouter()
+	api.Use(AuthenticationMiddleware(r.jwksURL, r.logger))
+
+	// Driver notification endpoints
+	api.HandleFunc("/notifications", r.notificationHandler.List).Methods("GET")
+	api.HandleFunc("/notifications/read-all", r.notificationHandler.MarkAllRead).Methods("PUT")
+	api.HandleFunc("/notifications/{id}/read", r.notificationHandler.MarkRead).Methods("PUT")
+	api.HandleFunc("/notifications/device-token", r.notificationHandler.RegisterDeviceToken).Methods("POST")
+
+	// Admin endpoints
+	api.HandleFunc("/admin/notifications", r.adminHandler.ListAll).Methods("GET")
 
 	return r.mux
 }
