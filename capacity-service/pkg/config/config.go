@@ -12,6 +12,8 @@ import (
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Capacity CapacityConfig `mapstructure:"capacity"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
 
@@ -36,6 +38,20 @@ type DBConfig struct {
 	DBName       string `mapstructure:"dbname"`
 	MaxOpenConns int    `mapstructure:"max_open_conns"`
 	MaxIdleConns int    `mapstructure:"max_idle_conns"`
+}
+
+// RedisConfig holds Redis connection configuration
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Password string `mapstructure:"password"`
+}
+
+// CapacityConfig holds capacity-service specific configuration
+type CapacityConfig struct {
+	VMID                    string        `mapstructure:"vm_id"`
+	AvailabilityCacheTTL    time.Duration `mapstructure:"availability_cache_ttl"`
+	OrphanCleanupInterval   time.Duration `mapstructure:"orphan_cleanup_interval"`
+	OrphanThreshold         time.Duration `mapstructure:"orphan_threshold"`
 }
 
 // LoggingConfig represents logging configuration

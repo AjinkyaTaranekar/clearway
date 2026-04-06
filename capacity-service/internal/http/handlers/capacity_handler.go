@@ -1,0 +1,120 @@
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/service"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/tracing"
+) // TODO: check import
+
+// CapacityHandler handles reservation and availability check endpoints.
+type CapacityHandler struct {
+	svc *service.ReservationService
+	log *logger.Logger
+}
+
+// NewCapacityHandler creates a new CapacityHandler.
+func NewCapacityHandler(svc *service.ReservationService, log *logger.Logger) *CapacityHandler {
+	return &CapacityHandler{svc: svc, log: log}
+}
+
+// Reserve godoc
+// @Summary      Reserve capacity across multiple road segments
+// @Description  Atomically reserves slots on all requested segments. Returns 201 on success or 200 with a failed_segment on capacity exhaustion.
+// @Tags         Capacity
+// @Accept       json
+// @Produce      json
+// @Param        body body model.ReserveRequest true "Reserve request"
+// @Success      201 {object} model.ReserveSuccessResponse
+// @Success      200 {object} model.ReserveFailResponse
+// @Failure      400 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /api/v1/capacity/reserve [post]
+func (h *CapacityHandler) Reserve(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	var req model.ReserveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", traceID)
+		return
+	}
+
+	result, statusCode, err := h.svc.Reserve(r.Context(), &req)
+	if err != nil {
+		h.log.Error().Err(err).Str("trace_id", traceID).Msg("reserve: service error")
+		if statusCode == 400 {
+			h.writeError(w, http.StatusBadRequest, err.Error(), traceID)
+		} else {
+			h.writeError(w, http.StatusInternalServerError, "internal error", traceID)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(result)
+}
+
+// Check godoc
+// @Summary      Check capacity availability for a segment and time window
+// @Description  Returns current availability for a single road segment. Results are cached for 30 seconds.
+// @Tags         Capacity
+// @Produce      json
+// @Param        segment_id         query string true  "Segment ID"
+// @Param        time_window_start  query string true  "Window start (RFC3339)"
+// @Param        time_window_end    query string true  "Window end (RFC3339)"
+// @Success      200 {object} model.CheckResponse
+// @Failure      400 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Router       /api/v1/capacity/check [get]
+func (h *CapacityHandler) Check(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	segmentID := r.URL.Query().Get("segment_id")
+	startStr := r.URL.Query().Get("time_window_start")
+	endStr := r.URL.Query().Get("time_window_end")
+
+	if segmentID == "" || startStr == "" || endStr == "" {
+		h.writeError(w, http.StatusBadRequest, "segment_id, time_window_start, and time_window_end are required", traceID)
+		return
+	}
+
+	windowStart, err := time.Parse(time.RFC3339, startStr)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "time_window_start must be RFC3339 format", traceID)
+		return
+	}
+	windowEnd, err := time.Parse(time.RFC3339, endStr)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "time_window_end must be RFC3339 format", traceID)
+		return
+	}
+	if !windowEnd.After(windowStart) {
+		h.writeError(w, http.StatusBadRequest, "time_window_end must be after time_window_start", traceID)
+		return
+	}
+
+	resp, err := h.svc.CheckAvailability(r.Context(), segmentID, windowStart, windowEnd)
+	if err != nil {
+		h.log.Error().Err(err).Str("segment_id", segmentID).Str("trace_id", traceID).Msg("check: service error")
+		h.writeError(w, http.StatusNotFound, err.Error(), traceID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *CapacityHandler) writeError(w http.ResponseWriter, status int, message, traceID string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
