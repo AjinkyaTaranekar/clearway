@@ -158,10 +158,10 @@ jobs:
       - name: Deploy stack
         env:
           IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-          GITHUB_REPOSITORY: ${{ steps.tag.outputs.repo_lc }}
+          IMAGE_REPO: ${{ steps.tag.outputs.repo_lc }}
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_EU }} \
-            "GITHUB_REPOSITORY=${GITHUB_REPOSITORY} IMAGE_TAG=${IMAGE_TAG} \
+            "GITHUB_REPOSITORY=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} \
              docker stack deploy \
                --with-registry-auth \
                --prune \
@@ -225,10 +225,10 @@ jobs:
       - name: Deploy stack
         env:
           IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-          GITHUB_REPOSITORY: ${{ steps.tag.outputs.repo_lc }}
+          IMAGE_REPO: ${{ steps.tag.outputs.repo_lc }}
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_US }} \
-            "GITHUB_REPOSITORY=${GITHUB_REPOSITORY} IMAGE_TAG=${IMAGE_TAG} \
+            "GITHUB_REPOSITORY=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} \
              docker stack deploy \
                --with-registry-auth \
                --prune \
@@ -292,10 +292,10 @@ jobs:
       - name: Deploy stack
         env:
           IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-          GITHUB_REPOSITORY: ${{ steps.tag.outputs.repo_lc }}
+          IMAGE_REPO: ${{ steps.tag.outputs.repo_lc }}
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_AP }} \
-            "GITHUB_REPOSITORY=${GITHUB_REPOSITORY} IMAGE_TAG=${IMAGE_TAG} \
+            "GITHUB_REPOSITORY=${IMAGE_REPO} IMAGE_TAG=${IMAGE_TAG} \
              docker stack deploy \
                --with-registry-auth \
                --prune \
