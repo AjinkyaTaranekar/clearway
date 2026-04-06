@@ -38,6 +38,7 @@ COPY --from=builder /app/config.yaml ./config.yaml
 RUN printf '#!/bin/sh\n\
 if [ -f /run/secrets/db_password ]; then\n\
   export VCS_DATABASE_MASTER_PASSWORD="$(cat /run/secrets/db_password)"\n\
+  export VCS_DATABASE_SLAVE_PASSWORD="$(cat /run/secrets/db_password)"\n\
 fi\n\
 if [ -f /run/secrets/jwt_secret ]; then\n\
   export VCS_SERVICES_JWT_SECRET="$(cat /run/secrets/jwt_secret)"\n\

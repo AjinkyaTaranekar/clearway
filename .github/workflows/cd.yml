@@ -151,10 +151,12 @@ jobs:
 
       - name: Ensure deploy dir exists + GHCR login on all nodes
         run: |
-          ssh deploy@${{ secrets.SWARM_HOST_EU }} "
-            mkdir -p ~/vcs
-            echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
-          "
+          for host in ${{ secrets.SWARM_HOST_EU }} ${{ secrets.SWARM_HOST_EU2 }}; do
+            ssh deploy@${host} "
+              mkdir -p ~/vcs
+              echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+            "
+          done
 
       - name: Copy stack file
         run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
@@ -175,24 +177,21 @@ jobs:
       - name: Wait for rollout
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_EU }} "
+            pids=()
             for svc in vcs_nginx vcs_journey-service vcs_iam-service \
                        vcs_capacity-service vcs_map-service vcs_notification-service; do
-              echo \"Waiting for \$svc...\"
-              timeout 120 bash -c \"until docker service ls --filter name=\$svc --format '{{.Replicas}}' | grep -q '2/2'; do sleep 5; done\"
-              echo \"\$svc ready\"
+              (
+                echo \"Waiting for \$svc...\"
+                timeout 120 bash -c \"until docker service ls --filter name=\$svc --format '{{.Replicas}}' | grep -q '2/2'; do sleep 5; done\"
+                echo \"\$svc ready\"
+              ) &
+              pids+=(\$!)
             done
+            for pid in \"\${pids[@]}\"; do wait \$pid || exit 1; done
           "
 
       - name: Smoke test
-        run: |
-          sleep 10
-          curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_EU }}/nginx-health
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "EU deployment failed."
-          echo "Debug: ssh deploy@${{ secrets.SWARM_HOST_EU }} 'docker service ps vcs_journey-service --no-trunc'"
+        run: curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_LB_EU }}/nginx-health
 
   # ── Deploy to US (us-east1) ───────────────────────────────────────────────
   deploy-us:
@@ -220,7 +219,7 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }}
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_US }}
 
-      - name: Ensure deploy dir exists + GHCR login on all nodes
+      - name: Ensure deploy dir exists + GHCR login
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_US }} "
             mkdir -p ~/vcs
@@ -246,24 +245,21 @@ jobs:
       - name: Wait for rollout
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_US }} "
+            pids=()
             for svc in vcs_nginx vcs_journey-service vcs_iam-service \
                        vcs_capacity-service vcs_map-service vcs_notification-service; do
-              echo \"Waiting for \$svc...\"
-              timeout 120 bash -c \"until docker service ls --filter name=\$svc --format '{{.Replicas}}' | grep -q '1/1'; do sleep 5; done\"
-              echo \"\$svc ready\"
+              (
+                echo \"Waiting for \$svc...\"
+                timeout 120 bash -c \"until docker service ls --filter name=\$svc --format '{{.Replicas}}' | grep -q '1/1'; do sleep 5; done\"
+                echo \"\$svc ready\"
+              ) &
+              pids+=(\$!)
             done
+            for pid in \"\${pids[@]}\"; do wait \$pid || exit 1; done
           "
 
       - name: Smoke test
-        run: |
-          sleep 10
-          curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_US }}/nginx-health
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "US deployment failed."
-          echo "Debug: ssh deploy@${{ secrets.SWARM_HOST_US }} 'docker service ps vcs_journey-service --no-trunc'"
+        run: curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_US }}/nginx-health
 
   # ── Deploy to APAC (asia-east1) ───────────────────────────────────────────
   deploy-apac:
@@ -291,7 +287,7 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }}
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_AP }}
 
-      - name: Ensure deploy dir exists + GHCR login on all nodes
+      - name: Ensure deploy dir exists + GHCR login
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_AP }} "
             mkdir -p ~/vcs
@@ -317,21 +313,18 @@ jobs:
       - name: Wait for rollout
         run: |
           ssh deploy@${{ secrets.SWARM_HOST_AP }} "
+            pids=()
             for svc in vcs_nginx vcs_journey-service vcs_iam-service \
                        vcs_capacity-service vcs_map-service vcs_notification-service; do
-              echo \"Waiting for \$svc...\"
-              timeout 120 bash -c \"until docker service ls --filter name=\$svc --format '{{.Replicas}}' | grep -q '1/1'; do sleep 5; done\"
-              echo \"\$svc ready\"
+              (
+                echo \"Waiting for \$svc...\"
+                timeout 120 bash -c \"until docker service ls --filter name=\$svc --format '{{.Replicas}}' | grep -q '1/1'; do sleep 5; done\"
+                echo \"\$svc ready\"
+              ) &
+              pids+=(\$!)
             done
+            for pid in \"\${pids[@]}\"; do wait \$pid || exit 1; done
           "
 
       - name: Smoke test
-        run: |
-          sleep 10
-          curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_AP }}/nginx-health
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "APAC deployment failed."
-          echo "Debug: ssh deploy@${{ secrets.SWARM_HOST_AP }} 'docker service ps vcs_journey-service --no-trunc'"
+        run: curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_AP }}/nginx-health
