@@ -23,3 +23,21 @@ database:
 logging:
   level: "info"
   format: "console"
+
+redis:
+  host: "localhost:6379"
+  password: ""
+  db: 0
+
+services:
+  capacity_url: "http://localhost:8081"
+  map_url: "http://localhost:8084"
+  iam_url: "http://localhost:8082"
+  jwt_secret: "dev-secret"
+
+business:
+  min_advance_booking_minutes: 60
+  min_cancellation_window_minutes: 30
+  activation_grace_window_minutes: 30
+  route_cache_ttl_hours: 24
+  max_capacity_retries: 2

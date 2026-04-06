@@ -78,8 +78,7 @@ export default function BookJourneyPage() {
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    const result = bookJourney(form);
+    await bookJourney(form);
     setSubmitting(false);
     navigate('/driver/booking-result');
   };

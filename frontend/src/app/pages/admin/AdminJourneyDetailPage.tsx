@@ -72,8 +72,7 @@ export default function AdminJourneyDetailPage() {
 
   const handleForceCancel = async () => {
     setActionLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
-    updateJourneyStatus(journey.id, 'cancelled', 'Admin');
+    await updateJourneyStatus(journey.id, 'cancelled', 'Admin');
     setCancelled(true);
     setActionLoading(false);
     setShowForceCancel(false);
