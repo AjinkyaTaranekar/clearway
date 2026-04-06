@@ -11,107 +11,82 @@ import (
 
 	httpHandler "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/http"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/http/handlers"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/repository"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/pkg/config"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/pkg/postgres"
 )
 
-// @title IAM Microservice API
-// @version 1.0
-// @termsOfService http://swagger.io/terms/
-// @license.name Apache 2.0
-// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 func main() {
-	// Load configuration
-	configPath := "config.yaml"
-	cfg, err := config.Load(configPath)
+	cfg, err := config.Load("config.yaml")
 	if err != nil {
-		fmt.Printf("Failed to load config (path=%s): %v\n", configPath, err)
+		fmt.Printf("Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Initialize logger
-	log := logger.New(logger.Config{
-		Level:  cfg.Logging.Level,
-		Format: cfg.Logging.Format,
-	})
+	log := logger.New(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format})
 	log.Info().Msg("starting vcs-iam service")
 
-	// Initialize database connections
 	dbPools, err := postgres.NewConnectionPools(
-		postgres.Config{
-			Host:         cfg.Database.Master.Host,
-			Port:         cfg.Database.Master.Port,
-			User:         cfg.Database.Master.User,
-			Password:     cfg.Database.Master.Password,
-			DBName:       cfg.Database.Master.DBName,
-			MaxOpenConns: cfg.Database.Master.MaxOpenConns,
-			MaxIdleConns: cfg.Database.Master.MaxIdleConns,
-		},
-		postgres.Config{
-			Host:         cfg.Database.Slave.Host,
-			Port:         cfg.Database.Slave.Port,
-			User:         cfg.Database.Slave.User,
-			Password:     cfg.Database.Slave.Password,
-			DBName:       cfg.Database.Slave.DBName,
-			MaxOpenConns: cfg.Database.Slave.MaxOpenConns,
-			MaxIdleConns: cfg.Database.Slave.MaxIdleConns,
-		},
+		postgres.Config{Host: cfg.Database.Master.Host, Port: cfg.Database.Master.Port, User: cfg.Database.Master.User, Password: cfg.Database.Master.Password, DBName: cfg.Database.Master.DBName, MaxOpenConns: cfg.Database.Master.MaxOpenConns, MaxIdleConns: cfg.Database.Master.MaxIdleConns},
+		postgres.Config{Host: cfg.Database.Slave.Host, Port: cfg.Database.Slave.Port, User: cfg.Database.Slave.User, Password: cfg.Database.Slave.Password, DBName: cfg.Database.Slave.DBName, MaxOpenConns: cfg.Database.Slave.MaxOpenConns, MaxIdleConns: cfg.Database.Slave.MaxIdleConns},
 	)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize database connections")
+		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
 	defer dbPools.Close()
 
-	log.Info().Msg("Database connections established")
+	jwksSvc, err := service.NewJWKSService(cfg.IAM.PrivateKeyPath, cfg.IAM.SigningKID, cfg.IAM.PreviousKID, cfg.IAM.PreviousPubKeyPEM)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", cfg.IAM.PrivateKeyPath).Msg("failed to load RSA key — run: openssl genrsa -out keys/private.pem 2048")
+	}
+	log.Info().Str("kid", cfg.IAM.SigningKID).Msg("RSA key loaded")
 
-	// Initialize audit client
-	ctx := context.Background()
+	userRepo := repository.NewUserRepo(dbPools.Master)
+	tokenRepo := repository.NewTokenRepo(dbPools.Master)
+	authSvc := service.NewAuthService(userRepo, tokenRepo, jwksSvc, cfg.IAM.AccessTokenTTL, cfg.IAM.RefreshTokenTTL, cfg.IAM.BcryptCost)
+	profileSvc := service.NewProfileService(userRepo)
+	adminSvc := service.NewAdminService(userRepo, tokenRepo)
+	cleanupSvc := service.NewCleanupService(tokenRepo, cfg.IAM.TokenRetentionDays, cfg.IAM.CleanupInterval, log)
 
-	// Initialize HTTP handlers
-	healthHandler := handlers.NewHealthHandler()
-
-	// Setup router
 	router := httpHandler.NewRouter(
-		healthHandler,
-		log,
+		handlers.NewHealthHandler(dbPools.Master),
+		handlers.NewAuthHandler(authSvc),
+		handlers.NewProfileHandler(profileSvc),
+		handlers.NewJWKSHandler(jwksSvc),
+		handlers.NewAdminHandler(adminSvc),
+		jwksSvc, log,
 	)
-	mux := router.Setup()
 
-	// Create HTTP server
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:      mux,
+		Handler:      router.Setup(),
 		ReadTimeout:  cfg.Server.Timeout,
 		WriteTimeout: cfg.Server.Timeout,
 		IdleTimeout:  cfg.Server.Timeout * 2,
 	}
 
-	// Start server in goroutine
-	go func() {
-		log.Info().
-			Int("port", cfg.Server.Port).
-			Msg("server starting")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go cleanupSvc.Start(ctx)
 
+	go func() {
+		log.Info().Int("port", cfg.Server.Port).Msg("server listening")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("server failed")
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	cancel()
 
-	log.Info().Msg("shutting down server...")
-
-	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatal().Err(err).Msg("server forced to shutdown")
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutCancel()
+	if err := server.Shutdown(shutCtx); err != nil {
+		log.Fatal().Err(err).Msg("forced shutdown")
 	}
-
-	log.Info().Msg("server exited")
+	log.Info().Msg("server stopped")
 }
