@@ -7,7 +7,7 @@ database:
     host: "localhost"
     port: 5432
     user: "postgres"
-    password: "postgres"
+    password: ""
     dbname: "trafficservice"
     max_open_conns: 25
     max_idle_conns: 5
@@ -15,7 +15,7 @@ database:
     host: "localhost"
     port: 5432
     user: "postgres"
-    password: "postgres"
+    password: ""
     dbname: "trafficservice"
     max_open_conns: 50
     max_idle_conns: 10

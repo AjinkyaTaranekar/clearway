@@ -1,0 +1,445 @@
+name: Pipeline
+
+# Purely manual — no automatic triggers.
+# Defaults: all services, all regions.
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Services to build & deploy (comma-separated or 'all')"
+        default: "all"
+        required: false
+      regions:
+        description: "Regions to deploy"
+        type: choice
+        default: "all"
+        options: [all, eu, us, apac]
+      image_tag:
+        description: "Image tag override (default: git SHA)"
+        required: false
+
+concurrency:
+  group: pipeline-deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+
+  # ── Compute build matrix & tag from inputs ─────────────────────────────────
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      matrix:      ${{ steps.compute.outputs.matrix }}
+      needs_nginx: ${{ steps.compute.outputs.needs_nginx }}
+      tag:         ${{ steps.compute.outputs.tag }}
+      repo_lc:     ${{ steps.compute.outputs.repo_lc }}
+    steps:
+      - id: compute
+        run: |
+          SVCS="${{ inputs.services }}"
+          ALL="iam-service,journey-service,capacity-service,map-service,notification-service,nginx"
+          [ "$SVCS" = "all" ] || [ -z "$SVCS" ] && SVCS="$ALL"
+
+          INCLUDES=""
+          IFS=',' read -ra ARR <<< "$SVCS"
+          for svc in "${ARR[@]}"; do
+            svc=$(echo "$svc" | xargs)   # trim spaces
+            INCLUDES="${INCLUDES},{\"service\":\"${svc}\",\"context\":\"${svc}\"}"
+          done
+          echo "matrix={\"include\":[${INCLUDES:1}]}" >> "$GITHUB_OUTPUT"
+
+          echo "$SVCS" | grep -q "nginx" && echo "needs_nginx=true" >> "$GITHUB_OUTPUT" \
+                                         || echo "needs_nginx=false" >> "$GITHUB_OUTPUT"
+
+          RAW="${{ inputs.image_tag || github.sha }}"
+          echo "tag=${RAW:0:12}"                                              >> "$GITHUB_OUTPUT"
+          echo "repo_lc=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+  # ── Build frontend (only when nginx is in the service list) ────────────────
+  build-frontend:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    needs: [setup]
+    if: needs.setup.outputs.needs_nginx == 'true'
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
+  # ── Build & push selected Docker images ────────────────────────────────────
+  build-push:
+    name: "Build — ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    needs: [setup, build-frontend]
+    # build-frontend is skipped when nginx not selected — that's fine
+    if: always() && needs.setup.result == 'success' &&
+        (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend dist (nginx only)
+        if: matrix.service == 'nginx'
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: nginx/html/
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          # Push both a pinned SHA tag (traceability) and :latest (deploy target)
+          tags: |
+            ${{ env.REGISTRY }}/${{ needs.setup.outputs.repo_lc }}/${{ matrix.service }}:${{ needs.setup.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ needs.setup.outputs.repo_lc }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  # ── Reusable migration script (inlined per region) ─────────────────────────
+  # Migrations run before stack update. Uses docker exec on the running
+  # postgres container — no extra secrets needed (local socket auth).
+
+  # ── Deploy → EU ────────────────────────────────────────────────────────────
+  deploy-eu:
+    name: Deploy → EU
+    runs-on: ubuntu-latest
+    needs: [setup, build-push]
+    if: >
+      always() && needs.build-push.result == 'success' &&
+      (inputs.regions == 'eu' || inputs.regions == 'all')
+    environment: production-eu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SWARM_SSH_KEY }}
+          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_EU }}
+
+      - name: GHCR login on all EU nodes
+        run: |
+          for host in ${{ secrets.SWARM_HOST_EU }} ${{ secrets.SWARM_HOST_EU2 }}; do
+            ssh deploy@${host} "
+              mkdir -p ~/vcs
+              echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+            "
+          done
+
+      - name: Run migrations
+        run: |
+          for svc in iam-service capacity-service journey-service notification-service; do
+            [ -d "$svc/migrations" ] || continue
+            ssh deploy@${{ secrets.SWARM_HOST_EU }} "mkdir -p ~/vcs/migrations/$svc"
+            scp $svc/migrations/*.sql deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/migrations/$svc/
+          done
+          ssh deploy@${{ secrets.SWARM_HOST_EU }} '
+            DB=$(docker ps --filter name=vcs_db --format "{{.ID}}" | head -1)
+            [ -z "$DB" ] && echo "ERROR: postgres not running" && exit 1
+            docker exec -i "$DB" psql -U postgres -d trafficservice -c \
+              "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+            for svc in iam-service capacity-service journey-service notification-service; do
+              for f in $(ls ~/vcs/migrations/$svc/*.sql 2>/dev/null | sort); do
+                name=$(basename "$f")
+                key="${svc}/${name}"
+                applied=$(docker exec -i "$DB" psql -U postgres -d trafficservice -tAc \
+                  "SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'")
+                if [ "$applied" = "0" ]; then
+                  echo "Applying ${key}..."
+                  docker exec -i "$DB" psql -U postgres -d trafficservice < "$f"
+                  docker exec -i "$DB" psql -U postgres -d trafficservice -c \
+                    "INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')"
+                else
+                  echo "Skip ${key} (already applied)"
+                fi
+              done
+            done
+          '
+
+      - name: Copy stack file
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
+
+      - name: Deploy stack (init if first run, update selected services otherwise)
+        env:
+          REPO: ${{ needs.setup.outputs.repo_lc }}
+          TAG:  ${{ needs.setup.outputs.tag }}
+          SVCS: ${{ inputs.services }}
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_EU }} "
+            set -e
+            REPO='${REPO}'
+            TAG='${TAG}'
+            SVCS='${SVCS}'
+            [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
+              SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
+
+            # First-time bootstrap: deploy full stack using :latest
+            if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
+              echo 'Bootstrapping stack...'
+              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+                docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
+            fi
+
+            # Update only selected services to the pinned SHA tag
+            IFS=',' read -ra ARR <<< \"\$SVCS\"
+            for svc in \"\${ARR[@]}\"; do
+              svc=\$(echo \"\$svc\" | xargs)
+              echo \"Updating vcs_\${svc} → \${TAG}\"
+              docker service update \
+                --image ghcr.io/\${REPO}/\${svc}:\${TAG} \
+                --with-registry-auth \
+                vcs_\${svc}
+            done
+          "
+
+      - name: Wait for rollout
+        env:
+          SVCS: ${{ inputs.services }}
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_EU }} "
+            SVCS='${SVCS}'
+            [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
+              SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
+            IFS=',' read -ra ARR <<< \"\$SVCS\"
+            pids=()
+            for svc in \"\${ARR[@]}\"; do
+              svc=\$(echo \"\$svc\" | xargs)
+              (timeout 120 bash -c \"until docker service ls --filter name=vcs_\${svc} --format '{{.Replicas}}' | grep -q '2/2'; do sleep 5; done\"; echo \"\$svc ready\") &
+              pids+=(\$!)
+            done
+            for pid in \"\${pids[@]}\"; do wait \$pid || exit 1; done
+          "
+
+      - name: Smoke test
+        run: curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_LB_EU }}/nginx-health
+
+  # ── Deploy → US ────────────────────────────────────────────────────────────
+  deploy-us:
+    name: Deploy → US
+    runs-on: ubuntu-latest
+    needs: [setup, build-push]
+    if: >
+      always() && needs.build-push.result == 'success' &&
+      (inputs.regions == 'us' || inputs.regions == 'all')
+    environment: production-us
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SWARM_SSH_KEY }}
+          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_US }}
+
+      - name: GHCR login
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_US }} "
+            mkdir -p ~/vcs
+            echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+          "
+
+      - name: Run migrations
+        run: |
+          for svc in iam-service capacity-service journey-service notification-service; do
+            [ -d "$svc/migrations" ] || continue
+            ssh deploy@${{ secrets.SWARM_HOST_US }} "mkdir -p ~/vcs/migrations/$svc"
+            scp $svc/migrations/*.sql deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/migrations/$svc/
+          done
+          ssh deploy@${{ secrets.SWARM_HOST_US }} '
+            DB=$(docker ps --filter name=vcs_db --format "{{.ID}}" | head -1)
+            [ -z "$DB" ] && echo "ERROR: postgres not running" && exit 1
+            docker exec -i "$DB" psql -U postgres -d trafficservice -c \
+              "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+            for svc in iam-service capacity-service journey-service notification-service; do
+              for f in $(ls ~/vcs/migrations/$svc/*.sql 2>/dev/null | sort); do
+                name=$(basename "$f"); key="${svc}/${name}"
+                applied=$(docker exec -i "$DB" psql -U postgres -d trafficservice -tAc \
+                  "SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'")
+                if [ "$applied" = "0" ]; then
+                  echo "Applying ${key}..."
+                  docker exec -i "$DB" psql -U postgres -d trafficservice < "$f"
+                  docker exec -i "$DB" psql -U postgres -d trafficservice -c \
+                    "INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')"
+                fi
+              done
+            done
+          '
+
+      - name: Copy stack file
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/docker-stack.yml
+
+      - name: Deploy stack
+        env:
+          REPO: ${{ needs.setup.outputs.repo_lc }}
+          TAG:  ${{ needs.setup.outputs.tag }}
+          SVCS: ${{ inputs.services }}
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_US }} "
+            set -e
+            REPO='${REPO}'; TAG='${TAG}'; SVCS='${SVCS}'
+            [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
+              SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
+            if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
+              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+                docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
+            fi
+            IFS=',' read -ra ARR <<< \"\$SVCS\"
+            for svc in \"\${ARR[@]}\"; do
+              svc=\$(echo \"\$svc\" | xargs)
+              docker service update --image ghcr.io/\${REPO}/\${svc}:\${TAG} --with-registry-auth vcs_\${svc}
+            done
+          "
+
+      - name: Wait for rollout
+        env:
+          SVCS: ${{ inputs.services }}
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_US }} "
+            SVCS='${SVCS}'
+            [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
+              SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
+            IFS=',' read -ra ARR <<< \"\$SVCS\"
+            pids=()
+            for svc in \"\${ARR[@]}\"; do
+              svc=\$(echo \"\$svc\" | xargs)
+              (timeout 120 bash -c \"until docker service ls --filter name=vcs_\${svc} --format '{{.Replicas}}' | grep -q '1/1'; do sleep 5; done\"; echo \"\$svc ready\") &
+              pids+=(\$!)
+            done
+            for pid in \"\${pids[@]}\"; do wait \$pid || exit 1; done
+          "
+
+      - name: Smoke test
+        run: curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_US }}/nginx-health
+
+  # ── Deploy → APAC ──────────────────────────────────────────────────────────
+  deploy-apac:
+    name: Deploy → APAC
+    runs-on: ubuntu-latest
+    needs: [setup, build-push]
+    if: >
+      always() && needs.build-push.result == 'success' &&
+      (inputs.regions == 'apac' || inputs.regions == 'all')
+    environment: production-apac
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SWARM_SSH_KEY }}
+          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_AP }}
+
+      - name: GHCR login
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_AP }} "
+            mkdir -p ~/vcs
+            echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+          "
+
+      - name: Run migrations
+        run: |
+          for svc in iam-service capacity-service journey-service notification-service; do
+            [ -d "$svc/migrations" ] || continue
+            ssh deploy@${{ secrets.SWARM_HOST_AP }} "mkdir -p ~/vcs/migrations/$svc"
+            scp $svc/migrations/*.sql deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/migrations/$svc/
+          done
+          ssh deploy@${{ secrets.SWARM_HOST_AP }} '
+            DB=$(docker ps --filter name=vcs_db --format "{{.ID}}" | head -1)
+            [ -z "$DB" ] && echo "ERROR: postgres not running" && exit 1
+            docker exec -i "$DB" psql -U postgres -d trafficservice -c \
+              "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+            for svc in iam-service capacity-service journey-service notification-service; do
+              for f in $(ls ~/vcs/migrations/$svc/*.sql 2>/dev/null | sort); do
+                name=$(basename "$f"); key="${svc}/${name}"
+                applied=$(docker exec -i "$DB" psql -U postgres -d trafficservice -tAc \
+                  "SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'")
+                if [ "$applied" = "0" ]; then
+                  echo "Applying ${key}..."
+                  docker exec -i "$DB" psql -U postgres -d trafficservice < "$f"
+                  docker exec -i "$DB" psql -U postgres -d trafficservice -c \
+                    "INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')"
+                fi
+              done
+            done
+          '
+
+      - name: Copy stack file
+        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/docker-stack.yml
+
+      - name: Deploy stack
+        env:
+          REPO: ${{ needs.setup.outputs.repo_lc }}
+          TAG:  ${{ needs.setup.outputs.tag }}
+          SVCS: ${{ inputs.services }}
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_AP }} "
+            set -e
+            REPO='${REPO}'; TAG='${TAG}'; SVCS='${SVCS}'
+            [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
+              SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
+            if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
+              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+                docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
+            fi
+            IFS=',' read -ra ARR <<< \"\$SVCS\"
+            for svc in \"\${ARR[@]}\"; do
+              svc=\$(echo \"\$svc\" | xargs)
+              docker service update --image ghcr.io/\${REPO}/\${svc}:\${TAG} --with-registry-auth vcs_\${svc}
+            done
+          "
+
+      - name: Wait for rollout
+        env:
+          SVCS: ${{ inputs.services }}
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_AP }} "
+            SVCS='${SVCS}'
+            [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
+              SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
+            IFS=',' read -ra ARR <<< \"\$SVCS\"
+            pids=()
+            for svc in \"\${ARR[@]}\"; do
+              svc=\$(echo \"\$svc\" | xargs)
+              (timeout 120 bash -c \"until docker service ls --filter name=vcs_\${svc} --format '{{.Replicas}}' | grep -q '1/1'; do sleep 5; done\"; echo \"\$svc ready\") &
+              pids+=(\$!)
+            done
+            for pid in \"\${pids[@]}\"; do wait \$pid || exit 1; done
+          "
+
+      - name: Smoke test
+        run: curl -f --retry 5 --retry-delay 5 http://${{ secrets.SWARM_HOST_AP }}/nginx-health
