@@ -149,8 +149,12 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }}
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_EU }}
 
-      - name: Ensure deploy dir exists
-        run: ssh deploy@${{ secrets.SWARM_HOST_EU }} "mkdir -p ~/vcs"
+      - name: Ensure deploy dir exists + GHCR login on all nodes
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_EU }} "
+            mkdir -p ~/vcs
+            echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+          "
 
       - name: Copy stack file and nginx config
         run: |
@@ -225,8 +229,12 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }}
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_US }}
 
-      - name: Ensure deploy dir exists
-        run: ssh deploy@${{ secrets.SWARM_HOST_US }} "mkdir -p ~/vcs"
+      - name: Ensure deploy dir exists + GHCR login on all nodes
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_US }} "
+            mkdir -p ~/vcs
+            echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+          "
 
       - name: Copy stack file and nginx config
         run: |
@@ -301,8 +309,12 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }}
           known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_AP }}
 
-      - name: Ensure deploy dir exists
-        run: ssh deploy@${{ secrets.SWARM_HOST_AP }} "mkdir -p ~/vcs"
+      - name: Ensure deploy dir exists + GHCR login on all nodes
+        run: |
+          ssh deploy@${{ secrets.SWARM_HOST_AP }} "
+            mkdir -p ~/vcs
+            echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u AjinkyaTaranekar --password-stdin
+          "
 
       - name: Copy stack file
         run: |
