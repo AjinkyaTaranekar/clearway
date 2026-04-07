@@ -16,11 +16,11 @@ services:
     volumes:
       - crdb_data:/cockroach/cockroach-data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      test: ["CMD-SHELL", "/cockroach/cockroach sql --insecure --execute='SELECT 1' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
