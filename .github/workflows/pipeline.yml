@@ -20,7 +20,7 @@ on:
 
 concurrency:
   group: pipeline-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true   # newer dispatch cancels a stuck run
 
 env:
   REGISTRY: ghcr.io
@@ -31,6 +31,7 @@ jobs:
   setup:
     name: Setup
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       matrix:      ${{ steps.compute.outputs.matrix }}
       needs_nginx: ${{ steps.compute.outputs.needs_nginx }}
@@ -62,6 +63,7 @@ jobs:
   build-frontend:
     name: Build frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [setup]
     if: needs.setup.outputs.needs_nginx == 'true'
     defaults:
@@ -86,6 +88,7 @@ jobs:
   build-push:
     name: "Build — ${{ matrix.service }}"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [setup, build-frontend]
     # build-frontend is skipped when nginx not selected — that's fine
     if: always() && needs.setup.result == 'success' &&
@@ -138,6 +141,7 @@ jobs:
   deploy-eu:
     name: Deploy → EU
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [setup, build-push]
     if: >
       always() && needs.build-push.result == 'success' &&
@@ -252,6 +256,7 @@ jobs:
   deploy-us:
     name: Deploy → US
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [setup, build-push]
     if: >
       always() && needs.build-push.result == 'success' &&
@@ -264,7 +269,8 @@ jobs:
       - uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SWARM_SSH_KEY }}
-          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_US }}
+          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_US || 'placeholder' }}
+          if_key_exists: replace
 
       - name: GHCR login
         run: |
@@ -350,6 +356,7 @@ jobs:
   deploy-apac:
     name: Deploy → APAC
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [setup, build-push]
     if: >
       always() && needs.build-push.result == 'success' &&
@@ -362,7 +369,8 @@ jobs:
       - uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SWARM_SSH_KEY }}
-          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_AP }}
+          known_hosts: ${{ secrets.SWARM_KNOWN_HOSTS_AP || 'placeholder' }}
+          if_key_exists: replace
 
       - name: GHCR login
         run: |
