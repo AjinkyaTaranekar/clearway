@@ -76,7 +76,7 @@ func main() {
 	log.Info().Msg("database connections established")
 
 	// Run migrations
-	journeyRepo := repository.NewJourneyRepository(dbPools.Master)
+	journeyRepo := repository.NewJourneyRepository(dbPools.Master, dbPools.Slave)
 	migrationSQL, err := os.ReadFile("migrations/001_create_schema.sql")
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to read migration file")
@@ -170,7 +170,8 @@ func main() {
 	}
 
 	// Start background jobs
-	ctx, cancelJobs := context.WithCancel(context.Background())
+	baseCtx := logger.WithContext(context.Background(), log)
+	ctx, cancelJobs := context.WithCancel(baseCtx)
 	defer cancelJobs()
 	go journeySvc.RunExpiryJob(ctx)
 	log.Info().Msg("background expiry job started")

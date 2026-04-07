@@ -40,6 +40,12 @@ func NewAdminHandler(svc *service.JourneyService) *AdminHandler {
 // ListJourneys handles GET /api/v1/admin/journeys
 func (h *AdminHandler) ListJourneys(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "AdminHandler.ListJourneys").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("admin list journeys request received")
 
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
@@ -51,16 +57,35 @@ func (h *AdminHandler) ListJourneys(w http.ResponseWriter, r *http.Request) {
 		limit = 20
 	}
 
-	journeys, total, err := h.svc.AdminListJourneys(r.Context(), service.AdminListFilters{
+	filters := service.AdminListFilters{
 		Status:   q.Get("status"),
 		DriverID: q.Get("driver_id"),
 		Page:     page,
 		Limit:    limit,
-	})
+	}
+	log.Info().
+		Str("handler", "AdminHandler.ListJourneys").
+		Str("status_filter", filters.Status).
+		Str("driver_id_filter", filters.DriverID).
+		Int("page", page).
+		Int("limit", limit).
+		Msg("invoking admin list journeys service")
+
+	journeys, total, err := h.svc.AdminListJourneys(r.Context(), filters)
 	if err != nil {
+		log.Error().
+			Str("handler", "AdminHandler.ListJourneys").
+			Err(err).
+			Msg("admin list journeys service failed")
 		response.Error(w, err, traceID)
 		return
 	}
+
+	log.Info().
+		Str("handler", "AdminHandler.ListJourneys").
+		Int("result_count", len(journeys)).
+		Int64("total", total).
+		Msg("admin list journeys request completed")
 
 	response.Success(w, map[string]interface{}{
 		"journeys": journeys,
@@ -87,9 +112,18 @@ func (h *AdminHandler) ListJourneys(w http.ResponseWriter, r *http.Request) {
 // EnforcementVerify handles GET /api/v1/enforcement/verify
 func (h *AdminHandler) EnforcementVerify(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "AdminHandler.EnforcementVerify").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("enforcement verify request received")
 
 	segmentID := r.URL.Query().Get("segment_id")
 	if segmentID == "" {
+		log.Warn().
+			Str("handler", "AdminHandler.EnforcementVerify").
+			Msg("enforcement verify validation failed: segment_id missing")
 		response.Error(w, apperrors.BadRequest("segment_id query parameter required"), traceID)
 		return
 	}
@@ -98,17 +132,40 @@ func (h *AdminHandler) EnforcementVerify(w http.ResponseWriter, r *http.Request)
 	if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
 		parsed, err := time.Parse(time.RFC3339, tsStr)
 		if err != nil {
+			log.Warn().
+				Str("handler", "AdminHandler.EnforcementVerify").
+				Str("segment_id", segmentID).
+				Str("timestamp", tsStr).
+				Err(err).
+				Msg("enforcement verify validation failed: invalid timestamp")
 			response.Error(w, apperrors.BadRequest("timestamp must be ISO 8601 (RFC3339)"), traceID)
 			return
 		}
 		ts = parsed
 	}
 
+	log.Info().
+		Str("handler", "AdminHandler.EnforcementVerify").
+		Str("segment_id", segmentID).
+		Time("timestamp", ts).
+		Msg("invoking enforcement verify service")
+
 	result, err := h.svc.EnforcementVerify(r.Context(), segmentID, ts)
 	if err != nil {
+		log.Error().
+			Str("handler", "AdminHandler.EnforcementVerify").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("enforcement verify service failed")
 		response.Error(w, err, traceID)
 		return
 	}
+	log.Info().
+		Str("handler", "AdminHandler.EnforcementVerify").
+		Str("segment_id", segmentID).
+		Bool("authorized", result.Authorized).
+		Str("journey_id", result.JourneyID).
+		Msg("enforcement verify request completed")
 	response.Success(w, result, traceID)
 }
 
@@ -129,16 +186,34 @@ func (h *AdminHandler) EnforcementVerify(w http.ResponseWriter, r *http.Request)
 func (h *AdminHandler) CancelJourney(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	journeyID := mux.Vars(r)["id"]
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "AdminHandler.CancelJourney").
+		Str("journey_id", journeyID).
+		Msg("admin cancel journey request received")
 
 	if journeyID == "" {
+		log.Warn().
+			Str("handler", "AdminHandler.CancelJourney").
+			Msg("admin cancel journey validation failed: journey id missing")
 		response.Error(w, apperrors.BadRequest("journey ID required"), traceID)
 		return
 	}
 
 	journey, err := h.svc.AdminCancelJourney(r.Context(), journeyID)
 	if err != nil {
+		log.Error().
+			Str("handler", "AdminHandler.CancelJourney").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("admin cancel journey service failed")
 		response.Error(w, err, traceID)
 		return
 	}
+	log.Info().
+		Str("handler", "AdminHandler.CancelJourney").
+		Str("journey_id", journey.JourneyID).
+		Str("journey_status", string(journey.Status)).
+		Msg("admin cancel journey request completed")
 	response.Success(w, journey, traceID)
 }

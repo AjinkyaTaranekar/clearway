@@ -3,6 +3,7 @@
 ### Strict Teacher Review — All Integration Points
 
 > Audited: 2026-04-07
+> Last updated: 2026-04-07 (post journey-service refactor session)
 > Verdict key: ✅ Correct · ⚠️ Partial / Minor deviation · ❌ Broken / Missing
 
 ---
@@ -11,19 +12,19 @@
 
 | Layer | Status | Verdict |
 |---|---|---|
-| Frontend → IAM Service (Login/Register) | **NEVER CALLED** | ❌ |
-| Frontend JWT Generation | **Wrong algorithm, hardcoded secret, no real auth** | ❌ |
-| Frontend → Journey Service (API base URL) | **Bypasses nginx in production** | ❌ |
-| Journey Service → Map Service | **3 separate mismatches: wrong path, wrong method, wrong params** | ❌ |
-| Journey Service → Capacity Service | **Mock fallback silently masks all real failures** | ❌ |
-| Nginx → Map Service routing | **Path mismatch — nginx routes never reach map handlers** | ❌ |
-| Nginx → Notification Service | **Not configured at all — service unreachable via gateway** | ❌ |
-| Config files (local dev) | **Supabase credentials exposed in git; capacity config has empty host** | ❌ |
-| Frontend → Notification Service | **Never called — shows mock data only** | ❌ |
-| Login credential validation | **Password NEVER validated — anyone can log in as admin** | ❌ |
-| Journey → Capacity → Map (event chain) | **Would work IF segment IDs matched AND API contracts matched** | ❌ |
+| Frontend → IAM Service (Login/Register) | **Fixed (prev session)** | ✅ |
+| Frontend JWT Generation | **Fixed (prev session) — server-issued RS256** | ✅ |
+| Frontend → Journey Service (API base URL) | **Fixed (prev session) — relative URL** | ✅ |
+| Journey Service → Map Service | **Fixed — GET /api/v1/map/route with node IDs; node lookup via /map/nodes** | ✅ |
+| Journey Service → Capacity Service | **Fixed — errors returned on failure; no silent mock fallback** | ✅ |
+| Nginx → Map Service routing | **Fixed (prev session) — /api/v1/map/** | ✅ |
+| Nginx → Notification Service | **Fixed (prev session) — /api/v1/notifications/ route added** | ✅ |
+| Config files (local dev) | **Credentials still in git — rotate Supabase password** | ❌ |
+| Frontend → Notification Service | **Still shows mock data** | ❌ |
+| Login credential validation | **Fixed (prev session) — IAM validates server-side** | ✅ |
+| Journey → Capacity → Map (event chain) | **Fixed — segment IDs unified; API contracts aligned; bidirectional graph** | ✅ |
 
-**Score: 0 out of 11 integration points are fully correct.**
+**Score: 9 out of 11 integration points are fully correct (up from 0).**
 
 ---
 
@@ -165,7 +166,7 @@ If the map service graph changes (new nodes added), the frontend will not reflec
 
 ## PART 2 — JOURNEY SERVICE → MAP SERVICE
 
-### ❌ CRITICAL-CONN-7: Three-Way API Contract Mismatch — Journey Client vs Map Service
+### ✅ CRITICAL-CONN-7 FIXED: Journey Client Now Calls Correct Map Endpoint
 
 This is the most serious backend integration bug. The journey service's `MapClient` and the map service's actual handler are **completely incompatible**.
 
@@ -204,11 +205,11 @@ r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET")
 
 **Result**: The HTTP call will get a **404 Not Found** from the map service every time. The client then silently falls back to `fallbackRoute()` which returns hardcoded mock segments `seg_main` and `seg_ring`. These IDs don't exist in the capacity service, so the subsequent reservation will also fail silently (or use its own mock fallback).
 
-**The map service is effectively never called in the current system.**
+**Fix applied:** `journey-service/internal/client/map_client.go` rewritten. Now calls `GET /api/v1/map/nodes` to fetch node list (cached 1 hour), resolves lat/lng to nearest node via Euclidean distance, then calls `GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y`. Response envelope (`{"success":true,"data":...}`) is correctly unwrapped.
 
 ---
 
-### ❌ CRITICAL-CONN-8: Nginx Route to Map Service Is Wrong
+### ✅ CRITICAL-CONN-8 FIXED: Nginx Map Route Corrected (previous session)
 
 **File**: `nginx/nginx.conf` — line 95
 
@@ -233,7 +234,7 @@ location /api/v1/map/ {
 
 ## PART 3 — JOURNEY SERVICE → CAPACITY SERVICE
 
-### ⚠️ SIGNIFICANT-CONN-9: Silent Mock Fallback Masks All Capacity Failures
+### ✅ SIGNIFICANT-CONN-9 FIXED: Silent Mock Fallbacks Removed
 
 **File**: `journey-service/internal/client/capacity_client.go` — `Reserve()`
 
@@ -261,14 +262,7 @@ func mockReserveResponse(journeyID string) *ReserveResponse {
 3. The mock reservation ID (`rsv_1234567890`) is never stored in the capacity DB, so there is no record of this reservation. If capacity service comes back up, it has no record of the segments being used.
 4. This makes the system appear functional during demos when it is actually bypassing all business logic.
 
-**The fallback should reject the journey, not approve it:**
-```go
-if err != nil {
-    return nil, apperrors.ServiceUnavailable("capacity service unreachable")
-}
-```
-
-Same problem exists in `MapClient.ComputeRoute()` — map service failure silently returns hardcoded segments.
+**Fix applied:** Both `capacity_client.go` and `map_client.go` now return errors on any service failure. No mock response is ever returned. The journey service propagates the error as HTTP 502 to the driver.
 
 ---
 
@@ -483,11 +477,11 @@ All services use the same PostgreSQL database `trafficservice` with the same cre
 | 4 | Frontend → Notification service | `AppContext.tsx` | Mock data only, never called | ❌ CRITICAL |
 | 5 | Frontend → IAM admin endpoints | Admin pages | Not implemented in frontend | ⚠️ SIGNIFICANT |
 | 6 | Frontend → Map service nodes | BookJourneyPage | Hardcoded coords, no API call | ⚠️ SIGNIFICANT |
-| 7 | Journey → Map API contract | `map_client.go` vs `map_handler.go` | Wrong path + method + params | ❌ CRITICAL |
-| 8 | Nginx → Map service path | `nginx.conf` vs `map router.go` | `/routes/` vs `/map/route` | ❌ CRITICAL |
-| 9 | Capacity client fallback | `capacity_client.go` | Silent mock approval on failure | ⚠️ SIGNIFICANT |
-| 10 | Map client fallback | `map_client.go` | Silent mock segments on failure | ⚠️ SIGNIFICANT |
-| 11 | Journey JWT algorithm | `auth.go` middleware | HS256 vs IAM's RS256 | ❌ CRITICAL |
+| 7 | Journey → Map API contract | `map_client.go` vs `map_handler.go` | **Fixed — GET + node IDs + envelope unwrap** | ✅ FIXED |
+| 8 | Nginx → Map service path | `nginx.conf` vs `map router.go` | **Fixed (prev session) — /api/v1/map/** | ✅ FIXED |
+| 9 | Capacity client fallback | `capacity_client.go` | **Fixed — returns error on failure** | ✅ FIXED |
+| 10 | Map client fallback | `map_client.go` | **Fixed — returns error on failure** | ✅ FIXED |
+| 11 | Journey JWT algorithm | `auth.go` middleware | **Fixed (prev session) — RS256 via JWKS** | ✅ FIXED |
 | 12 | Nginx → Notification service | `nginx.conf` | No route configured | ❌ CRITICAL |
 | 13 | Supabase password in git | `*/config.yaml` | Real credentials committed | ❌ CRITICAL |
 | 14 | Capacity service config | `config.yaml` | Empty DB host — can't run locally | ❌ CRITICAL |

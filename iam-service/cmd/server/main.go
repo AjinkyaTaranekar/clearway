@@ -73,13 +73,13 @@ func main() {
 	// --- Repositories ---
 	// Master: all writes and auth-path reads (avoids replication-lag failures).
 	// Slave:  admin read-only queries (list/count users) — lag-tolerant.
-	userRepo  := repository.NewUserRepo(dbPools.Master, dbPools.Slave)
+	userRepo := repository.NewUserRepo(dbPools.Master, dbPools.Slave)
 	tokenRepo := repository.NewTokenRepo(dbPools.Master)
 
 	// --- Services ---
-	authSvc    := service.NewAuthService(dbPools.Master, userRepo, tokenRepo, jwksSvc, cfg.IAM.AccessTokenTTL, cfg.IAM.RefreshTokenTTL, cfg.IAM.BcryptCost)
+	authSvc := service.NewAuthService(dbPools.Master, userRepo, tokenRepo, jwksSvc, cfg.IAM.AccessTokenTTL, cfg.IAM.RefreshTokenTTL, cfg.IAM.BcryptCost)
 	profileSvc := service.NewProfileService(userRepo)
-	adminSvc   := service.NewAdminService(userRepo, tokenRepo)
+	adminSvc := service.NewAdminService(userRepo, tokenRepo)
 	cleanupSvc := service.NewCleanupService(tokenRepo, cfg.IAM.TokenRetentionDays, cfg.IAM.CleanupInterval, log)
 
 	// --- HTTP ---
@@ -102,7 +102,8 @@ func main() {
 	}
 
 	// --- Background jobs ---
-	ctx, cancel := context.WithCancel(context.Background())
+	baseCtx := logger.WithContext(context.Background(), log)
+	ctx, cancel := context.WithCancel(baseCtx)
 	defer cancel()
 	go cleanupSvc.Start(ctx)
 

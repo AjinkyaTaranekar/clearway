@@ -14,8 +14,9 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/repository"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
-) // TODO: check import
+)
 
 // ReservationService handles the core capacity reservation logic.
 type ReservationService struct {
@@ -77,7 +78,10 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 	}
 
 	// --- Begin serialisable transaction ---
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	// LevelSerializable prevents phantom reads: two concurrent transactions
+	// that both read the same capacity sum (both below the limit) cannot both
+	// commit — the second will be rolled back with a serialisation error.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, 500, fmt.Errorf("begin tx: %w", err)
 	}
@@ -394,8 +398,11 @@ func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
-	// lib/pq returns error code 23505 for unique_violation
-	return strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "unique")
+	// lib/pq returns structured SQLSTATE codes; 23505 = unique_violation.
+	// Using errors.As avoids false positives from error messages that happen
+	// to contain the word "unique" (e.g. column names or driver messages).
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
 func validateReserveRequest(req *model.ReserveRequest) error {

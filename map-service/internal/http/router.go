@@ -55,6 +55,7 @@ func (r *Router) Setup() *mux.Router {
 	// Map APIs
 	r.mux.HandleFunc("/api/v1/map/nodes", r.mapHandler.GetNodes).Methods("GET")
 	r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET")
+	r.mux.HandleFunc("/api/v1/routes/compute", r.mapHandler.ComputeRoute).Methods("POST")
 
 	return r.mux
 }
