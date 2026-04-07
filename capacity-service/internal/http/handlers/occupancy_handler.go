@@ -7,7 +7,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/tracing"
-) //TODO: check import
+)
 
 // OccupancyHandler serves the segment occupancy endpoint consumed by the Map Service.
 type OccupancyHandler struct {

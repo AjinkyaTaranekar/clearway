@@ -8,7 +8,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/repository"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/redis/go-redis/v9"
-) // TODO: check import
+)
 
 // CleanupService runs periodic background jobs:
 //  1. Orphaned reservation cleanup — releases reservations whose time window ended

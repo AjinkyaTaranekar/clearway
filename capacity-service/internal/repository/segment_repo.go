@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
-) // TODO: check import
+)
 
 // SegmentRepo handles database operations for road segments.
 type SegmentRepo struct {

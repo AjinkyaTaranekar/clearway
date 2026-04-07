@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
-) // TODO: check import
+)
 
 // IdempotencyRepo handles database operations for the idempotency cache.
 type IdempotencyRepo struct {

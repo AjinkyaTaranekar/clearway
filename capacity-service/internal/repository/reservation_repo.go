@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
-) // TODO: check import
+)
 
 // ReservationRepo handles database operations for reservations.
 type ReservationRepo struct {
