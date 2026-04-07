@@ -174,20 +174,18 @@ jobs:
           done
           ssh deploy@${{ secrets.SWARM_HOST_EU }} '
             DB=$(docker ps --filter name=vcs_db --format "{{.ID}}" | head -1)
-            [ -z "$DB" ] && echo "ERROR: postgres not running" && exit 1
-            docker exec -i "$DB" psql -U postgres -d trafficservice -c \
-              "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+            [ -z "$DB" ] && echo "ERROR: db not running" && exit 1
+            CRDB="docker exec $DB /cockroach/cockroach sql --insecure --host=localhost:26257 --database=trafficservice"
+            $CRDB --execute="CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());" 2>/dev/null || true
             for svc in iam-service capacity-service journey-service notification-service; do
               for f in $(ls ~/vcs/migrations/$svc/*.sql 2>/dev/null | sort); do
                 name=$(basename "$f")
                 key="${svc}/${name}"
-                applied=$(docker exec -i "$DB" psql -U postgres -d trafficservice -tAc \
-                  "SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'")
+                applied=$($CRDB --format=tsv --execute="SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'" 2>/dev/null | tail -1)
                 if [ "$applied" = "0" ]; then
                   echo "Applying ${key}..."
-                  docker exec -i "$DB" psql -U postgres -d trafficservice < "$f"
-                  docker exec -i "$DB" psql -U postgres -d trafficservice -c \
-                    "INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')"
+                  docker exec -i "$DB" /cockroach/cockroach sql --insecure --host=localhost:26257 --database=trafficservice < "$f"
+                  $CRDB --execute="INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')" 2>/dev/null
                 else
                   echo "Skip ${key} (already applied)"
                 fi
@@ -228,12 +226,12 @@ jobs:
             # First-time bootstrap: deploy full stack using :latest
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               echo 'Bootstrapping stack...'
-              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
 
             # Always redeploy the observability stack to pick up config changes
-            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
               docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
 
             # Update only selected app services to the pinned SHA tag
@@ -305,19 +303,17 @@ jobs:
           done
           ssh deploy@${{ secrets.SWARM_HOST_US }} '
             DB=$(docker ps --filter name=vcs_db --format "{{.ID}}" | head -1)
-            [ -z "$DB" ] && echo "ERROR: postgres not running" && exit 1
-            docker exec -i "$DB" psql -U postgres -d trafficservice -c \
-              "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+            [ -z "$DB" ] && echo "ERROR: db not running" && exit 1
+            CRDB="docker exec $DB /cockroach/cockroach sql --insecure --host=localhost:26257 --database=trafficservice"
+            $CRDB --execute="CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());" 2>/dev/null || true
             for svc in iam-service capacity-service journey-service notification-service; do
               for f in $(ls ~/vcs/migrations/$svc/*.sql 2>/dev/null | sort); do
                 name=$(basename "$f"); key="${svc}/${name}"
-                applied=$(docker exec -i "$DB" psql -U postgres -d trafficservice -tAc \
-                  "SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'")
+                applied=$($CRDB --format=tsv --execute="SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'" 2>/dev/null | tail -1)
                 if [ "$applied" = "0" ]; then
                   echo "Applying ${key}..."
-                  docker exec -i "$DB" psql -U postgres -d trafficservice < "$f"
-                  docker exec -i "$DB" psql -U postgres -d trafficservice -c \
-                    "INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')"
+                  docker exec -i "$DB" /cockroach/cockroach sql --insecure --host=localhost:26257 --database=trafficservice < "$f"
+                  $CRDB --execute="INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')" 2>/dev/null
                 fi
               done
             done
@@ -346,10 +342,10 @@ jobs:
             [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
               SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
-              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
-            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
               docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
@@ -415,19 +411,19 @@ jobs:
           done
           ssh deploy@${{ secrets.SWARM_HOST_AP }} '
             DB=$(docker ps --filter name=vcs_db --format "{{.ID}}" | head -1)
-            [ -z "$DB" ] && echo "ERROR: postgres not running" && exit 1
-            docker exec -i "$DB" psql -U postgres -d trafficservice -c \
-              "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+            [ -z "$DB" ] && echo "ERROR: db not running" && exit 1
+            CRDB="docker exec $DB /cockroach/cockroach sql --insecure --host=localhost:26257 --database=trafficservice"
+            $CRDB --execute="CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());" 2>/dev/null || true
             for svc in iam-service capacity-service journey-service notification-service; do
               for f in $(ls ~/vcs/migrations/$svc/*.sql 2>/dev/null | sort); do
                 name=$(basename "$f"); key="${svc}/${name}"
-                applied=$(docker exec -i "$DB" psql -U postgres -d trafficservice -tAc \
-                  "SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'")
+                applied=$($CRDB --format=tsv --execute="SELECT COUNT(1) FROM schema_migrations WHERE name='"'"'${key}'"'"'" 2>/dev/null | tail -1)
                 if [ "$applied" = "0" ]; then
                   echo "Applying ${key}..."
-                  docker exec -i "$DB" psql -U postgres -d trafficservice < "$f"
-                  docker exec -i "$DB" psql -U postgres -d trafficservice -c \
-                    "INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')"
+                  docker exec -i "$DB" /cockroach/cockroach sql --insecure --host=localhost:26257 --database=trafficservice < "$f"
+                  $CRDB --execute="INSERT INTO schema_migrations (name) VALUES ('"'"'${key}'"'"')" 2>/dev/null
+                else
+                  echo "Skip ${key} (already applied)"
                 fi
               done
             done
@@ -456,10 +452,10 @@ jobs:
             [ \"\$SVCS\" = 'all' ] || [ -z \"\$SVCS\" ] && \
               SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
-              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+              GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
-            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
               docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
