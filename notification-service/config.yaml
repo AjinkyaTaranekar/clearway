@@ -23,3 +23,8 @@ database:
 logging:
   level: "info"
   format: "console"
+
+redis:
+  host: "localhost:6379"
+  password: ""
+  db: 0
