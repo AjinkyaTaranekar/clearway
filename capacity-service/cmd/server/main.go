@@ -18,7 +18,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/postgres"
 	"github.com/redis/go-redis/v9"
-) // TODO: check imports
+)
 
 // @title Capacity Microservice API
 // @version 1.0

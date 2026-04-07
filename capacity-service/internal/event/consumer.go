@@ -10,7 +10,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/redis/go-redis/v9"
-) // TODO: potential changes here
+)
 
 const (
 	streamName    = "journey.events"
