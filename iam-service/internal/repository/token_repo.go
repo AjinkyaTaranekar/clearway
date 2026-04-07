@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/model"
@@ -26,10 +28,12 @@ func (r *TokenRepo) Create(ctx context.Context, userID, tokenHash, userAgent, ip
 		Str("ip", ipAddress).
 		Msg("creating refresh token")
 
+	ipValue := nullableINET(ipAddress)
+
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO auth.refresh_tokens (user_id, token_hash, expires_at, created_at, user_agent, ip_address)
 		VALUES ($1, $2, $3, NOW(), $4, $5)`,
-		userID, tokenHash, expiresAt, userAgent, ipAddress)
+		userID, tokenHash, expiresAt, userAgent, ipValue)
 	if err != nil {
 		log.Error().
 			Str("repository", "TokenRepo.Create").
@@ -55,10 +59,12 @@ func (r *TokenRepo) CreateTx(ctx context.Context, tx *sql.Tx, userID, tokenHash,
 		Time("expires_at", expiresAt).
 		Msg("creating refresh token in transaction")
 
+	ipValue := nullableINET(ipAddress)
+
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO auth.refresh_tokens (user_id, token_hash, expires_at, created_at, user_agent, ip_address)
 		VALUES ($1, $2, $3, NOW(), $4, $5)`,
-		userID, tokenHash, expiresAt, userAgent, ipAddress)
+		userID, tokenHash, expiresAt, userAgent, ipValue)
 	if err != nil {
 		log.Error().
 			Str("repository", "TokenRepo.CreateTx").
@@ -257,4 +263,44 @@ func (r *TokenRepo) DeleteExpired(ctx context.Context, retentionDays int) (int64
 		Int64("deleted_count", n).
 		Msg("expired refresh token cleanup completed")
 	return n, nil
+}
+
+func nullableINET(raw string) interface{} {
+	ip := normalizeIPAddress(raw)
+	if ip == "" {
+		return nil
+	}
+	return ip
+}
+
+func normalizeIPAddress(raw string) string {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return ""
+	}
+
+	// Forwarded chains look like: "client, proxy1, proxy2".
+	if comma := strings.Index(candidate, ","); comma >= 0 {
+		candidate = strings.TrimSpace(candidate[:comma])
+	}
+
+	candidate = strings.Trim(candidate, `"'`)
+
+	if host, _, err := net.SplitHostPort(candidate); err == nil {
+		candidate = host
+	}
+
+	candidate = strings.TrimPrefix(candidate, "[")
+	candidate = strings.TrimSuffix(candidate, "]")
+
+	if zone := strings.Index(candidate, "%"); zone >= 0 {
+		candidate = candidate[:zone]
+	}
+
+	ip := net.ParseIP(candidate)
+	if ip == nil {
+		return ""
+	}
+
+	return ip.String()
 }
