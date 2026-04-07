@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Journey, JourneyStatus, mockJourneys, mockNotifications, Notification } from '../data/mockData';
 import { clearTokens, getRefreshToken, getToken, storeTokens } from '../services/auth';
-import { iamLogin, iamLogout, iamRegister, RegisterParams } from '../services/iamApi';
+import { iamLogin, iamLogout, iamRegister, iamUpdateProfile, RegisterParams } from '../services/iamApi';
 import * as api from '../services/journeyApi';
 import * as notifApi from '../services/notificationApi';
 
@@ -68,6 +68,11 @@ interface AppContextType {
   markNotificationRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   clearBookingResult: () => void;
+  /**
+   * Update the authenticated driver's name (and optionally vehicle type) via
+   * the IAM profile endpoint, then sync local user state and localStorage.
+   */
+  updateProfile: (fields: { name?: string; vehicle_type?: string }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -385,6 +390,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const clearBookingResult = () => setLastBookingResult(null);
 
+  // U-01 / U-11: Persist profile changes to the IAM service and keep local
+  // state in sync.  Currently supports name and vehicle_type — the two fields
+  // that IAM's PUT /api/v1/auth/profile accepts.  Email changes require a
+  // separate IAM flow (out of scope for the prototype).
+  const updateProfile = async (fields: { name?: string; vehicle_type?: string }): Promise<void> => {
+    const token = getToken();
+    if (!token || !user) throw new Error('Not authenticated.');
+    await iamUpdateProfile(token, fields);
+    const u: User = { ...user, ...fields };
+    setUser(u);
+    localStorage.setItem('cw_user', JSON.stringify(u));
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -403,6 +421,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         markNotificationRead,
         markAllRead,
         clearBookingResult,
+        updateProfile,
       }}
     >
       {children}

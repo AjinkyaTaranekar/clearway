@@ -27,16 +27,29 @@ interface FormErrors {
   vehicleType?: string;
 }
 
+// Map IAM vehicle type values (lowercase) to the booking page display values.
+// The booking page uses 'HGV' for what IAM calls 'truck'.
+const IAM_TO_BOOKING_VEHICLE: Record<string, string> = {
+  car: 'Car',
+  van: 'Van',
+  motorcycle: 'Motorcycle',
+  truck: 'HGV',
+};
+
 export default function BookJourneyPage() {
   const navigate = useNavigate();
-  const { bookJourney } = useApp();
+  const { bookJourney, user } = useApp();
+
+  const defaultVehicleType = user?.vehicle_type
+    ? (IAM_TO_BOOKING_VEHICLE[user.vehicle_type.toLowerCase()] ?? '')
+    : '';
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>({
     origin: '',
     destination: '',
     departureTime: '',
-    vehicleType: '',
+    vehicleType: defaultVehicleType,
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
