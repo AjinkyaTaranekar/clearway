@@ -72,8 +72,13 @@ func (c *Consumer) Start(ctx context.Context) {
 }
 
 func (c *Consumer) ensureConsumerGroup(ctx context.Context) error {
-	// MKSTREAM creates the stream if it doesn't exist yet.
-	err := c.redis.XGroupCreateMkStream(ctx, streamName, consumerGroup, "$").Err()
+	// "0" means replay from the beginning of the stream on first group creation.
+	// If the service restarts, the BUSYGROUP guard below prevents re-creation, so
+	// already-ACKed messages are not replayed — only genuinely unprocessed events
+	// that arrived while the service was down are consumed. This fixes F-15/F-18:
+	// using "$" (new messages only) caused slot-release events published during a
+	// Capacity Service restart to be permanently lost, leaking reserved capacity.
+	err := c.redis.XGroupCreateMkStream(ctx, streamName, consumerGroup, "0").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return fmt.Errorf("XGROUP CREATE: %w", err)
 	}

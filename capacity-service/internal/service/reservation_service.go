@@ -340,6 +340,14 @@ func (s *ReservationService) GetOccupancy(ctx context.Context) ([]model.Occupanc
 	return infos, nil
 }
 
+// GetAllSegments returns the full list of registered road segments and their
+// static metadata (no occupancy calculation).
+// This is the canonical segment-ID source of truth consumed by Map Service on
+// startup for XC-02 alignment validation.
+func (s *ReservationService) GetAllSegments(ctx context.Context) ([]model.Segment, error) {
+	return s.segmentRepo.GetAll(ctx)
+}
+
 // InvalidateCacheForJourney removes availability cache entries for the segments
 // that were just released. Called by the event consumer after a release.
 func (s *ReservationService) InvalidateCacheForJourney(ctx context.Context, affected []model.SegmentReservation) {
