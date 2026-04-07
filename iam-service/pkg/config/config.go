@@ -69,6 +69,16 @@ func Load(configPath string) (*Config, error) {
 	v.SetEnvPrefix("VCS")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	// AutomaticEnv does not reliably override nested keys during Unmarshal.
+	// BindEnv forces viper to always check the env var for these keys.
+	for _, key := range []string{
+		"database.master.host", "database.master.port", "database.master.user",
+		"database.master.password", "database.master.dbname",
+		"database.slave.host", "database.slave.port", "database.slave.user",
+		"database.slave.password", "database.slave.dbname",
+	} {
+		_ = v.BindEnv(key)
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
