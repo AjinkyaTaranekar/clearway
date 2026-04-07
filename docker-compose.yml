@@ -179,13 +179,26 @@ services:
       VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
+      VCS_DATABASE_SLAVE_HOST: db
+      VCS_DATABASE_SLAVE_PORT: 26257
+      VCS_DATABASE_SLAVE_USER: postgres
+      VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
+      JWKS_URL: http://iam-service:8082/.well-known/jwks.json
+      VM_ID: "1"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      iam-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── API Gateway + Frontend ─────────────────────────────────────────────────
 
@@ -197,10 +210,16 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - iam-service
-      - journey-service
-      - capacity-service
-      - map-service
+      iam-service:
+        condition: service_healthy
+      journey-service:
+        condition: service_healthy
+      capacity-service:
+        condition: service_healthy
+      map-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
 
   # ── Observability ──────────────────────────────────────────────────────────
 

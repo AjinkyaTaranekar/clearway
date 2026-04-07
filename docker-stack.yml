@@ -29,6 +29,10 @@ secrets:
   iam_private_key:
     external: true
 
+configs:
+  nginx_conf:
+    external: true
+
 networks:
   vcs-internal:
     driver: overlay
@@ -82,6 +86,10 @@ services:
     ports:
       - target: 26257
         published: 26257
+        protocol: tcp
+        mode: host
+      - target: 8080
+        published: 8080
         protocol: tcp
         mode: host
     volumes:
@@ -465,6 +473,9 @@ services:
 
   nginx:
     image: ghcr.io/${GITHUB_REPOSITORY}/nginx:${IMAGE_TAG:-latest}
+    configs:
+      - source: nginx_conf
+        target: /etc/nginx/conf.d/vcs.conf
     deploy:
       mode: global
       update_config:

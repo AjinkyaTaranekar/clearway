@@ -1,4 +1,3 @@
-
 package service
 
 import (
@@ -81,7 +80,7 @@ func generateJourneyID() string {
 	return "jrn_" + clean[:8]
 }
 
-// normalizeVehicleType normalizes vehicle type to lowercase and maps HGV → truck
+// normalizeVehicleType normalizes vehicle type to lowercase and maps HGV -> truck
 func normalizeVehicleType(vt string) (string, error) {
 	lower := strings.ToLower(strings.TrimSpace(vt))
 	switch lower {
@@ -96,29 +95,64 @@ func normalizeVehicleType(vt string) (string, error) {
 
 // CreateJourney orchestrates the full booking flow
 func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyRequest) (*model.Journey, error) {
-	// Validate vehicle type
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "JourneyService.CreateJourney").
+		Str("driver_id", req.DriverID).
+		Str("vehicle_type", req.VehicleType).
+		Str("idempotency_key", req.IdempotencyKey).
+		Time("departure_time", req.DepartureTime).
+		Msg("starting create journey flow")
+
 	vehicleType, err := normalizeVehicleType(req.VehicleType)
 	if err != nil {
+		log.Warn().
+			Str("service", "JourneyService.CreateJourney").
+			Str("driver_id", req.DriverID).
+			Err(err).
+			Msg("invalid vehicle type")
 		return nil, err
 	}
 
-	// Check idempotency
 	if req.IdempotencyKey != "" {
+		log.Debug().
+			Str("service", "JourneyService.CreateJourney").
+			Str("idempotency_key", req.IdempotencyKey).
+			Msg("checking idempotency cache")
+
 		rec, err := s.idempRepo.Get(ctx, req.IdempotencyKey)
 		if err != nil {
+			log.Error().
+				Str("service", "JourneyService.CreateJourney").
+				Err(err).
+				Str("idempotency_key", req.IdempotencyKey).
+				Msg("idempotency lookup failed")
 			return nil, err
 		}
 		if rec != nil {
-			var j model.Journey
-			if err := json.Unmarshal(rec.ResponseBody, &j); err == nil {
-				return &j, nil
+			var cached model.Journey
+			if err := json.Unmarshal(rec.ResponseBody, &cached); err == nil {
+				log.Info().
+					Str("service", "JourneyService.CreateJourney").
+					Str("journey_id", cached.JourneyID).
+					Msg("idempotency cache hit; returning cached response")
+				return &cached, nil
 			}
+			log.Warn().
+				Str("service", "JourneyService.CreateJourney").
+				Str("idempotency_key", req.IdempotencyKey).
+				Msg("failed to unmarshal idempotency payload; continuing with new booking")
 		}
 	}
 
-	// Validate departure time >= now + minAdvanceMin
 	minDeparture := time.Now().Add(time.Duration(s.minAdvanceMin) * time.Minute)
 	if req.DepartureTime.Before(minDeparture) {
+		log.Warn().
+			Str("service", "JourneyService.CreateJourney").
+			Str("driver_id", req.DriverID).
+			Time("departure_time", req.DepartureTime).
+			Time("minimum_departure", minDeparture).
+			Msg("departure too soon")
 		return nil, &apperrors.AppError{
 			Code:    "DEPARTURE_TOO_SOON",
 			Message: "departure time must be at least 1 hour from now",
@@ -126,32 +160,55 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		}
 	}
 
-	// Check one active journey per driver
 	hasActive, err := s.repo.HasActiveJourney(ctx, req.DriverID)
 	if err != nil {
+		log.Error().
+			Str("service", "JourneyService.CreateJourney").
+			Err(err).
+			Str("driver_id", req.DriverID).
+			Msg("failed to check active journey constraint")
 		return nil, err
 	}
 	if hasActive {
+		log.Warn().
+			Str("service", "JourneyService.CreateJourney").
+			Str("driver_id", req.DriverID).
+			Msg("driver already has active or approved journey")
 		return nil, apperrors.Conflict("driver already has an active or approved journey")
 	}
 
-	// Get route (cache → Map Service)
 	origin := client.MapCoordinates{Lat: req.Origin.Lat, Lng: req.Origin.Lng}
 	dest := client.MapCoordinates{Lat: req.Destination.Lat, Lng: req.Destination.Lng}
 
 	route, err := s.routeCache.Get(ctx, origin, dest)
 	if err != nil || route == nil {
+		if err != nil {
+			log.Warn().Err(err).Str("service", "JourneyService.CreateJourney").Msg("route cache lookup failed")
+		} else {
+			log.Debug().Str("service", "JourneyService.CreateJourney").Msg("route cache miss")
+		}
+
 		route, err = s.mapClient.ComputeRoute(ctx, origin, dest)
 		if err != nil {
+			log.Error().
+				Str("service", "JourneyService.CreateJourney").
+				Err(err).
+				Msg("map service unavailable")
 			return nil, apperrors.ExternalAPIError("map service unavailable", err)
 		}
 		_ = s.routeCache.Set(ctx, origin, dest, route)
+		log.Info().
+			Str("service", "JourneyService.CreateJourney").
+			Int("segment_count", len(route.Segments)).
+			Msg("route fetched from map service")
+	} else {
+		log.Debug().
+			Str("service", "JourneyService.CreateJourney").
+			Int("segment_count", len(route.Segments)).
+			Msg("route fetched from cache")
 	}
 
-	// Compute cascading time windows
 	segments, estimatedArrival := ComputeTimeWindows(req.DepartureTime, route.Segments)
-
-	// Build capacity reservations
 	journeyID := generateJourneyID()
 	idempKey := req.IdempotencyKey
 	if idempKey == "" {
@@ -167,7 +224,12 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		}
 	}
 
-	// Call Capacity Service
+	log.Info().
+		Str("service", "JourneyService.CreateJourney").
+		Str("journey_id", journeyID).
+		Int("reservation_count", len(reservations)).
+		Msg("calling capacity service reserve")
+
 	reserveResp, err := s.capacityClient.Reserve(ctx, client.ReserveRequest{
 		JourneyID:      journeyID,
 		IdempotencyKey: idempKey,
@@ -175,6 +237,11 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		Reservations:   reservations,
 	})
 	if err != nil {
+		log.Error().
+			Str("service", "JourneyService.CreateJourney").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("capacity service unavailable")
 		return nil, apperrors.ExternalAPIError("capacity service unavailable", err)
 	}
 
@@ -190,9 +257,19 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		} else {
 			rejectionReason = "Capacity unavailable"
 		}
-		segments = nil // don't store segments for rejected journeys
+		segments = nil
+		log.Warn().
+			Str("service", "JourneyService.CreateJourney").
+			Str("journey_id", journeyID).
+			Str("rejection_reason", rejectionReason).
+			Msg("journey rejected by capacity constraints")
 	} else {
 		reservationID = reserveResp.ReservationID
+		log.Info().
+			Str("service", "JourneyService.CreateJourney").
+			Str("journey_id", journeyID).
+			Str("reservation_id", reservationID).
+			Msg("journey approved by capacity service")
 	}
 
 	journey := &model.Journey{
@@ -213,19 +290,27 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	}
 
 	if err := s.repo.Create(ctx, journey, segments); err != nil {
+		log.Error().
+			Str("service", "JourneyService.CreateJourney").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("failed to persist journey")
 		return nil, err
 	}
 
 	journey.Segments = segments
 
-	// Cache idempotency key
 	if req.IdempotencyKey != "" {
 		if data, err := json.Marshal(journey); err == nil {
 			_ = s.idempRepo.Save(ctx, req.IdempotencyKey, journeyID, data)
+			log.Debug().
+				Str("service", "JourneyService.CreateJourney").
+				Str("idempotency_key", req.IdempotencyKey).
+				Str("journey_id", journeyID).
+				Msg("idempotency cache saved")
 		}
 	}
 
-	// Publish event (best-effort, after response)
 	if status == model.StatusApproved {
 		s.publisher.Publish(ctx, event.EventJourneyBooked, event.BookedPayload{
 			JourneyID:        journeyID,
@@ -246,48 +331,89 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		})
 	}
 
+	log.Info().
+		Str("service", "JourneyService.CreateJourney").
+		Str("journey_id", journeyID).
+		Str("status", string(status)).
+		Msg("create journey flow completed")
 	return journey, nil
 }
 
 // GetJourney returns a journey by ID, checking ownership
 func (s *JourneyService) GetJourney(ctx context.Context, journeyID, driverID string, isAdmin bool) (*model.Journey, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "JourneyService.GetJourney").
+		Str("journey_id", journeyID).
+		Str("driver_id", driverID).
+		Bool("is_admin", isAdmin).
+		Msg("loading journey")
+
 	j, err := s.repo.GetByID(ctx, journeyID)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.GetJourney").Err(err).Str("journey_id", journeyID).Msg("failed to load journey")
 		return nil, err
 	}
 	if !isAdmin && j.DriverID != driverID {
+		log.Warn().
+			Str("service", "JourneyService.GetJourney").
+			Str("journey_id", journeyID).
+			Str("requested_driver_id", driverID).
+			Str("owner_driver_id", j.DriverID).
+			Msg("journey access denied")
 		return nil, apperrors.NotFound("journey not found")
 	}
+
+	log.Info().Str("service", "JourneyService.GetJourney").Str("journey_id", j.JourneyID).Str("status", string(j.Status)).Msg("journey loaded")
 	return j, nil
 }
 
 // ListJourneys returns paginated journeys for a driver
 func (s *JourneyService) ListJourneys(ctx context.Context, driverID, statusFilter string, page, limit int) ([]model.Journey, int64, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "JourneyService.ListJourneys").
+		Str("driver_id", driverID).
+		Str("status_filter", statusFilter).
+		Int("page", page).
+		Int("limit", limit).
+		Msg("listing driver journeys")
+
 	journeys, total, err := s.repo.ListByDriverID(ctx, driverID, statusFilter, page, limit)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.ListJourneys").Err(err).Str("driver_id", driverID).Msg("failed to list journeys")
 		return nil, 0, err
 	}
 	if journeys == nil {
 		journeys = []model.Journey{}
 	}
+
+	log.Info().Str("service", "JourneyService.ListJourneys").Int("result_count", len(journeys)).Int64("total", total).Msg("listed driver journeys")
 	return journeys, total, nil
 }
 
 // CancelJourney cancels an APPROVED journey (30+ min before departure)
 func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID string) (*model.Journey, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "JourneyService.CancelJourney").Str("journey_id", journeyID).Str("driver_id", driverID).Msg("starting cancel journey flow")
+
 	j, err := s.repo.GetByID(ctx, journeyID)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.CancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to load journey")
 		return nil, err
 	}
 	if j.DriverID != driverID {
+		log.Warn().Str("service", "JourneyService.CancelJourney").Str("journey_id", journeyID).Str("owner_driver_id", j.DriverID).Msg("cancel denied due to ownership")
 		return nil, apperrors.NotFound("journey not found")
 	}
 	if j.Status != model.StatusApproved {
+		log.Warn().Str("service", "JourneyService.CancelJourney").Str("journey_id", journeyID).Str("status", string(j.Status)).Msg("cancel denied due to status")
 		return nil, apperrors.BadRequest("only APPROVED journeys can be cancelled")
 	}
 
 	timeUntilDeparture := time.Until(j.DepartureTime)
 	if timeUntilDeparture <= time.Duration(s.minCancelMin)*time.Minute {
+		log.Warn().Str("service", "JourneyService.CancelJourney").Str("journey_id", journeyID).Dur("time_until_departure", timeUntilDeparture).Msg("cancel denied due to time window")
 		return nil, apperrors.Forbidden("cannot cancel within 30 minutes of departure")
 	}
 
@@ -295,6 +421,7 @@ func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID 
 	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusCancelled, j.Version, map[string]interface{}{
 		"cancelled_at": now,
 	}); err != nil {
+		log.Error().Str("service", "JourneyService.CancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
 		return nil, err
 	}
 
@@ -309,34 +436,44 @@ func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID 
 		ReservationID: j.ReservationID,
 	})
 
+	log.Info().Str("service", "JourneyService.CancelJourney").Str("journey_id", journeyID).Msg("cancel journey flow completed")
 	return j, nil
 }
 
-// ActivateJourney transitions APPROVED → ACTIVE
+// ActivateJourney transitions APPROVED -> ACTIVE
 func (s *JourneyService) ActivateJourney(ctx context.Context, journeyID, driverID string) (*model.Journey, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Str("driver_id", driverID).Msg("starting activate journey flow")
+
 	j, err := s.repo.GetByID(ctx, journeyID)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.ActivateJourney").Err(err).Str("journey_id", journeyID).Msg("failed to load journey")
 		return nil, err
 	}
 	if j.DriverID != driverID {
+		log.Warn().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Str("owner_driver_id", j.DriverID).Msg("activation denied due to ownership")
 		return nil, apperrors.NotFound("journey not found")
 	}
 	if j.Status != model.StatusApproved {
+		log.Warn().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Str("status", string(j.Status)).Msg("activation denied due to status")
 		return nil, apperrors.BadRequest("only APPROVED journeys can be activated")
 	}
 
 	now := time.Now()
 	graceEnd := j.DepartureTime.Add(time.Duration(s.activationGrace) * time.Minute)
 	if now.Before(j.DepartureTime) {
+		log.Warn().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Msg("activation denied: too early")
 		return nil, apperrors.Forbidden("cannot activate before departure time")
 	}
 	if now.After(graceEnd) {
+		log.Warn().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Time("grace_end", graceEnd).Msg("activation denied: grace expired")
 		return nil, apperrors.Forbidden("activation window has expired (30 minutes after departure)")
 	}
 
 	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusActive, j.Version, map[string]interface{}{
 		"activated_at": now,
 	}); err != nil {
+		log.Error().Str("service", "JourneyService.ActivateJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist active status")
 		return nil, err
 	}
 
@@ -349,19 +486,26 @@ func (s *JourneyService) ActivateJourney(ctx context.Context, journeyID, driverI
 		Status:    string(model.StatusActive),
 	})
 
+	log.Info().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Msg("activate journey flow completed")
 	return j, nil
 }
 
-// CompleteJourney transitions ACTIVE → COMPLETED
+// CompleteJourney transitions ACTIVE -> COMPLETED
 func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverID string) (*model.Journey, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "JourneyService.CompleteJourney").Str("journey_id", journeyID).Str("driver_id", driverID).Msg("starting complete journey flow")
+
 	j, err := s.repo.GetByID(ctx, journeyID)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.CompleteJourney").Err(err).Str("journey_id", journeyID).Msg("failed to load journey")
 		return nil, err
 	}
 	if j.DriverID != driverID {
+		log.Warn().Str("service", "JourneyService.CompleteJourney").Str("journey_id", journeyID).Str("owner_driver_id", j.DriverID).Msg("completion denied due to ownership")
 		return nil, apperrors.NotFound("journey not found")
 	}
 	if j.Status != model.StatusActive {
+		log.Warn().Str("service", "JourneyService.CompleteJourney").Str("journey_id", journeyID).Str("status", string(j.Status)).Msg("completion denied due to status")
 		return nil, apperrors.BadRequest("only ACTIVE journeys can be completed")
 	}
 
@@ -369,6 +513,7 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusCompleted, j.Version, map[string]interface{}{
 		"completed_at": now,
 	}); err != nil {
+		log.Error().Str("service", "JourneyService.CompleteJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist completed status")
 		return nil, err
 	}
 
@@ -382,16 +527,22 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 		ReservationID: j.ReservationID,
 	})
 
+	log.Info().Str("service", "JourneyService.CompleteJourney").Str("journey_id", journeyID).Msg("complete journey flow completed")
 	return j, nil
 }
 
 // AdminCancelJourney force-cancels any APPROVED or ACTIVE journey
 func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID string) (*model.Journey, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "JourneyService.AdminCancelJourney").Str("journey_id", journeyID).Msg("starting admin cancel journey flow")
+
 	j, err := s.repo.GetByID(ctx, journeyID)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.AdminCancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to load journey")
 		return nil, err
 	}
 	if j.Status != model.StatusApproved && j.Status != model.StatusActive {
+		log.Warn().Str("service", "JourneyService.AdminCancelJourney").Str("journey_id", journeyID).Str("status", string(j.Status)).Msg("admin cancellation denied due to status")
 		return nil, apperrors.BadRequest("only APPROVED or ACTIVE journeys can be cancelled")
 	}
 
@@ -399,6 +550,7 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID strin
 	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusCancelled, j.Version, map[string]interface{}{
 		"cancelled_at": now,
 	}); err != nil {
+		log.Error().Str("service", "JourneyService.AdminCancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
 		return nil, err
 	}
 
@@ -413,6 +565,7 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID strin
 		ReservationID: j.ReservationID,
 	})
 
+	log.Info().Str("service", "JourneyService.AdminCancelJourney").Str("journey_id", journeyID).Msg("admin cancel journey flow completed")
 	return j, nil
 }
 
@@ -430,10 +583,15 @@ type EnforcementVerifyResult struct {
 
 // EnforcementVerify checks whether an ACTIVE journey covers segmentID at the given timestamp.
 func (s *JourneyService) EnforcementVerify(ctx context.Context, segmentID string, ts time.Time) (*EnforcementVerifyResult, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "JourneyService.EnforcementVerify").Str("segment_id", segmentID).Time("timestamp", ts).Msg("running enforcement verification")
+
 	rec, err := s.repo.FindActiveJourneyForSegment(ctx, segmentID, ts)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.EnforcementVerify").Err(err).Str("segment_id", segmentID).Msg("failed to query enforcement record")
 		return nil, err
 	}
+
 	result := &EnforcementVerifyResult{
 		SegmentID: segmentID,
 		Timestamp: ts,
@@ -445,50 +603,74 @@ func (s *JourneyService) EnforcementVerify(ctx context.Context, segmentID string
 		result.Status = rec.Status
 		result.TimeWindowStart = &rec.TimeWindowStart
 		result.TimeWindowEnd = &rec.TimeWindowEnd
+		log.Info().Str("service", "JourneyService.EnforcementVerify").Str("segment_id", segmentID).Str("journey_id", rec.JourneyID).Msg("enforcement authorized")
+	} else {
+		log.Info().Str("service", "JourneyService.EnforcementVerify").Str("segment_id", segmentID).Msg("enforcement unauthorized")
 	}
+
 	return result, nil
 }
 
 // AdminListJourneys returns all journeys with filters
 func (s *JourneyService) AdminListJourneys(ctx context.Context, filters AdminListFilters) ([]model.Journey, int64, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "JourneyService.AdminListJourneys").
+		Str("status_filter", filters.Status).
+		Str("driver_id_filter", filters.DriverID).
+		Int("page", filters.Page).
+		Int("limit", filters.Limit).
+		Msg("listing journeys for admin")
+
 	journeys, total, err := s.repo.AdminList(ctx, filters.Status, filters.DriverID, filters.Page, filters.Limit)
 	if err != nil {
+		log.Error().Str("service", "JourneyService.AdminListJourneys").Err(err).Msg("failed to list admin journeys")
 		return nil, 0, err
 	}
 	if journeys == nil {
 		journeys = []model.Journey{}
 	}
+
+	log.Info().Str("service", "JourneyService.AdminListJourneys").Int("result_count", len(journeys)).Int64("total", total).Msg("admin journeys listed")
 	return journeys, total, nil
 }
 
 // RunExpiryJob periodically expires approved journeys past their grace window
 func (s *JourneyService) RunExpiryJob(ctx context.Context) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "JourneyService.RunExpiryJob").Dur("interval", 5*time.Minute).Msg("expiry job started")
+
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info().Str("service", "JourneyService.RunExpiryJob").Msg("expiry job stopped")
 			return
 		case <-ticker.C:
+			log.Debug().Str("service", "JourneyService.RunExpiryJob").Msg("expiry tick triggered")
 			s.expireJourneys(ctx)
 		}
 	}
 }
 
 func (s *JourneyService) expireJourneys(ctx context.Context) {
+	log := s.logWithTrace(ctx)
 	journeys, err := s.repo.GetExpiredJourneys(ctx)
 	if err != nil {
-		s.log.Error().Err(err).Msg("expiry job: failed to get expired journeys")
+		log.Error().Err(err).Str("service", "JourneyService.expireJourneys").Msg("failed to get expired journeys")
 		return
 	}
+
+	log.Debug().Str("service", "JourneyService.expireJourneys").Int("expired_count", len(journeys)).Msg("loaded expired journeys")
 
 	now := time.Now()
 	for _, j := range journeys {
 		if err := s.repo.UpdateStatus(ctx, j.JourneyID, model.StatusExpired, j.Version, map[string]interface{}{
 			"expired_at": now,
 		}); err != nil {
-			s.log.Warn().Err(err).Str("journey_id", j.JourneyID).Msg("expiry job: failed to expire journey")
+			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to expire journey")
 			continue
 		}
 		s.publisher.Publish(ctx, event.EventJourneyExpired, event.SimplePayload{
@@ -497,6 +679,6 @@ func (s *JourneyService) expireJourneys(ctx context.Context) {
 			Status:        string(model.StatusExpired),
 			ReservationID: j.ReservationID,
 		})
-		s.log.Info().Str("journey_id", j.JourneyID).Msg("expiry job: journey expired")
+		log.Info().Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("journey expired")
 	}
 }

@@ -33,10 +33,28 @@ type healthResponse struct {
 // in the body but does not take the service down (existing JWTs still work).
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Debug().
+		Str("handler", "HealthHandler.Health").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("health check request received")
+
 	dbStatus := "connected"
 	if err := h.db.PingContext(r.Context()); err != nil {
 		dbStatus = "disconnected"
+		log.Warn().
+			Str("handler", "HealthHandler.Health").
+			Err(err).
+			Msg("database ping failed during health check")
 	}
+
+	log.Debug().
+		Str("handler", "HealthHandler.Health").
+		Str("db_status", dbStatus).
+		Int64("uptime_seconds", int64(time.Since(h.startAt).Seconds())).
+		Msg("health check response ready")
+
 	response.Success(w, healthResponse{
 		Status:        "healthy",
 		DB:            dbStatus,
@@ -49,8 +67,18 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 // service can handle any meaningful request.
 func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Debug().
+		Str("handler", "HealthHandler.Readiness").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("readiness check request received")
 
 	if err := h.db.PingContext(r.Context()); err != nil {
+		log.Warn().
+			Str("handler", "HealthHandler.Readiness").
+			Err(err).
+			Msg("readiness failed: database unreachable")
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Trace-ID", traceID)
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -59,12 +87,20 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.keyReady != nil && !h.keyReady() {
+		log.Warn().
+			Str("handler", "HealthHandler.Readiness").
+			Msg("readiness failed: rsa signing key not loaded")
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Trace-ID", traceID)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"not ready","reason":"RSA signing key not loaded"}`)) //nolint:errcheck
 		return
 	}
+
+	log.Debug().
+		Str("handler", "HealthHandler.Readiness").
+		Int64("uptime_seconds", int64(time.Since(h.startAt).Seconds())).
+		Msg("readiness check passed")
 
 	response.Success(w, healthResponse{
 		Status:        "ready",

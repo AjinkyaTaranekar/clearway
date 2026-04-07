@@ -19,12 +19,12 @@
 #     vcs-vm-eu2
 #
 #   # US cell (single VM):
-#   ./scripts/deploy-cell.sh vcs-vm-us1 us-east1-b \
-#     "35.187.121.12:26257,34.76.63.61:26257,<US_IP>:26257"
+#   ./scripts/deploy-cell.sh vcs-vm-us1 us-east1-d \
+#     "35.187.121.12:26257,34.76.63.61:26257,34.138.242.217:26257"
 #
 #   # APAC cell (single VM):
 #   ./scripts/deploy-cell.sh vcs-vm-ap1 asia-east1-b \
-#     "35.187.121.12:26257,34.76.63.61:26257,<US_IP>:26257,<AP_IP>:26257"
+#     "35.187.121.12:26257,34.76.63.61:26257,34.138.242.217:26257,34.80.180.64:26257"
 
 set -euo pipefail
 
@@ -105,7 +105,7 @@ remote "$MANAGER_VM" "
   sudo CRDB_JOIN='$CRDB_JOIN' \
        GITHUB_REPOSITORY='$GITHUB_REPOSITORY' \
        IMAGE_TAG='$IMAGE_TAG' \
-    docker stack deploy --with-registry-auth -c ~/docker-stack.yml vcs 2>&1
+    docker stack deploy --with-registry-auth --prune -c ~/docker-stack.yml vcs 2>&1
 "
 
 # ── Step 3: Wait for CockroachDB container to be running ────────────────────
@@ -160,6 +160,7 @@ remote "$MANAGER_VM" "
       CREATE DATABASE IF NOT EXISTS trafficservice;
       CREATE USER IF NOT EXISTS postgres;
       GRANT ALL ON DATABASE trafficservice TO postgres WITH GRANT OPTION;
+      GRANT CREATE ON DATABASE defaultdb TO postgres;
     \" 2>&1
 "
 

@@ -28,11 +28,15 @@ type ReserveRequest struct {
 type FailedSegment struct {
 	SegmentID       string    `json:"segment_id"`
 	Reason          string    `json:"reason"`
+	AvailableSlots  float64   `json:"available_slots"`
+	RequestedSlots  float64   `json:"requested_slots"`
 	TimeWindowStart time.Time `json:"time_window_start"`
 	TimeWindowEnd   time.Time `json:"time_window_end"`
 }
 
-// ReserveResponse is returned by Capacity Service
+// ReserveResponse is returned by Capacity Service.
+// On success (HTTP 201): Status="reserved", ReservationID is set.
+// On capacity failure (HTTP 200): Status="failed", FailedSegment is set.
 type ReserveResponse struct {
 	Status        string         `json:"status"` // "reserved" or "failed"
 	ReservationID string         `json:"reservation_id,omitempty"`
@@ -51,13 +55,22 @@ func NewCapacityClient(baseURL string) *CapacityClient {
 	return &CapacityClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 3 * time.Second,
+			Timeout: 5 * time.Second,
 		},
 	}
 }
 
 // Reserve calls Capacity Service for an all-or-nothing atomic reservation.
-// Falls back to a mock approved response if Capacity Service is unreachable.
+//
+// The Capacity Service responds with:
+//   - HTTP 201 + {"status":"reserved","reservation_id":...} on success
+//   - HTTP 200 + {"status":"failed","failed_segment":...} when a segment is at capacity
+//   - HTTP 4xx/5xx on bad request or internal error
+//
+// Returns an error if the service is unreachable or returns an unexpected
+// response — no silent fallback is performed.  Masking a capacity-service
+// failure with a fake approval defeats the core double-booking prevention
+// guarantee of the system.
 func (c *CapacityClient) Reserve(ctx context.Context, req ReserveRequest) (*ReserveResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -67,34 +80,30 @@ func (c *CapacityClient) Reserve(ctx context.Context, req ReserveRequest) (*Rese
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.baseURL+"/api/v1/capacity/reserve", bytes.NewReader(body))
 	if err != nil {
-		return mockReserveResponse(req.JourneyID), nil
+		return nil, fmt.Errorf("capacity service: build request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		// Capacity Service unreachable — mock approval
-		return mockReserveResponse(req.JourneyID), nil
+		return nil, fmt.Errorf("capacity service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusServiceUnavailable {
-		return mockReserveResponse(req.JourneyID), nil
+	// 200 = capacity failure (valid business outcome) and 201 = reserved.
+	// Anything else is an unexpected error from the service.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("capacity service error: unexpected status %d", resp.StatusCode)
 	}
 
 	var result ReserveResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return mockReserveResponse(req.JourneyID), nil
+		return nil, fmt.Errorf("capacity service: decode response: %w", err)
+	}
+
+	if result.Status == "" {
+		return nil, fmt.Errorf("capacity service: missing status field in response")
 	}
 
 	return &result, nil
-}
-
-// mockReserveResponse returns a mock approved reservation
-func mockReserveResponse(journeyID string) *ReserveResponse {
-	return &ReserveResponse{
-		Status:        "reserved",
-		ReservationID: fmt.Sprintf("rsv_%d", time.Now().UnixMilli()),
-		JourneyID:     journeyID,
-	}
 }
