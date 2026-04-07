@@ -65,9 +65,6 @@ func main() {
 
 	log.Info().Msg("Database connections established")
 
-	// Initialize audit client
-	ctx := context.Background()
-
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler()
 	mapHandler := handlers.NewMapHandler()
