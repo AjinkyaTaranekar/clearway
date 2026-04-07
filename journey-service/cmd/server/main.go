@@ -170,7 +170,8 @@ func main() {
 	}
 
 	// Start background jobs
-	ctx, cancelJobs := context.WithCancel(context.Background())
+	baseCtx := logger.WithContext(context.Background(), log)
+	ctx, cancelJobs := context.WithCancel(baseCtx)
 	defer cancelJobs()
 	go journeySvc.RunExpiryJob(ctx)
 	log.Info().Msg("background expiry job started")
