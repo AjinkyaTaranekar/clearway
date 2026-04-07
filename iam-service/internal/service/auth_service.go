@@ -296,13 +296,18 @@ func hashToken(raw string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func hashPassword(password string, cost int) (string, error) {
+func clampBcryptCost(cost int) int {
 	if cost < bcrypt.MinCost {
-		cost = bcrypt.DefaultCost
+		return bcrypt.DefaultCost
 	}
 	if cost > bcrypt.MaxCost {
-		cost = bcrypt.MaxCost
+		return bcrypt.MaxCost
 	}
+	return cost
+}
+
+func hashPassword(password string, cost int) (string, error) {
+	cost = clampBcryptCost(cost)
 	b, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	return string(b), err
 }

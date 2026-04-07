@@ -32,22 +32,11 @@ func TestHashAndVerifyPassword_WrongPassword(t *testing.T) {
 }
 
 func TestHashPassword_CostClamping(t *testing.T) {
-	// Cost below MinCost must be clamped to DefaultCost — not panic.
-	hash, err := hashPassword("abc12345", -99)
-	if err != nil {
-		t.Fatalf("hashPassword with negative cost: %v", err)
+	if got := clampBcryptCost(-99); got != bcrypt.DefaultCost {
+		t.Errorf("clampBcryptCost(-99) = %d, want %d", got, bcrypt.DefaultCost)
 	}
-	if hash == "" {
-		t.Error("expected non-empty hash")
-	}
-
-	// Cost above MaxCost must be clamped to MaxCost — not panic.
-	hash2, err := hashPassword("abc12345", 999)
-	if err != nil {
-		t.Fatalf("hashPassword with huge cost: %v", err)
-	}
-	if hash2 == "" {
-		t.Error("expected non-empty hash")
+	if got := clampBcryptCost(bcrypt.MaxCost + 1000); got != bcrypt.MaxCost {
+		t.Errorf("clampBcryptCost(max+1000) = %d, want %d", got, bcrypt.MaxCost)
 	}
 }
 
