@@ -6,8 +6,8 @@
 // Fill in LB_US and LB_APAC once those VMs are provisioned.
 
 const LB_EU   = 'http://34.78.55.96'
-const LB_US   = 'http://PLACEHOLDER_US_LB_IP'    // TODO: replace when US cell is up
-const LB_APAC = 'http://PLACEHOLDER_APAC_LB_IP'  // TODO: replace when APAC cell is up
+const LB_US   = process.env.LB_US_IP   ? `http://${process.env.LB_US_IP}`   : LB_EU  // falls back to EU until US cell is up
+const LB_APAC = process.env.LB_APAC_IP ? `http://${process.env.LB_APAC_IP}` : LB_EU  // falls back to EU until APAC cell is up
 
 const EU_COUNTRIES = new Set([
   'GB','IE','DE','FR','NL','BE','IT','ES','PT','SE','NO','DK','FI',
@@ -26,15 +26,22 @@ export default async function middleware(request: Request): Promise<Response | u
   const country = request.headers.get('x-vercel-ip-country') ?? ''
   const lb = APAC_COUNTRIES.has(country) ? LB_APAC
            : EU_COUNTRIES.has(country)   ? LB_EU
-           : LB_US  // US as default for unlisted countries
+           : LB_US  // US as default; falls back to EU when US/APAC not provisioned
 
-  // Forward the full request (method + headers + body) to the regional backend
   const backendUrl = `${lb}${url.pathname}${url.search}`
-  return fetch(new Request(backendUrl, {
-    method:  request.method,
-    headers: request.headers,
-    body:    ['GET', 'HEAD'].includes(request.method) ? null : request.body,
-  }))
+  try {
+    return await fetch(new Request(backendUrl, {
+      method:  request.method,
+      headers: request.headers,
+      body:    ['GET', 'HEAD'].includes(request.method) ? null : request.body,
+    }))
+  } catch {
+    // Backend unreachable — return 502 instead of crashing the middleware
+    return new Response(JSON.stringify({ error: 'Backend unavailable', lb }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 }
 
 // Only run this middleware on API paths
