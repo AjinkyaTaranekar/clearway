@@ -6,8 +6,9 @@
 # Inter-node Raft traffic uses port 26257 over public IPs (GCP firewall rule required).
 # Redis is local to each cell; no cross-cell Redis sync.
 #
-# Deploy: CRDB_ADVERTISE_IP=<this_cell_ip> CRDB_JOIN=<eu_ip>:26257,<us_ip>:26257,<ap_ip>:26257 \
+# Deploy: CRDB_JOIN=<eu1_ip>:26257,<eu2_ip>:26257,<us_ip>:26257,<ap_ip>:26257 \
 #         docker stack deploy -c docker-stack.yml vcs
+# Each CockroachDB container auto-detects its own external IP via GCP metadata API.
 # Update:  same command (rolling, zero-downtime)
 #
 # Required secrets (create with `docker secret create`):
@@ -49,21 +50,26 @@ services:
 
   db:
     image: cockroachdb/cockroach:v24.1.0
-    # replicas: 1 on manager — each cell runs exactly one CockroachDB node.
-    # All nodes join the same cluster via --join using their public GCP IPs.
-    # Set CRDB_ADVERTISE_IP and CRDB_JOIN in the deploying shell before running
-    # docker stack deploy (see header comment above).
-    command: >
-      start
-      --insecure
-      --advertise-addr=${CRDB_ADVERTISE_IP}:26257
-      --join=${CRDB_JOIN}
-      --cache=.25
-      --max-sql-memory=.25
+    # mode: global — one CockroachDB node per Swarm VM per cell.
+    # Each container fetches its own VM's external IP from GCP's metadata API
+    # at startup, so --advertise-addr is always correct regardless of which
+    # host the container lands on. No CRDB_ADVERTISE_IP env var needed.
+    # Set CRDB_JOIN to a comma-separated list of ALL cell node IPs:26257
+    # before running docker stack deploy (see header comment above).
+    command:
+      - "bash"
+      - "-c"
+      - >
+        EXTERNAL_IP=$(curl -sf
+        http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip
+        -H 'Metadata-Flavor: Google') &&
+        exec /cockroach/cockroach start --insecure
+        --advertise-addr=$$EXTERNAL_IP:26257
+        --join=${CRDB_JOIN}
+        --cache=.25
+        --max-sql-memory=.25
     deploy:
-      replicas: 1
-      placement:
-        constraints: [node.labels.crdb.primary == true]
+      mode: global
       restart_policy:
         condition: any
         delay: 10s
