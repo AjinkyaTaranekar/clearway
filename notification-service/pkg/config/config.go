@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
+	Redis    RedisConfig    `mapstructure:"redis"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
 
@@ -42,6 +43,13 @@ type DBConfig struct {
 type LoggingConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
+}
+
+// RedisConfig holds Redis connection configuration
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
 }
 
 // Load loads configuration from file and environment variables
