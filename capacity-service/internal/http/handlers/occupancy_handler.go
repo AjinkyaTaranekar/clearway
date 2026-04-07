@@ -20,6 +20,33 @@ func NewOccupancyHandler(svc *service.ReservationService, log *logger.Logger) *O
 	return &OccupancyHandler{svc: svc, log: log}
 }
 
+// Segments godoc
+// @Summary      List all registered road segments
+// @Description  Returns static metadata for every road segment seeded in the capacity service. Intended for Map Service startup validation (XC-02): Map Service calls this on boot to verify every segment ID in its graph has a corresponding capacity row, failing readiness if any are missing.
+// @Tags         Capacity
+// @Produce      json
+// @Success      200 {array}  model.Segment
+// @Failure      500 {object} map[string]string
+// @Router       /api/v1/capacity/segments [get]
+func (h *OccupancyHandler) Segments(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	segments, err := h.svc.GetAllSegments(r.Context())
+	if err != nil {
+		h.log.Error().Err(err).Str("trace_id", traceID).Msg("segments: service error")
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Trace-ID", traceID)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to retrieve segments"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(segments)
+}
+
 // Occupancy godoc
 // @Summary      Get current occupancy for all road segments
 // @Description  Returns real-time occupancy percentages and trend for every registered segment. Consumed by the Map Service to render the admin traffic map.
