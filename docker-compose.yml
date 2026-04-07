@@ -7,21 +7,20 @@ services:
   # ── Data layer ─────────────────────────────────────────────────────────────
 
   db:
-    image: postgres:16-alpine
+    image: cockroachdb/cockroach:v24.1.0
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: trafficservice
+    command: start-single-node --insecure
     ports:
-      - "5432:5432"
+      - "26257:26257"
+      - "18080:8080"  # Admin UI (avoids conflict with cadvisor on 8080)
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - crdb_data:/cockroach/cockroach-data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
@@ -47,14 +46,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8082
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -79,14 +76,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8081
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -111,14 +106,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8084
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -143,14 +136,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8083
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_SERVICES_CAPACITY_URL: http://capacity-service:8081
@@ -185,9 +176,8 @@ services:
     environment:
       VCS_SERVER_PORT: 8085
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -277,14 +267,8 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
 
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    restart: unless-stopped
-    environment:
-      DATA_SOURCE_NAME: "postgresql://postgres:postgres@db:5432/trafficservice?sslmode=disable"
-    depends_on:
-      db:
-        condition: service_healthy
+  # CockroachDB exposes Prometheus metrics natively at http://db:8080/_status/vars
+  # No separate exporter needed — prometheus.yml scrapes it directly.
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
@@ -296,7 +280,7 @@ services:
         condition: service_healthy
 
 volumes:
-  pg_data:
+  crdb_data:
   prometheus_data:
   loki_data:
   grafana_data:

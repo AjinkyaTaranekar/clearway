@@ -44,11 +44,12 @@ scrape_configs:
         regex: '.+'
         action: keep
 
-  - job_name: postgres-exporter
+  - job_name: cockroachdb
+    metrics_path: /_status/vars
     static_configs:
-      - targets: ['postgres-exporter:9187']
+      - targets: ['db:8080']
         labels:
-          service: postgres
+          service: cockroachdb
 
   - job_name: redis-exporter
     static_configs:

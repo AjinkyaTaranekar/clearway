@@ -1,27 +1,26 @@
 # Docker Swarm production stack — VCS
 #
-# Topology: 3-node Swarm (1 manager + 2 workers) on Azure B1s VMs.
-# Each VM runs one replica of every service (mode: global).
-# PostgreSQL instances replicate to each other via logical replication
-# (configured separately — see docs/postgres-replication.md).
-# Redis is local to each node; no cross-node Redis sync.
+# Topology: 3 independent Swarms (EU, US, APAC) on GCP e2-medium VMs.
+# Each Swarm runs one replica of every service (mode: global or replicas: 1).
+# CockroachDB forms a single distributed cluster across all 3 cells via Raft.
+# Inter-node Raft traffic uses port 26257 over public IPs (GCP firewall rule required).
+# Redis is local to each cell; no cross-cell Redis sync.
 #
-# Deploy: docker stack deploy -c docker-stack.yml vcs
-# Update:  docker stack deploy -c docker-stack.yml vcs  (rolling, zero-downtime)
+# Deploy: CRDB_ADVERTISE_IP=<this_cell_ip> CRDB_JOIN=<eu_ip>:26257,<us_ip>:26257,<ap_ip>:26257 \
+#         docker stack deploy -c docker-stack.yml vcs
+# Update:  same command (rolling, zero-downtime)
 #
 # Required secrets (create with `docker secret create`):
-#   db_password          — PostgreSQL user password
 #   jwt_secret           — HS256 JWT signing secret
 #   firebase_credentials — Firebase service account JSON (for notification-service)
+#   iam_private_key      — IAM RSA private key
 #
-# Required configs (create with `docker config create`):
-#   nginx_conf           — nginx/nginx.conf
+# One-time cluster bootstrap (run on EU node after first deploy):
+#   docker exec -it <crdb_container> /cockroach/cockroach init --insecure --host=localhost:26257
 
 version: "3.9"
 
 secrets:
-  db_password:
-    external: true
   jwt_secret:
     external: true
   firebase_credentials:
@@ -35,7 +34,7 @@ networks:
     attachable: true
 
 volumes:
-  pg_data:
+  crdb_data:
     driver: local
   prometheus_data:
     driver: local
@@ -49,36 +48,46 @@ services:
   # ── Data layer ─────────────────────────────────────────────────────────────
 
   db:
-    image: postgres:16-alpine
-    # mode: global ensures one PostgreSQL per Swarm node.
-    # Each node owns its data via a local named volume.
-    # Logical replication between nodes is configured via SQL (see docs/).
+    image: cockroachdb/cockroach:v24.1.0
+    # replicas: 1 on manager — each cell runs exactly one CockroachDB node.
+    # All nodes join the same cluster via --join using their public GCP IPs.
+    # Set CRDB_ADVERTISE_IP and CRDB_JOIN in the deploying shell before running
+    # docker stack deploy (see header comment above).
+    command: >
+      start
+      --insecure
+      --advertise-addr=${CRDB_ADVERTISE_IP}:26257
+      --join=${CRDB_JOIN}
+      --cache=.25
+      --max-sql-memory=.25
     deploy:
-      mode: global
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
       restart_policy:
         condition: on-failure
         delay: 10s
         max_attempts: 5
       resources:
         limits:
-          memory: 400M
+          memory: 512M
         reservations:
-          memory: 200M
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_DB: trafficservice
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-    secrets:
-      - db_password
+          memory: 256M
+    ports:
+      - target: 26257
+        published: 26257
+        protocol: tcp
+        mode: host
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - crdb_data:/cockroach/cockroach-data
     networks:
       - vcs-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -134,11 +143,11 @@ services:
     environment:
       VCS_SERVER_PORT: "8082"
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_PORT: "26257"
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_PORT: "26257"
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
@@ -146,8 +155,6 @@ services:
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
     secrets:
-      - source: db_password
-        target: /run/secrets/db_password
       - source: jwt_secret
         target: /run/secrets/jwt_secret
       - source: iam_private_key
@@ -185,19 +192,16 @@ services:
     environment:
       VCS_SERVER_PORT: "8081"
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_PORT: "26257"
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_PORT: "26257"
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
-    secrets:
-      - source: db_password
-        target: /run/secrets/db_password
     networks:
       - vcs-internal
     healthcheck:
@@ -228,19 +232,16 @@ services:
     environment:
       VCS_SERVER_PORT: "8084"
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_PORT: "26257"
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_PORT: "26257"
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
-    secrets:
-      - source: db_password
-        target: /run/secrets/db_password
     networks:
       - vcs-internal
     healthcheck:
@@ -274,11 +275,11 @@ services:
     environment:
       VCS_SERVER_PORT: "8083"
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_PORT: "26257"
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_PORT: "26257"
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
@@ -288,8 +289,6 @@ services:
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
     secrets:
-      - source: db_password
-        target: /run/secrets/db_password
       - source: jwt_secret
         target: /run/secrets/jwt_secret
     networks:
@@ -322,19 +321,17 @@ services:
     environment:
       VCS_SERVER_PORT: "8085"
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: "5432"
+      VCS_DATABASE_MASTER_PORT: "26257"
       VCS_DATABASE_MASTER_USER: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: "5432"
+      VCS_DATABASE_SLAVE_PORT: "26257"
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
     secrets:
-      - source: db_password
-        target: /run/secrets/db_password
       - source: firebase_credentials
         target: /run/secrets/firebase_credentials
     networks:
@@ -443,21 +440,8 @@ services:
     networks:
       - vcs-internal
 
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    deploy:
-      mode: global
-      resources:
-        limits:
-          memory: 32M
-    environment:
-      DATA_SOURCE_NAME: "postgresql://postgres@db:5432/trafficservice?sslmode=disable"
-      DATA_SOURCE_PASS_FILE: /run/secrets/db_password
-    secrets:
-      - source: db_password
-        target: /run/secrets/db_password
-    networks:
-      - vcs-internal
+  # CockroachDB exposes Prometheus metrics natively at http://db:8080/_status/vars
+  # No separate exporter needed — prometheus.yml scrapes it directly.
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
