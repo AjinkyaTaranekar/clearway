@@ -7,21 +7,20 @@ services:
   # ── Data layer ─────────────────────────────────────────────────────────────
 
   db:
-    image: postgres:16-alpine
+    image: cockroachdb/cockroach:v24.1.0
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: trafficservice
+    command: start-single-node --insecure
     ports:
-      - "5432:5432"
+      - "26257:26257"
+      - "18080:8080"  # Admin UI (avoids conflict with cadvisor on 8080)
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - crdb_data:/cockroach/cockroach-data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
@@ -47,14 +46,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8082
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -79,14 +76,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8081
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -111,14 +106,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8084
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -143,14 +136,12 @@ services:
     environment:
       VCS_SERVER_PORT: 8083
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_DATABASE_SLAVE_HOST: db
-      VCS_DATABASE_SLAVE_PORT: 5432
+      VCS_DATABASE_SLAVE_PORT: 26257
       VCS_DATABASE_SLAVE_USER: postgres
-      VCS_DATABASE_SLAVE_PASSWORD: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_SERVICES_CAPACITY_URL: http://capacity-service:8081
@@ -185,9 +176,8 @@ services:
     environment:
       VCS_SERVER_PORT: 8085
       VCS_DATABASE_MASTER_HOST: db
-      VCS_DATABASE_MASTER_PORT: 5432
+      VCS_DATABASE_MASTER_PORT: 26257
       VCS_DATABASE_MASTER_USER: postgres
-      VCS_DATABASE_MASTER_PASSWORD: postgres
       VCS_DATABASE_MASTER_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
@@ -212,5 +202,85 @@ services:
       - capacity-service
       - map-service
 
+  # ── Observability ──────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    depends_on:
+      - cadvisor
+
+  loki:
+    image: grafana/loki:2.9.4
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    restart: unless-stopped
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+
+  # CockroachDB exposes Prometheus metrics natively at http://db:8080/_status/vars
+  # No separate exporter needed — prometheus.yml scrapes it directly.
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
-  pg_data:
+  crdb_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:

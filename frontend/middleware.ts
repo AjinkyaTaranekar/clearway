@@ -5,9 +5,9 @@
 // Vercel injects x-vercel-ip-country on every request automatically.
 // Fill in LB_US and LB_APAC once those VMs are provisioned.
 
-const LB_EU   = 'http://34.78.55.96'
-const LB_US   = process.env.LB_US_IP   ? `http://${process.env.LB_US_IP}`   : LB_EU  // falls back to EU until US cell is up
-const LB_APAC = process.env.LB_APAC_IP ? `http://${process.env.LB_APAC_IP}` : LB_EU  // falls back to EU until APAC cell is up
+const LB_EU   = 'http://34.78.55.96.nip.io'
+const LB_US   = process.env.LB_US_IP   ? `http://${process.env.LB_US_IP}.nip.io`   : LB_EU  // falls back to EU until US cell is up
+const LB_APAC = process.env.LB_APAC_IP ? `http://${process.env.LB_APAC_IP}.nip.io` : LB_EU  // falls back to EU until APAC cell is up
 
 const EU_COUNTRIES = new Set([
   'GB','IE','DE','FR','NL','BE','IT','ES','PT','SE','NO','DK','FI',

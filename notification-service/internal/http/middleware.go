@@ -14,6 +14,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/http/handlers"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/errors"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/logger"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/metrics"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/response"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/pkg/tracing"
 )
@@ -57,6 +58,36 @@ func CORSMiddleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// statusRecorder wraps ResponseWriter to capture the HTTP status code.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// MetricsMiddleware records HTTP request counts and latency for Prometheus.
+func MetricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" || r.URL.Path == "/health" || r.URL.Path == "/ready" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(rec, r)
+		metrics.HttpRequestsTotal.WithLabelValues(
+			metrics.ServiceName, r.Method, r.URL.Path, fmt.Sprintf("%d", rec.status),
+		).Inc()
+		metrics.HttpRequestDuration.WithLabelValues(
+			metrics.ServiceName, r.Method, r.URL.Path,
+		).Observe(time.Since(start).Seconds())
 	})
 }
 

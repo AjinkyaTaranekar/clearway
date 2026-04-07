@@ -2,6 +2,7 @@ package http
 
 import (
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
 
 	_ "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/docs"
@@ -31,8 +32,10 @@ func NewRouter(health *handlers.HealthHandler, auth *handlers.AuthHandler, profi
 func (r *Router) Setup() *mux.Router {
 	r.mux.Use(CORSMiddleware)
 	r.mux.Use(tracing.Middleware)
+	r.mux.Use(MetricsMiddleware)
 	r.mux.Use(LoggingMiddleware(r.logger))
 
+	r.mux.Handle("/metrics", promhttp.Handler())
 	r.mux.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 	r.mux.HandleFunc("/health", r.healthHandler.Health).Methods("GET")
 	r.mux.HandleFunc("/ready", r.healthHandler.Readiness).Methods("GET")

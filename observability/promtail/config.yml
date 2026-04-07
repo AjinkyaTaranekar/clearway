@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+    relabel_configs:
+      # Use container name as the stream label
+      - source_labels: [__meta_docker_container_name]
+        regex: '/?(.*)'
+        target_label: container
+      # Capture the compose service name
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      # Only keep VCS containers (drop infra noise like promtail itself)
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: 'iam-service|capacity-service|journey-service|map-service|notification-service|nginx|db|redis'
+        action: keep
+    pipeline_stages:
+      # Parse zerolog JSON logs emitted by our Go services
+      - json:
+          expressions:
+            level:   level
+            message: message
+            time:    time
+            method:  method
+            path:    path
+            duration: duration
+      - labels:
+          level:
+          method:
+          path:
+      - timestamp:
+          source: time
+          format: RFC3339
