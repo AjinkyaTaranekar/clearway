@@ -1,19 +1,8 @@
 import { AlertCircle, ChevronRight, Clock, Info, MapPin } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
-
-const ORIGINS = [
-  'City Centre', 'North Gate', 'South Terminal', 'East Quay',
-  'Westside Depot', 'Northfield', 'Riverside', 'Airport',
-  'Industrial Park', 'Port Terminal', 'West Industrial',
-];
-
-const DESTINATIONS = [
-  'Airport North', 'City Centre', 'North Gate', 'South Terminal',
-  'East Quay', 'Central Market', 'Industrial Park', 'University District',
-  'West Depot', 'Riverside', 'Port Terminal', 'North Suburb',
-];
+import { getMapNodes, MapNode } from '../../services/mapApi';
 
 const VEHICLE_TYPES = [
   { value: 'Car', label: 'Car', icon: '🚗', desc: 'Standard passenger vehicle' },
@@ -25,6 +14,8 @@ const VEHICLE_TYPES = [
 interface FormData {
   origin: string;
   destination: string;
+  originNode?: MapNode;
+  destNode?: MapNode;
   departureTime: string;
   vehicleType: string;
 }
@@ -49,6 +40,13 @@ export default function BookJourneyPage() {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [mapNodes, setMapNodes] = useState<MapNode[]>([]);
+
+  useEffect(() => {
+    getMapNodes()
+      .then(setMapNodes)
+      .catch(() => {}); // fall back to empty — selects will just be empty
+  }, []);
 
   // Min time = now + 60 min
   const minTime = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
@@ -78,9 +76,21 @@ export default function BookJourneyPage() {
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    await bookJourney(form);
-    setSubmitting(false);
-    navigate('/driver/booking-result');
+    try {
+      await bookJourney({
+        origin: form.origin,
+        destination: form.destination,
+        originCoords: form.originNode ? { lat: form.originNode.lat, lng: form.originNode.lng } : undefined,
+        destCoords: form.destNode ? { lat: form.destNode.lat, lng: form.destNode.lng } : undefined,
+        departureTime: form.departureTime,
+        vehicleType: form.vehicleType,
+      });
+      navigate('/driver/booking-result');
+    } catch {
+      navigate('/driver/booking-result');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const formatDateTime = (dt: string) => {
@@ -159,7 +169,10 @@ export default function BookJourneyPage() {
                   <select
                     id="origin"
                     value={form.origin}
-                    onChange={(e) => setForm({ ...form, origin: e.target.value })}
+                    onChange={(e) => {
+                      const node = mapNodes.find((n) => n.node_id === e.target.value);
+                      setForm({ ...form, origin: node?.label ?? e.target.value, originNode: node });
+                    }}
                     className="w-full pl-9 pr-4 py-2.5 rounded-lg appearance-none outline-none"
                     style={{
                       border: errors.origin ? '1.5px solid #B42318' : '1.5px solid var(--border)',
@@ -168,7 +181,7 @@ export default function BookJourneyPage() {
                     }}
                   >
                     <option value="">Select origin</option>
-                    {ORIGINS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    {mapNodes.map((n) => <option key={n.node_id} value={n.node_id}>{n.label}</option>)}
                   </select>
                 </div>
                 {errors.origin && (
@@ -187,8 +200,11 @@ export default function BookJourneyPage() {
                   <MapPin size={16} color="#B65C3A" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <select
                     id="destination"
-                    value={form.destination}
-                    onChange={(e) => setForm({ ...form, destination: e.target.value })}
+                    value={form.destNode?.node_id ?? ''}
+                    onChange={(e) => {
+                      const node = mapNodes.find((n) => n.node_id === e.target.value);
+                      setForm({ ...form, destination: node?.label ?? e.target.value, destNode: node });
+                    }}
                     className="w-full pl-9 pr-4 py-2.5 rounded-lg appearance-none outline-none"
                     style={{
                       border: errors.destination ? '1.5px solid #B42318' : '1.5px solid var(--border)',
@@ -197,7 +213,9 @@ export default function BookJourneyPage() {
                     }}
                   >
                     <option value="">Select destination</option>
-                    {DESTINATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    {mapNodes
+                      .filter((n) => n.node_id !== form.originNode?.node_id)
+                      .map((n) => <option key={n.node_id} value={n.node_id}>{n.label}</option>)}
                   </select>
                 </div>
                 {errors.destination && (

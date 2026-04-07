@@ -1,58 +1,109 @@
-const JWT_SECRET = 'dev-secret';
 const TOKEN_KEY = 'cw_token';
+const REFRESH_KEY = 'cw_refresh';
 
-function base64urlEncode(str: string): string {
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+const BASE_URL = import.meta.env.VITE_API_URL ?? '';
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'driver' | 'admin';
+  vehicle_type?: string;
 }
 
-function base64urlEncodeBytes(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+export interface AuthResult {
+  access_token: string;
+  refresh_token: string;
+  user: AuthUser;
+}
+
+async function iamPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error?.message ?? json.message ?? `HTTP ${res.status}`);
   }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  // IAM service wraps response in { success, data }
+  return (json.data ?? json) as T;
 }
 
-/**
- * Generates a HS256 JWT using the Web Crypto API.
- * Stores the token in localStorage under 'cw_token'.
- */
-export async function generateJWT(userId: string, role: 'driver' | 'admin'): Promise<string> {
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const now = Math.floor(Date.now() / 1000);
-  const payload = { sub: userId, role, iat: now, exp: now + 86400 };
+export async function loginApi(email: string, password: string): Promise<AuthResult> {
+  const result = await iamPost<AuthResult>('/api/v1/auth/login', { email, password });
+  storeTokens(result.access_token, result.refresh_token);
+  return result;
+}
 
-  const headerB64 = base64urlEncode(JSON.stringify(header));
-  const payloadB64 = base64urlEncode(JSON.stringify(payload));
-  const signingInput = `${headerB64}.${payloadB64}`;
+export async function registerApi(params: {
+  name: string;
+  email: string;
+  password: string;
+  vehicle_type: string;
+  license_number: string;
+}): Promise<AuthResult> {
+  const result = await iamPost<AuthResult>('/api/v1/auth/register', {
+    name: params.name,
+    email: params.email,
+    password: params.password,
+    vehicle_type: params.vehicle_type,
+    license_info: { license_number: params.license_number },
+  });
+  storeTokens(result.access_token, result.refresh_token);
+  return result;
+}
 
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(JWT_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
+export async function refreshTokens(): Promise<string> {
+  const refresh = getRefreshToken();
+  if (!refresh) throw new Error('No refresh token');
+  const result = await iamPost<{ access_token: string; refresh_token: string }>(
+    '/api/v1/auth/refresh',
+    { refresh_token: refresh },
   );
+  storeTokens(result.access_token, result.refresh_token);
+  return result.access_token;
+}
 
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(signingInput),
-  );
+export async function logoutApi(): Promise<void> {
+  const refresh = getRefreshToken();
+  const token = getToken();
+  if (!refresh) return;
+  try {
+    await fetch(`${BASE_URL}/api/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ refresh_token: refresh }),
+    });
+  } catch {
+    // ignore logout errors — clear local state regardless
+  }
+}
 
-  const token = `${signingInput}.${base64urlEncodeBytes(signature)}`;
-  localStorage.setItem(TOKEN_KEY, token);
-  return token;
+export function storeTokens(access: string, refresh: string): void {
+  localStorage.setItem(TOKEN_KEY, access);
+  localStorage.setItem(REFRESH_KEY, refresh);
 }
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY);
 }
+
+export function clearTokens(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+}
+
+// Keep backward-compat alias used by journeyApi
+export const clearToken = clearTokens;
 
 export function authHeaders(): Record<string, string> {
   const token = getToken();

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useApp, UserRole } from '../context/AppContext';
-import { Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { registerApi } from '../services/auth';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 const features = [
   { icon: '🗺️', title: 'Pre-book your route', desc: 'Check road capacity before you drive' },
@@ -9,46 +10,86 @@ const features = [
   { icon: '📍', title: 'Live journey tracking', desc: 'Follow your journey status in real time' },
 ];
 
+const VEHICLE_TYPES = [
+  { value: 'car', label: 'Car' },
+  { value: 'van', label: 'Van' },
+  { value: 'motorcycle', label: 'Motorcycle' },
+  { value: 'truck', label: 'HGV' },
+];
+
+type Tab = 'login' | 'register';
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login, isAuthenticated, user } = useApp();
 
-  const [role, setRole] = useState<UserRole>('driver');
+  const [tab, setTab] = useState<Tab>('login');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  // Login fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
-  const [loading, setLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Register fields
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regVehicle, setRegVehicle] = useState('car');
+  const [regLicense, setRegLicense] = useState('');
+
   if (isAuthenticated && user) {
     if (user.role === 'admin') navigate('/admin');
     else navigate('/driver');
   }
 
-  const validate = () => {
-    const e: typeof errors = {};
-    if (!email) e.email = 'Email is required.';
-    else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Enter a valid email address.';
-    if (!password) e.password = 'Password is required.';
-    else if (password.length < 6) e.password = 'Password must be at least 6 characters.';
-    return e;
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) { setFormError('Email and password are required.'); return; }
+    setFormError('');
+    setLoading(true);
+    try {
+      await login(email, password);
+      // navigate happens via isAuthenticated redirect above
+    } catch (err: any) {
+      setFormError(err.message ?? 'Invalid email or password.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
+    if (!regName || !regEmail || !regPassword || !regLicense) {
+      setFormError('All fields are required.');
       return;
     }
-    setErrors({});
+    if (regPassword.length < 8) { setFormError('Password must be at least 8 characters.'); return; }
+    setFormError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
-    login(email, password, role);
-    setLoading(false);
-    navigate(role === 'admin' ? '/admin' : '/driver');
+    try {
+      // Register creates the account, then login stores the session
+      await registerApi({
+        name: regName,
+        email: regEmail,
+        password: regPassword,
+        vehicle_type: regVehicle,
+        license_number: regLicense,
+      });
+      await login(regEmail, regPassword);
+    } catch (err: any) {
+      setFormError(err.message ?? 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const inputStyle = (hasError = false) => ({
+    border: hasError ? '1.5px solid #B42318' : '1.5px solid var(--border)',
+    background: 'white',
+    color: '#1F2421',
+  });
 
   return (
     <div className="min-h-screen flex" style={{ background: '#F8F6F2' }}>
@@ -59,10 +100,7 @@ export default function LoginPage() {
       >
         <div>
           <div className="flex items-center gap-3 mb-16">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: '#2F6B55' }}
-            >
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#2F6B55' }}>
               <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
                 <path d="M8 1.5L14 8L8 14.5L2 8L8 1.5Z" fill="white" opacity="0.25" />
                 <path d="M8 4L11.5 8L8 12L4.5 8L8 4Z" fill="white" opacity="0.55" />
@@ -91,19 +129,14 @@ export default function LoginPage() {
           <div className="space-y-5">
             {features.map((f) => (
               <div key={f.title} className="flex items-start gap-4">
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg"
-                  style={{ background: 'rgba(255,255,255,0.06)' }}
-                >
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg" style={{ background: 'rgba(255,255,255,0.06)' }}>
                   {f.icon}
                 </div>
                 <div>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: '0.9375rem', color: 'white', marginBottom: '2px' }}>
                     {f.title}
                   </div>
-                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.875rem' }}>
-                    {f.desc}
-                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.875rem' }}>{f.desc}</div>
                 </div>
               </div>
             ))}
@@ -120,131 +153,77 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: '#2F6B55' }}
-            >
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#2F6B55' }}>
               <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="8" r="2.5" fill="white" />
                 <path d="M8 4L11.5 8L8 12L4.5 8L8 4Z" fill="white" opacity="0.5" />
               </svg>
             </div>
-            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: '1.25rem', color: '#1F2421' }}>
-              Clearway
-            </span>
+            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: '1.25rem', color: '#1F2421' }}>Clearway</span>
           </div>
 
           <div className="bg-white rounded-2xl p-8 shadow-sm" style={{ border: '1px solid var(--border)' }}>
-            <div className="mb-7">
-              <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.5rem', color: '#1F2421', marginBottom: '4px' }}>
-                Welcome back
-              </h1>
-              <p style={{ color: '#4E5953', fontSize: '0.9375rem' }}>
-                Sign in to your account to continue.
-              </p>
-            </div>
-
-            {/* Role selector */}
-            <div
-              className="flex rounded-lg p-1 mb-6"
-              style={{ background: '#F0EDE7' }}
-            >
-              {(['driver', 'admin'] as UserRole[]).map((r) => (
+            {/* Tab switcher */}
+            <div className="flex rounded-lg p-1 mb-6" style={{ background: '#F0EDE7' }}>
+              {(['login', 'register'] as Tab[]).map((t) => (
                 <button
-                  key={r}
-                  onClick={() => setRole(r)}
+                  key={t}
+                  onClick={() => { setTab(t); setFormError(''); }}
                   className="flex-1 py-2 rounded-md text-sm transition-all duration-150"
                   style={{
-                    background: role === r ? 'white' : 'transparent',
-                    color: role === r ? '#1F2421' : '#4E5953',
-                    fontWeight: role === r ? 600 : 400,
-                    boxShadow: role === r ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    background: tab === t ? 'white' : 'transparent',
+                    color: tab === t ? '#1F2421' : '#4E5953',
+                    fontWeight: tab === t ? 600 : 400,
+                    boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                     fontFamily: 'var(--font-body)',
                   }}
                 >
-                  {r === 'driver' ? '🚗 Driver' : '⚙️ Admin'}
+                  {t === 'login' ? 'Sign in' : 'Create account'}
                 </button>
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} noValidate>
-              {errors.form && (
-                <div
-                  className="flex items-center gap-2 p-3 rounded-lg mb-4"
-                  style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }}
-                  role="alert"
-                >
-                  <AlertCircle size={16} />
-                  <span className="text-sm">{errors.form}</span>
-                </div>
-              )}
+            {formError && (
+              <div
+                className="flex items-center gap-2 p-3 rounded-lg mb-4"
+                style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }}
+                role="alert"
+              >
+                <AlertCircle size={16} />
+                <span className="text-sm">{formError}</span>
+              </div>
+            )}
 
-              <div className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="email"
-                    className="block mb-1.5"
-                    style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}
-                  >
-                    Email address
-                  </label>
+            {tab === 'login' ? (
+              <form onSubmit={handleLogin} noValidate>
+                <div className="mb-4">
+                  <div className="mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Email address</div>
                   <input
-                    id="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={role === 'driver' ? 'driver@example.com' : 'admin@example.com'}
-                    aria-invalid={!!errors.email}
-                    aria-describedby={errors.email ? 'email-error' : undefined}
+                    placeholder="you@example.com"
                     className="w-full px-3.5 py-2.5 rounded-lg outline-none transition-all"
-                    style={{
-                      border: errors.email ? '1.5px solid #B42318' : '1.5px solid var(--border)',
-                      background: 'white',
-                      color: '#1F2421',
-                    }}
+                    style={inputStyle()}
                     onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
-                    onBlur={(e) => (e.target.style.borderColor = errors.email ? '#B42318' : 'var(--border)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
                   />
-                  {errors.email && (
-                    <p id="email-error" className="mt-1.5 text-sm" style={{ color: '#B42318' }} role="alert">
-                      {errors.email}
-                    </p>
-                  )}
                 </div>
 
-                <div>
+                <div className="mb-6">
                   <div className="flex items-center justify-between mb-1.5">
-                    <label
-                      htmlFor="password"
-                      style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}
-                    >
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      className="text-sm"
-                      style={{ color: '#2F6B55', fontWeight: 500 }}
-                    >
-                      Forgot password?
-                    </button>
+                    <span style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Password</span>
                   </div>
                   <div className="relative">
                     <input
-                      id="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      aria-invalid={!!errors.password}
-                      aria-describedby={errors.password ? 'password-error' : undefined}
                       className="w-full px-3.5 py-2.5 pr-10 rounded-lg outline-none transition-all"
-                      style={{
-                        border: errors.password ? '1.5px solid #B42318' : '1.5px solid var(--border)',
-                        background: 'white',
-                        color: '#1F2421',
-                      }}
+                      style={inputStyle()}
                       onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
-                      onBlur={(e) => (e.target.style.borderColor = errors.password ? '#B42318' : 'var(--border)')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
                     />
                     <button
                       type="button"
@@ -252,65 +231,123 @@ export default function LoginPage() {
                       className="absolute right-3 top-1/2 -translate-y-1/2"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showPassword ? (
-                        <EyeOff size={16} color="#4E5953" />
-                      ) : (
-                        <Eye size={16} color="#4E5953" />
-                      )}
+                      {showPassword ? <EyeOff size={16} color="#4E5953" /> : <Eye size={16} color="#4E5953" />}
                     </button>
                   </div>
-                  {errors.password && (
-                    <p id="password-error" className="mt-1.5 text-sm" style={{ color: '#B42318' }} role="alert">
-                      {errors.password}
-                    </p>
-                  )}
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-6 py-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-2"
-                style={{
-                  background: loading ? '#4E5953' : '#2F6B55',
-                  color: 'white',
-                  fontWeight: 600,
-                  fontSize: '0.9375rem',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                }}
-                onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#245343')}
-                onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#2F6B55')}
-              >
-                {loading ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Signing in…
-                  </>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-            </form>
-
-            <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
-              <p className="text-center text-sm" style={{ color: '#4E5953' }}>
-                Don't have an account?{' '}
-                <button className="font-medium" style={{ color: '#2F6B55' }}>
-                  Create one
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-2"
+                  style={{
+                    background: loading ? '#4E5953' : '#2F6B55',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.9375rem',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing in…</>
+                  ) : 'Sign in'}
                 </button>
-              </p>
-            </div>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister} noValidate>
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <div className="mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Full name</div>
+                    <input
+                      type="text"
+                      value={regName}
+                      onChange={(e) => setRegName(e.target.value)}
+                      placeholder="Alex Chen"
+                      className="w-full px-3.5 py-2.5 rounded-lg outline-none transition-all"
+                      style={inputStyle()}
+                      onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                    />
+                  </div>
 
-            {/* Demo hint */}
-            <div
-              className="mt-4 p-3 rounded-lg flex items-start gap-2"
-              style={{ background: '#F0EDE7' }}
-            >
-              <CheckCircle2 size={15} color="#2F6B55" className="mt-0.5 flex-shrink-0" />
-              <p style={{ color: '#4E5953', fontSize: '0.8125rem', lineHeight: 1.5 }}>
-                <strong style={{ color: '#1F2421' }}>Demo mode.</strong> Enter any valid email and a password of 6+ characters to sign in.
-              </p>
-            </div>
+                  <div>
+                    <div className="mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Email address</div>
+                    <input
+                      type="email"
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full px-3.5 py-2.5 rounded-lg outline-none transition-all"
+                      style={inputStyle()}
+                      onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Password</div>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        placeholder="Min 8 characters"
+                        className="w-full px-3.5 py-2.5 pr-10 rounded-lg outline-none transition-all"
+                        style={inputStyle()}
+                        onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
+                        onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                      />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {showPassword ? <EyeOff size={16} color="#4E5953" /> : <Eye size={16} color="#4E5953" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Vehicle type</div>
+                    <select
+                      value={regVehicle}
+                      onChange={(e) => setRegVehicle(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-lg outline-none appearance-none"
+                      style={inputStyle()}
+                    >
+                      {VEHICLE_TYPES.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>Licence number</div>
+                    <input
+                      type="text"
+                      value={regLicense}
+                      onChange={(e) => setRegLicense(e.target.value)}
+                      placeholder="DL-123456"
+                      className="w-full px-3.5 py-2.5 rounded-lg outline-none transition-all"
+                      style={inputStyle()}
+                      onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-2"
+                  style={{
+                    background: loading ? '#4E5953' : '#2F6B55',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.9375rem',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating account…</>
+                  ) : 'Create account'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

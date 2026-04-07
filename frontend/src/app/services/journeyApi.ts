@@ -108,11 +108,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 export async function createJourney(params: {
   origin: string;
   destination: string;
+  originCoords?: { lat: number; lng: number };
+  destCoords?: { lat: number; lng: number };
   departureTime: string;
   vehicleType: string;
 }): Promise<Journey> {
-  const originCoords = getCoordinates(params.origin);
-  const destCoords = getCoordinates(params.destination);
+  const originCoords = params.originCoords ?? getCoordinates(params.origin);
+  const destCoords = params.destCoords ?? getCoordinates(params.destination);
 
   const idempotencyKey = crypto.randomUUID();
   const departureISO = new Date(params.departureTime).toISOString();
