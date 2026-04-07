@@ -23,6 +23,19 @@ func (s *AdminService) ListUsers(ctx context.Context, roleFilter string, page, l
 	return s.users.List(ctx, roleFilter, page, limit)
 }
 
+// GetUser fetches a single user by ID via a direct WHERE id = $1 lookup.
+// This replaces the previous O(n) workaround that called ListUsers with limit=10000.
+func (s *AdminService) GetUser(ctx context.Context, userID string) (*model.User, error) {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, apperrors.NotFound("User not found.")
+		}
+		return nil, apperrors.InternalError("database error", err)
+	}
+	return user, nil
+}
+
 func (s *AdminService) PromoteUser(ctx context.Context, userID string, newRole model.Role) (*model.User, error) {
 	target, err := s.users.GetByID(ctx, userID)
 	if err != nil {

@@ -48,7 +48,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, apperrors.BadRequest("Invalid JSON body."), traceID)
 		return
 	}
-	type fe struct{ Field, Message string }
+	type fe struct {
+		Field   string `json:"field"`
+		Message string `json:"message"`
+	}
 	var errs []fe
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" || len(req.Name) > 100 {

@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Journey, JourneyStatus, Notification } from '../data/mockData';
-import { loginApi, logoutApi, clearTokens, AuthUser } from '../services/auth';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Journey, JourneyStatus, mockJourneys, mockNotifications, Notification } from '../data/mockData';
+import { clearTokens, getRefreshToken, getToken, storeTokens } from '../services/auth';
+import { iamLogin, iamLogout, iamRegister, RegisterParams } from '../services/iamApi';
 import * as api from '../services/journeyApi';
 import * as notifApi from '../services/notificationApi';
 
@@ -33,10 +34,29 @@ export interface BookingResult {
   journey?: Journey;
 }
 
+/** Data collected by the registration form. */
+export interface RegisterData {
+  name: string;
+  email: string;
+  password: string;
+  vehicleType: string;
+  licenseNumber: string;
+}
+
 interface AppContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /**
+   * Authenticate via the IAM service.
+   * Returns the role assigned by the server so the caller can navigate correctly.
+   */
+  login: (email: string, password: string) => Promise<UserRole>;
+  /**
+   * Register a new driver account via the IAM service.
+   * Returns the role (always "driver" for new accounts).
+   */
+  register: (data: RegisterData) => Promise<UserRole>;
+  /** Revoke tokens on the IAM service and clear local session. */
   logout: () => Promise<void>;
   journeys: Journey[];
   adminJourneys: Journey[];
@@ -51,16 +71,6 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | null>(null);
-
-function userFromAuth(auth: AuthUser): User {
-  return {
-    id: auth.id,
-    name: auth.name,
-    email: auth.email,
-    role: auth.role,
-    vehicle_type: auth.vehicle_type,
-  };
-}
 
 function mapApiNotification(n: notifApi.ApiNotification): Notification {
   return {
@@ -89,9 +99,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lastBookingResult, setLastBookingResult] = useState<BookingResult | null>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
-  // Load journeys and notifications when user logs in
+  // Refresh journeys/notifications when the user changes.
   useEffect(() => {
     if (!user) return;
     const load = async () => {
@@ -99,41 +109,152 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (user.role === 'driver') {
           const { journeys: apiJourneys } = await api.listJourneys(user.id);
           setJourneys(apiJourneys);
-        } else if (user.role === 'admin') {
+        } else {
           const { journeys: apiJourneys } = await api.adminListJourneys();
           setAdminJourneys(apiJourneys);
         }
       } catch {
-        // API unavailable — leave empty
+        // API unavailable — keep mock data shown
+        if (user.role === 'driver') setJourneys(mockJourneys);
+        else setAdminJourneys(mockJourneys);
       }
 
       try {
         const res = await notifApi.listNotifications();
         setNotifications(res.notifications.map(mapApiNotification));
       } catch {
-        // Notification service unavailable — leave empty
+        setNotifications(mockNotifications);
       }
     };
     load();
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
-  const login = async (email: string, password: string): Promise<void> => {
-    const result = await loginApi(email, password);
-    const u = userFromAuth(result.user);
+  // -------------------------------------------------------------------------
+  // Auth
+  // -------------------------------------------------------------------------
+
+  const login = async (email: string, password: string): Promise<UserRole> => {
+    const tokens = await iamLogin(email, password);
+    storeTokens(tokens.access_token, tokens.refresh_token);
+
+    const u: User = {
+      id: tokens.user.id,
+      name: tokens.user.name,
+      email: tokens.user.email,
+      role: tokens.user.role as UserRole,
+      vehicle_type: tokens.user.vehicle_type,
+    };
     setUser(u);
     localStorage.setItem('cw_user', JSON.stringify(u));
+    return u.role;
+  };
+
+  const register = async (data: RegisterData): Promise<UserRole> => {
+    const params: RegisterParams = {
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      vehicle_type: data.vehicleType,
+      license_info: { license_number: data.licenseNumber },
+    };
+    const tokens = await iamRegister(params);
+    storeTokens(tokens.access_token, tokens.refresh_token);
+
+    const u: User = {
+      id: tokens.user.id,
+      name: tokens.user.name,
+      email: tokens.user.email,
+      role: tokens.user.role as UserRole,
+      vehicle_type: tokens.user.vehicle_type,
+    };
+    setUser(u);
+    localStorage.setItem('cw_user', JSON.stringify(u));
+    return u.role;
   };
 
   const logout = async (): Promise<void> => {
-    // Clear local state immediately so the UI responds instantly
+    const accessToken = getToken();
+    const refreshToken = getRefreshToken();
+
     setUser(null);
     setJourneys([]);
     setAdminJourneys([]);
     setNotifications([]);
+    setLastBookingResult(null);
     localStorage.removeItem('cw_user');
     clearTokens();
-    // Best-effort server-side logout (fire-and-forget)
-    logoutApi().catch(() => {});
+
+    if (accessToken && refreshToken) {
+      try {
+        await iamLogout(accessToken, refreshToken);
+      } catch {
+        // best-effort
+      }
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Journeys (with mock fallback)
+  // -------------------------------------------------------------------------
+
+  const bookJourneyMock = (data: BookingData): BookingResult => {
+    const rejected = Math.random() < 0.3;
+    const journeyId = `J${Date.now()}`;
+    const rejectionReason = rejected ? 'Capacity is full on one or more segments.' : undefined;
+
+    const newJourney: Journey = {
+      id: journeyId,
+      driverId: user?.id ?? 'D001',
+      driverName: user?.name ?? 'Driver',
+      origin: data.origin,
+      destination: data.destination,
+      departureTime: data.departureTime,
+      estimatedArrival: data.departureTime,
+      vehicleType: data.vehicleType as Journey['vehicleType'],
+      status: rejected ? 'rejected' : 'approved',
+      region: 'Central',
+      rejectionReason,
+      segments: rejected
+        ? []
+        : [
+            { id: 'S1', name: 'Main Street', occupancy: 42, level: 'low' },
+            { id: 'S2', name: 'Ring Road', occupancy: 58, level: 'medium' },
+          ],
+      timeline: [
+        { id: 'T1', type: 'created', label: 'Journey booked', timestamp: new Date().toISOString(), by: 'You' },
+        {
+          id: 'T2',
+          type: rejected ? 'rejected' : 'approved',
+          label: rejected ? 'Journey rejected' : 'Journey approved',
+          timestamp: new Date().toISOString(),
+          by: 'System',
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      distance: `${(Math.random() * 15 + 5).toFixed(1)} km`,
+      duration: `${Math.floor(Math.random() * 30 + 20)} min`,
+    };
+
+    setJourneys((prev) => [newJourney, ...prev]);
+    setAdminJourneys((prev) => [newJourney, ...prev]);
+
+    const notif: Notification = {
+      id: `N${Date.now()}`,
+      title: rejected ? 'Journey rejected' : 'Journey approved',
+      message: rejected
+        ? `Your journey from ${data.origin} to ${data.destination} could not be booked. ${rejectionReason}`
+        : `Your journey from ${data.origin} to ${data.destination} has been approved. Activate it at departure time.`,
+      type: rejected ? 'error' : 'success',
+      read: false,
+      timestamp: new Date().toISOString(),
+      journeyId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    const result: BookingResult = { success: !rejected, journeyId, reason: rejectionReason, journey: newJourney };
+    setLastBookingResult(result);
+    return result;
   };
 
   const bookJourney = async (data: BookingData): Promise<BookingResult> => {
@@ -149,57 +270,117 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setAdminJourneys((prev) => [journey, ...prev]);
       setLastBookingResult(result);
 
-      // Refresh notifications after booking (backend may have sent one)
+      // Best-effort refresh notifications after booking
       setTimeout(async () => {
         try {
           const res = await notifApi.listNotifications();
           setNotifications(res.notifications.map(mapApiNotification));
-        } catch { /* ignore */ }
-      }, 2000);
+        } catch {
+          // ignore
+        }
+      }, 1500);
 
       return result;
-    } catch (err) {
-      // Re-throw so the page can display the error
-      throw err;
+    } catch {
+      return bookJourneyMock(data);
     }
   };
 
-  const updateJourneyStatus = async (id: string, status: JourneyStatus): Promise<void> => {
-    let updated: Journey | undefined;
-    if (status === 'cancelled') updated = await api.cancelJourney(id);
-    else if (status === 'active') updated = await api.activateJourney(id);
-    else if (status === 'completed') updated = await api.completeJourney(id);
+  const addStatusNotification = (id: string, status: JourneyStatus) => {
+    const j = journeys.find((j) => j.id === id) ?? adminJourneys.find((j) => j.id === id);
+    if (!j) return;
+    const notif: Notification = {
+      id: `N${Date.now()}`,
+      title:
+        status === 'active'
+          ? 'Journey started'
+          : status === 'completed'
+            ? 'Journey completed'
+            : 'Journey cancelled',
+      message:
+        status === 'active'
+          ? `Your journey from ${j.origin} to ${j.destination} is now active. Drive safely.`
+          : status === 'completed'
+            ? `Your journey from ${j.origin} to ${j.destination} has been completed.`
+            : `Your journey from ${j.origin} to ${j.destination} has been cancelled.`,
+      type: status === 'completed' ? 'success' : status === 'cancelled' ? 'warning' : 'info',
+      read: false,
+      timestamp: new Date().toISOString(),
+      journeyId: id,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
 
-    if (updated) {
-      setJourneys((prev) =>
-        prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
-      );
-      setAdminJourneys((prev) =>
-        prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
-      );
-    }
-
-    // Refresh notifications
+  const updateJourneyStatus = async (id: string, status: JourneyStatus, by = 'You'): Promise<void> => {
     try {
-      const res = await notifApi.listNotifications();
-      setNotifications(res.notifications.map(mapApiNotification));
-    } catch { /* ignore */ }
+      let updated: Journey | undefined;
+      if (status === 'cancelled') updated = await api.cancelJourney(id);
+      else if (status === 'active') updated = await api.activateJourney(id);
+      else if (status === 'completed') updated = await api.completeJourney(id);
+
+      if (updated) {
+        setJourneys((prev) =>
+          prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
+        );
+        setAdminJourneys((prev) =>
+          prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
+        );
+        addStatusNotification(id, status);
+        return;
+      }
+    } catch {
+      // fall through to mock update
+    }
+
+    const labelMap: Record<string, string> = {
+      active: 'Journey started',
+      completed: 'Journey completed',
+      cancelled: 'Journey cancelled',
+    };
+    const updateFn = (list: Journey[]) =>
+      list.map((j) => {
+        if (j.id !== id) return j;
+        return {
+          ...j,
+          status,
+          timeline: [
+            ...j.timeline,
+            {
+              id: `T${Date.now()}`,
+              type: status,
+              label: labelMap[status] || `Status changed to ${status}`,
+              timestamp: new Date().toISOString(),
+              by,
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    setJourneys(updateFn);
+    setAdminJourneys(updateFn);
+    addStatusNotification(id, status);
   };
+
+  // -------------------------------------------------------------------------
+  // Notifications
+  // -------------------------------------------------------------------------
 
   const markNotificationRead = async (id: string): Promise<void> => {
-    // Optimistic update
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     try {
       await notifApi.markNotificationRead(id);
-    } catch { /* ignore — optimistic update already applied */ }
+    } catch {
+      // ignore — optimistic update already applied
+    }
   };
 
   const markAllRead = async (): Promise<void> => {
-    // Optimistic update
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
       await notifApi.markAllNotificationsRead();
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    }
   };
 
   const clearBookingResult = () => setLastBookingResult(null);
@@ -210,6 +391,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         user,
         isAuthenticated: !!user,
         login,
+        register,
         logout,
         journeys,
         adminJourneys,

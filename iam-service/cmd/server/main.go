@@ -28,30 +28,64 @@ func main() {
 	log := logger.New(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format})
 	log.Info().Msg("starting vcs-iam service")
 
+	// --- Database ---
 	dbPools, err := postgres.NewConnectionPools(
-		postgres.Config{Host: cfg.Database.Master.Host, Port: cfg.Database.Master.Port, User: cfg.Database.Master.User, Password: cfg.Database.Master.Password, DBName: cfg.Database.Master.DBName, MaxOpenConns: cfg.Database.Master.MaxOpenConns, MaxIdleConns: cfg.Database.Master.MaxIdleConns},
-		postgres.Config{Host: cfg.Database.Slave.Host, Port: cfg.Database.Slave.Port, User: cfg.Database.Slave.User, Password: cfg.Database.Slave.Password, DBName: cfg.Database.Slave.DBName, MaxOpenConns: cfg.Database.Slave.MaxOpenConns, MaxIdleConns: cfg.Database.Slave.MaxIdleConns},
+		postgres.Config{
+			Host: cfg.Database.Master.Host, Port: cfg.Database.Master.Port,
+			User: cfg.Database.Master.User, Password: cfg.Database.Master.Password,
+			DBName:       cfg.Database.Master.DBName,
+			MaxOpenConns: cfg.Database.Master.MaxOpenConns, MaxIdleConns: cfg.Database.Master.MaxIdleConns,
+		},
+		postgres.Config{
+			Host: cfg.Database.Slave.Host, Port: cfg.Database.Slave.Port,
+			User: cfg.Database.Slave.User, Password: cfg.Database.Slave.Password,
+			DBName:       cfg.Database.Slave.DBName,
+			MaxOpenConns: cfg.Database.Slave.MaxOpenConns, MaxIdleConns: cfg.Database.Slave.MaxIdleConns,
+		},
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
 	defer dbPools.Close()
 
-	jwksSvc, err := service.NewJWKSService(cfg.IAM.PrivateKeyPath, cfg.IAM.SigningKID, cfg.IAM.PreviousKID, cfg.IAM.PreviousPubKeyPEM)
+	// --- Migrations ---
+	// Apply any pending *.sql files in the migrations/ directory automatically
+	// so a fresh deployment never requires a manual psql step.
+	if err := postgres.RunMigrations(dbPools.Master, "migrations"); err != nil {
+		log.Fatal().Err(err).Msg("database migration failed")
+	}
+	log.Info().Msg("migrations up to date")
+
+	// --- RSA key / JWKS ---
+	jwksSvc, err := service.NewJWKSService(
+		cfg.IAM.PrivateKeyPath,
+		cfg.IAM.SigningKID,
+		cfg.IAM.PreviousKID,
+		cfg.IAM.PreviousPubKeyPEM,
+	)
 	if err != nil {
-		log.Fatal().Err(err).Str("path", cfg.IAM.PrivateKeyPath).Msg("failed to load RSA key — run: openssl genrsa -out keys/private.pem 2048")
+		log.Fatal().Err(err).
+			Str("path", cfg.IAM.PrivateKeyPath).
+			Msg("failed to load RSA key — run: openssl genrsa -out keys/private.pem 2048")
 	}
 	log.Info().Str("kid", cfg.IAM.SigningKID).Msg("RSA key loaded")
 
-	userRepo := repository.NewUserRepo(dbPools.Master)
+	// --- Repositories ---
+	// Master: all writes and auth-path reads (avoids replication-lag failures).
+	// Slave:  admin read-only queries (list/count users) — lag-tolerant.
+	userRepo  := repository.NewUserRepo(dbPools.Master, dbPools.Slave)
 	tokenRepo := repository.NewTokenRepo(dbPools.Master)
-	authSvc := service.NewAuthService(userRepo, tokenRepo, jwksSvc, cfg.IAM.AccessTokenTTL, cfg.IAM.RefreshTokenTTL, cfg.IAM.BcryptCost)
+
+	// --- Services ---
+	authSvc    := service.NewAuthService(dbPools.Master, userRepo, tokenRepo, jwksSvc, cfg.IAM.AccessTokenTTL, cfg.IAM.RefreshTokenTTL, cfg.IAM.BcryptCost)
 	profileSvc := service.NewProfileService(userRepo)
-	adminSvc := service.NewAdminService(userRepo, tokenRepo)
+	adminSvc   := service.NewAdminService(userRepo, tokenRepo)
 	cleanupSvc := service.NewCleanupService(tokenRepo, cfg.IAM.TokenRetentionDays, cfg.IAM.CleanupInterval, log)
 
+	// --- HTTP ---
 	router := httpHandler.NewRouter(
-		handlers.NewHealthHandler(dbPools.Master),
+		// Pass jwksSvc.IsReady so /ready also verifies the RSA key is loaded.
+		handlers.NewHealthHandler(dbPools.Master, jwksSvc.IsReady),
 		handlers.NewAuthHandler(authSvc),
 		handlers.NewProfileHandler(profileSvc),
 		handlers.NewJWKSHandler(jwksSvc),
@@ -67,10 +101,12 @@ func main() {
 		IdleTimeout:  cfg.Server.Timeout * 2,
 	}
 
+	// --- Background jobs ---
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go cleanupSvc.Start(ctx)
 
+	// --- Start server ---
 	go func() {
 		log.Info().Int("port", cfg.Server.Port).Msg("server listening")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -16,6 +16,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/handler"
 	httpHandler "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/http"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/http/handlers"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/middleware"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/repository"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/config"
@@ -102,11 +103,15 @@ func main() {
 		log.Info().Msg("Redis connected")
 	}
 
-	// JWT secret
-	jwtSecret := cfg.Services.JWTSecret
-	if jwtSecret == "" {
-		jwtSecret = "dev-secret"
+	// JWKS validator — fetches RSA public keys from the IAM service to validate
+	// RS256 tokens. Keys are cached for 1 hour and refreshed on cache miss.
+	iamURL := cfg.Services.IAMURL
+	if iamURL == "" {
+		iamURL = "http://iam-service:8082"
 	}
+	jwksURL := iamURL + "/.well-known/jwks.json"
+	jwksValidator := middleware.NewJWKSValidator(jwksURL)
+	log.Info().Str("jwks_url", jwksURL).Msg("JWKS validator configured")
 
 	// Business config defaults
 	minAdvance := cfg.Business.MinAdvanceBookingMinutes
@@ -151,8 +156,8 @@ func main() {
 	journeyHandler := handler.NewJourneyHandler(journeySvc)
 	adminHandler := handler.NewAdminHandler(journeySvc)
 
-	// Router
-	router := httpHandler.NewRouter(healthHandler, journeyHandler, adminHandler, log, jwtSecret)
+	// Router — JWT validation uses RS256 keys from the IAM JWKS endpoint
+	router := httpHandler.NewRouter(healthHandler, journeyHandler, adminHandler, log, jwksValidator)
 	mux := router.Setup()
 
 	// HTTP server

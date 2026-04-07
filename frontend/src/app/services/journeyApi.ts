@@ -2,8 +2,8 @@ import { Journey, JourneyStatus, RouteSegment, VehicleType } from '../data/mockD
 import { authHeaders } from './auth';
 import { getCoordinates, getLocationName } from './coordinates';
 
-// Empty string = relative URLs → Vercel rewrites proxy to GCP backend (production)
-// Set VITE_API_URL=http://localhost to point at local nginx, or a specific service port
+// Prefer relative URLs (nginx will proxy to the right backend). For local/dev
+// you can set VITE_API_URL to point at a specific gateway or host.
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 // ---- Type mapping helpers ----

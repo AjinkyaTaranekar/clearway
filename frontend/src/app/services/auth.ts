@@ -1,110 +1,38 @@
-const TOKEN_KEY = 'cw_token';
-const REFRESH_KEY = 'cw_refresh';
+/**
+ * Token storage helpers.
+ * Tokens are issued by the IAM service and stored in localStorage.
+ * No JWT is ever generated client-side.
+ */
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '';
+const ACCESS_TOKEN_KEY = 'cw_token';
+const REFRESH_TOKEN_KEY = 'cw_refresh';
 
-export interface AuthUser {
-  id: string;
-  name: string;
-  email: string;
-  role: 'driver' | 'admin';
-  vehicle_type?: string;
+/** Persist both tokens returned by the IAM service after login / register / refresh. */
+export function storeTokens(accessToken: string, refreshToken: string): void {
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
-export interface AuthResult {
-  access_token: string;
-  refresh_token: string;
-  user: AuthUser;
-}
-
-async function iamPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error?.message ?? json.message ?? `HTTP ${res.status}`);
-  }
-  // IAM service wraps response in { success, data }
-  return (json.data ?? json) as T;
-}
-
-export async function loginApi(email: string, password: string): Promise<AuthResult> {
-  const result = await iamPost<AuthResult>('/api/v1/auth/login', { email, password });
-  storeTokens(result.access_token, result.refresh_token);
-  return result;
-}
-
-export async function registerApi(params: {
-  name: string;
-  email: string;
-  password: string;
-  vehicle_type: string;
-  license_number: string;
-}): Promise<AuthResult> {
-  const result = await iamPost<AuthResult>('/api/v1/auth/register', {
-    name: params.name,
-    email: params.email,
-    password: params.password,
-    vehicle_type: params.vehicle_type,
-    license_info: { license_number: params.license_number },
-  });
-  storeTokens(result.access_token, result.refresh_token);
-  return result;
-}
-
-export async function refreshTokens(): Promise<string> {
-  const refresh = getRefreshToken();
-  if (!refresh) throw new Error('No refresh token');
-  const result = await iamPost<{ access_token: string; refresh_token: string }>(
-    '/api/v1/auth/refresh',
-    { refresh_token: refresh },
-  );
-  storeTokens(result.access_token, result.refresh_token);
-  return result.access_token;
-}
-
-export async function logoutApi(): Promise<void> {
-  const refresh = getRefreshToken();
-  const token = getToken();
-  if (!refresh) return;
-  try {
-    await fetch(`${BASE_URL}/api/v1/auth/logout`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ refresh_token: refresh }),
-    });
-  } catch {
-    // ignore logout errors — clear local state regardless
-  }
-}
-
-export function storeTokens(access: string, refresh: string): void {
-  localStorage.setItem(TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_KEY, refresh);
-}
-
+/** Return the current RS256 access token, or null if not authenticated. */
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+/** Return the opaque refresh token, or null if not stored. */
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_KEY);
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
+/** Remove both tokens from storage (on logout or session expiry). */
 export function clearTokens(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-// Keep backward-compat alias used by journeyApi
+// Backward-compat alias used by older callers.
 export const clearToken = clearTokens;
 
+/** Build an Authorization header from the stored access token. */
 export function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
