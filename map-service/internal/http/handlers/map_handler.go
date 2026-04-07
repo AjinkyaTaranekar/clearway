@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
-	"strings"
 
 	appErrors "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/errors"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/response"
@@ -27,12 +29,14 @@ type Node struct {
 
 // RouteSegment represents a segment in an ordered route.
 type RouteSegment struct {
-	Sequence             int    `json:"sequence"`
+	Sequence             int    `json:"sequence,omitempty"`
+	SequenceOrder        int    `json:"sequence_order,omitempty"`
 	SegmentID            string `json:"segment_id"`
 	SegmentName          string `json:"segment_name"`
-	FromNodeID           string `json:"from_node_id"`
-	ToNodeID             string `json:"to_node_id"`
+	FromNodeID           string `json:"from_node_id,omitempty"`
+	ToNodeID             string `json:"to_node_id,omitempty"`
 	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
+	Region               string `json:"region,omitempty"`
 }
 
 // NodesResponse represents the response body for map nodes.
@@ -48,8 +52,39 @@ type RouteResponse struct {
 	Segments                  []RouteSegment `json:"segments"`
 }
 
+type RoutePointRequest struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+type ComputeRouteRequest struct {
+	Origin      RoutePointRequest `json:"origin"`
+	Destination RoutePointRequest `json:"destination"`
+}
+
+type ComputeRouteResponse struct {
+	RouteID              string         `json:"route_id"`
+	TotalDistanceKm      float64        `json:"total_distance_km"`
+	TotalDurationMinutes int            `json:"total_duration_minutes"`
+	Segments             []RouteSegment `json:"segments"`
+}
+
 type graphEdge struct {
+	SegmentName          string
+	Region               string
 	SegmentID            string
+	FromNodeID           string
+	ToNodeID             string
+	TraversalTimeMinutes int
+	DistanceKm           float64
+}
+
+type bidirectionalRoad struct {
+	ForwardSegmentID     string
+	ForwardSegmentName   string
+	ReverseSegmentID     string
+	ReverseSegmentName   string
+	Region               string
 	FromNodeID           string
 	ToNodeID             string
 	TraversalTimeMinutes int
@@ -68,52 +103,7 @@ var hardcodedNodes = []Node{
 	{NodeID: "riverside", Label: "Riverside", Lat: 53.3350, Lng: -6.2700},
 }
 
-// hardcodedEdges defines the Dublin city road network as a directed graph.
-// Each physical road is represented by two directed edges (one per direction)
-// sharing the same segment_id, so the capacity service can reserve capacity
-// on the road regardless of which direction a vehicle travels.
-// This makes ~50% of routes that were previously unreachable now reachable.
-var hardcodedEdges = []graphEdge{
-	// city ↔ north
-	{SegmentID: "seg_city_north", FromNodeID: "city", ToNodeID: "north", TraversalTimeMinutes: 8},
-	{SegmentID: "seg_city_north", FromNodeID: "north", ToNodeID: "city", TraversalTimeMinutes: 8},
-	// north ↔ airport
-	{SegmentID: "seg_north_airport", FromNodeID: "north", ToNodeID: "airport", TraversalTimeMinutes: 16},
-	{SegmentID: "seg_north_airport", FromNodeID: "airport", ToNodeID: "north", TraversalTimeMinutes: 16},
-	// city ↔ east
-	{SegmentID: "seg_city_east", FromNodeID: "city", ToNodeID: "east", TraversalTimeMinutes: 6},
-	{SegmentID: "seg_city_east", FromNodeID: "east", ToNodeID: "city", TraversalTimeMinutes: 6},
-	// east ↔ airport
-	{SegmentID: "seg_east_airport", FromNodeID: "east", ToNodeID: "airport", TraversalTimeMinutes: 20},
-	{SegmentID: "seg_east_airport", FromNodeID: "airport", ToNodeID: "east", TraversalTimeMinutes: 20},
-	// city ↔ riverside
-	{SegmentID: "seg_city_riverside", FromNodeID: "city", ToNodeID: "riverside", TraversalTimeMinutes: 5},
-	{SegmentID: "seg_city_riverside", FromNodeID: "riverside", ToNodeID: "city", TraversalTimeMinutes: 5},
-	// riverside ↔ south
-	{SegmentID: "seg_riverside_south", FromNodeID: "riverside", ToNodeID: "south", TraversalTimeMinutes: 7},
-	{SegmentID: "seg_riverside_south", FromNodeID: "south", ToNodeID: "riverside", TraversalTimeMinutes: 7},
-	// south ↔ industrial
-	{SegmentID: "seg_south_industrial", FromNodeID: "south", ToNodeID: "industrial", TraversalTimeMinutes: 6},
-	{SegmentID: "seg_south_industrial", FromNodeID: "industrial", ToNodeID: "south", TraversalTimeMinutes: 6},
-	// industrial ↔ east
-	{SegmentID: "seg_industrial_east", FromNodeID: "industrial", ToNodeID: "east", TraversalTimeMinutes: 6},
-	{SegmentID: "seg_industrial_east", FromNodeID: "east", ToNodeID: "industrial", TraversalTimeMinutes: 6},
-	// city ↔ west
-	{SegmentID: "seg_city_west", FromNodeID: "city", ToNodeID: "west", TraversalTimeMinutes: 9},
-	{SegmentID: "seg_city_west", FromNodeID: "west", ToNodeID: "city", TraversalTimeMinutes: 9},
-	// west ↔ port
-	{SegmentID: "seg_west_port", FromNodeID: "west", ToNodeID: "port", TraversalTimeMinutes: 8},
-	{SegmentID: "seg_west_port", FromNodeID: "port", ToNodeID: "west", TraversalTimeMinutes: 8},
-	// port ↔ south
-	{SegmentID: "seg_port_south", FromNodeID: "port", ToNodeID: "south", TraversalTimeMinutes: 7},
-	{SegmentID: "seg_port_south", FromNodeID: "south", ToNodeID: "port", TraversalTimeMinutes: 7},
-	// west ↔ northfield
-	{SegmentID: "seg_west_northfield", FromNodeID: "west", ToNodeID: "northfield", TraversalTimeMinutes: 9},
-	{SegmentID: "seg_west_northfield", FromNodeID: "northfield", ToNodeID: "west", TraversalTimeMinutes: 9},
-	// northfield ↔ north
-	{SegmentID: "seg_northfield_north", FromNodeID: "northfield", ToNodeID: "north", TraversalTimeMinutes: 7},
-	{SegmentID: "seg_northfield_north", FromNodeID: "north", ToNodeID: "northfield", TraversalTimeMinutes: 7},
-}
+var hardcodedEdges = buildHardcodedEdges()
 
 // GetNodes godoc
 // @Summary Get map nodes
@@ -157,30 +147,60 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	origin, ok := findNode(originNodeID)
+	route, err := buildRoute(originNodeID, destinationNodeID)
+	if err != nil {
+		response.Error(w, err, traceID)
+		return
+	}
+
+	response.Success(w, route, traceID)
+}
+
+// ComputeRoute godoc
+// @Summary Compute route from coordinates
+// @Description Returns a route response for a given origin and destination coordinate pair
+// @Tags Map
+// @Accept json
+// @Produce json
+// @Param request body ComputeRouteRequest true "Origin and destination coordinates"
+// @Success 200 {object} ComputeRouteResponse
+// @Router /api/v1/routes/compute [post]
+func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	var req ComputeRouteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, appErrors.BadRequest("invalid request body"), traceID)
+		return
+	}
+
+	origin, ok := findNearestNode(req.Origin.Lat, req.Origin.Lng)
 	if !ok {
 		response.Error(w, appErrors.NotFound("origin node not found"), traceID)
 		return
 	}
 
-	destination, ok := findNode(destinationNodeID)
+	destination, ok := findNearestNode(req.Destination.Lat, req.Destination.Lng)
 	if !ok {
 		response.Error(w, appErrors.NotFound("destination node not found"), traceID)
 		return
 	}
 
-	segments, totalTraversalTime, ok := calculateShortestRoute(originNodeID, destinationNodeID)
-	if !ok {
-		response.Error(w, appErrors.NotFound("route not found"), traceID)
+	if origin.NodeID == destination.NodeID {
+		response.Error(w, appErrors.BadRequest("origin and destination resolve to the same node"), traceID)
 		return
 	}
 
-	response.Success(w, RouteResponse{
-		Origin:                    origin,
-		Destination:               destination,
-		TotalTraversalTimeMinutes: totalTraversalTime,
-		Segments:                  segments,
-	}, traceID)
+	computeRoute, err := buildComputeRoute(origin.NodeID, destination.NodeID)
+	if err != nil {
+		response.Error(w, err, traceID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(computeRoute)
 }
 
 func findNode(nodeID string) (Node, bool) {
@@ -193,9 +213,66 @@ func findNode(nodeID string) (Node, bool) {
 	return Node{}, false
 }
 
-func calculateShortestRoute(originNodeID, destinationNodeID string) ([]RouteSegment, int, bool) {
+func findNearestNode(lat, lng float64) (Node, bool) {
+	if len(hardcodedNodes) == 0 {
+		return Node{}, false
+	}
+
+	bestNode := hardcodedNodes[0]
+	bestDistance := coordinateDistanceKm(lat, lng, bestNode.Lat, bestNode.Lng)
+
+	for _, node := range hardcodedNodes[1:] {
+		distance := coordinateDistanceKm(lat, lng, node.Lat, node.Lng)
+		if distance < bestDistance {
+			bestNode = node
+			bestDistance = distance
+		}
+	}
+
+	return bestNode, true
+}
+
+func buildRoute(originNodeID, destinationNodeID string) (RouteResponse, error) {
+	origin, ok := findNode(originNodeID)
+	if !ok {
+		return RouteResponse{}, appErrors.NotFound("origin node not found")
+	}
+
+	destination, ok := findNode(destinationNodeID)
+	if !ok {
+		return RouteResponse{}, appErrors.NotFound("destination node not found")
+	}
+
+	segments, totalTraversalTime, _, ok := calculateShortestRoute(originNodeID, destinationNodeID)
+	if !ok {
+		return RouteResponse{}, appErrors.NotFound("route not found")
+	}
+
+	return RouteResponse{
+		Origin:                    origin,
+		Destination:               destination,
+		TotalTraversalTimeMinutes: totalTraversalTime,
+		Segments:                  segments,
+	}, nil
+}
+
+func buildComputeRoute(originNodeID, destinationNodeID string) (ComputeRouteResponse, error) {
+	segments, totalTraversalTime, totalDistanceKm, ok := calculateShortestRoute(originNodeID, destinationNodeID)
+	if !ok {
+		return ComputeRouteResponse{}, appErrors.NotFound("route not found")
+	}
+
+	return ComputeRouteResponse{
+		RouteID:              fmt.Sprintf("rte_%s_%s", originNodeID, destinationNodeID),
+		TotalDistanceKm:      totalDistanceKm,
+		TotalDurationMinutes: totalTraversalTime,
+		Segments:             segments,
+	}, nil
+}
+
+func calculateShortestRoute(originNodeID, destinationNodeID string) ([]RouteSegment, int, float64, bool) {
 	if originNodeID == destinationNodeID {
-		return []RouteSegment{}, 0, true
+		return []RouteSegment{}, 0, 0, true
 	}
 
 	distances := make(map[string]int, len(hardcodedNodes))
@@ -231,7 +308,7 @@ func calculateShortestRoute(originNodeID, destinationNodeID string) ([]RouteSegm
 
 	totalTraversalTime, ok := distances[destinationNodeID]
 	if !ok || totalTraversalTime == -1 {
-		return nil, 0, false
+		return nil, 0, 0, false
 	}
 
 	pathEdges := make([]graphEdge, 0)
@@ -239,25 +316,29 @@ func calculateShortestRoute(originNodeID, destinationNodeID string) ([]RouteSegm
 	for currentNodeID != originNodeID {
 		edge, exists := previous[currentNodeID]
 		if !exists {
-			return nil, 0, false
+			return nil, 0, 0, false
 		}
 		pathEdges = append([]graphEdge{edge}, pathEdges...)
 		currentNodeID = edge.FromNodeID
 	}
 
 	segments := make([]RouteSegment, 0, len(pathEdges))
+	totalDistanceKm := 0.0
 	for i, edge := range pathEdges {
+		totalDistanceKm += edge.DistanceKm
 		segments = append(segments, RouteSegment{
 			Sequence:             i + 1,
+			SequenceOrder:        i + 1,
 			SegmentID:            edge.SegmentID,
-			SegmentName:          buildSegmentName(edge.FromNodeID, edge.ToNodeID),
+			SegmentName:          edge.SegmentName,
 			FromNodeID:           edge.FromNodeID,
 			ToNodeID:             edge.ToNodeID,
 			TraversalTimeMinutes: edge.TraversalTimeMinutes,
+			Region:               edge.Region,
 		})
 	}
 
-	return segments, totalTraversalTime, true
+	return segments, totalTraversalTime, math.Round(totalDistanceKm*100) / 100, true
 }
 
 func findClosestUnvisitedNode(distances map[string]int, visited map[string]bool) (string, bool) {
@@ -292,9 +373,53 @@ func outgoingEdges(nodeID string) []graphEdge {
 	return edges
 }
 
-func buildSegmentName(fromNodeID, toNodeID string) string {
+func buildHardcodedEdges() []graphEdge {
+	roads := []bidirectionalRoad{
+		{ForwardSegmentID: "seg_m50", ForwardSegmentName: "M50 Motorway (North-South)", ReverseSegmentID: "seg_m50", ReverseSegmentName: "M50 Motorway (North-South)", Region: "central", FromNodeID: "city", ToNodeID: "north", TraversalTimeMinutes: 8},
+		{ForwardSegmentID: "seg_m1_n", ForwardSegmentName: "M1 Motorway Northbound", ReverseSegmentID: "seg_m1_s", ReverseSegmentName: "M1 Motorway Southbound", Region: "north", FromNodeID: "north", ToNodeID: "airport", TraversalTimeMinutes: 16},
+		{ForwardSegmentID: "seg_quays_e", ForwardSegmentName: "Dublin Quays Eastbound", ReverseSegmentID: "seg_quays_w", ReverseSegmentName: "Dublin Quays Westbound", Region: "central", FromNodeID: "city", ToNodeID: "east", TraversalTimeMinutes: 6},
+		{ForwardSegmentID: "seg_port_n", ForwardSegmentName: "Port Tunnel Northbound", ReverseSegmentID: "seg_port_s", ReverseSegmentName: "Port Tunnel Southbound", Region: "east", FromNodeID: "east", ToNodeID: "airport", TraversalTimeMinutes: 20},
+		{ForwardSegmentID: "seg_n11", ForwardSegmentName: "N11 Stillorgan Road", ReverseSegmentID: "seg_n11", ReverseSegmentName: "N11 Stillorgan Road", Region: "south", FromNodeID: "city", ToNodeID: "riverside", TraversalTimeMinutes: 5},
+		{ForwardSegmentID: "seg_m50_s", ForwardSegmentName: "M50 South (Sandyford Junction)", ReverseSegmentID: "seg_m50_s", ReverseSegmentName: "M50 South (Sandyford Junction)", Region: "south", FromNodeID: "riverside", ToNodeID: "south", TraversalTimeMinutes: 7},
+		{ForwardSegmentID: "seg_m8", ForwardSegmentName: "M8 Cork Road", ReverseSegmentID: "seg_m8", ReverseSegmentName: "M8 Cork Road", Region: "south", FromNodeID: "south", ToNodeID: "industrial", TraversalTimeMinutes: 6},
+		{ForwardSegmentID: "seg_n7", ForwardSegmentName: "N7 Naas Dual Carriageway", ReverseSegmentID: "seg_n7", ReverseSegmentName: "N7 Naas Dual Carriageway", Region: "west", FromNodeID: "industrial", ToNodeID: "east", TraversalTimeMinutes: 6},
+		{ForwardSegmentID: "seg_n4", ForwardSegmentName: "N4 Galway Road", ReverseSegmentID: "seg_m4", ReverseSegmentName: "M4 Westlink Motorway", Region: "west", FromNodeID: "city", ToNodeID: "west", TraversalTimeMinutes: 9},
+		{ForwardSegmentID: "seg_m7n", ForwardSegmentName: "M7 Naas Road Northbound", ReverseSegmentID: "seg_m7s", ReverseSegmentName: "M7 Naas Road Southbound", Region: "west", FromNodeID: "west", ToNodeID: "port", TraversalTimeMinutes: 8},
+		{ForwardSegmentID: "seg_n81", ForwardSegmentName: "N81 Tallaght Road", ReverseSegmentID: "seg_n81", ReverseSegmentName: "N81 Tallaght Road", Region: "south", FromNodeID: "port", ToNodeID: "south", TraversalTimeMinutes: 7},
+		{ForwardSegmentID: "seg_n3", ForwardSegmentName: "N3 Navan Road", ReverseSegmentID: "seg_n2", ReverseSegmentName: "N2 Finglas Road", Region: "north", FromNodeID: "west", ToNodeID: "northfield", TraversalTimeMinutes: 9},
+		{ForwardSegmentID: "seg_m2", ForwardSegmentName: "M2 Motorway", ReverseSegmentID: "seg_m2", ReverseSegmentName: "M2 Motorway", Region: "north", FromNodeID: "northfield", ToNodeID: "north", TraversalTimeMinutes: 7},
+	}
+
+	edges := make([]graphEdge, 0, len(roads)*2)
+	for _, road := range roads {
+		edges = append(edges,
+			buildGraphEdge(road.ForwardSegmentID, road.ForwardSegmentName, road.Region, road.FromNodeID, road.ToNodeID, road.TraversalTimeMinutes),
+			buildGraphEdge(road.ReverseSegmentID, road.ReverseSegmentName, road.Region, road.ToNodeID, road.FromNodeID, road.TraversalTimeMinutes),
+		)
+	}
+
+	return edges
+}
+
+func buildGraphEdge(segmentID, segmentName, region, fromNodeID, toNodeID string, traversalTimeMinutes int) graphEdge {
 	fromNode, _ := findNode(fromNodeID)
 	toNode, _ := findNode(toNodeID)
 
-	return strings.TrimSpace(fromNode.Label + " to " + toNode.Label)
+	return graphEdge{
+		SegmentID:            segmentID,
+		SegmentName:          segmentName,
+		Region:               region,
+		FromNodeID:           fromNodeID,
+		ToNodeID:             toNodeID,
+		TraversalTimeMinutes: traversalTimeMinutes,
+		DistanceKm:           coordinateDistanceKm(fromNode.Lat, fromNode.Lng, toNode.Lat, toNode.Lng),
+	}
+}
+
+func coordinateDistanceKm(lat1, lng1, lat2, lng2 float64) float64 {
+	const kmPerDegreeLat = 111.32
+	avgLatRadians := (lat1 + lat2) / 2 * math.Pi / 180
+	latDiffKm := (lat2 - lat1) * kmPerDegreeLat
+	lngDiffKm := (lng2 - lng1) * kmPerDegreeLat * math.Cos(avgLatRadians)
+	return math.Sqrt((latDiffKm * latDiffKm) + (lngDiffKm * lngDiffKm))
 }
