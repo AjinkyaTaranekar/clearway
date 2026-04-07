@@ -191,6 +191,11 @@ jobs:
                 fi
               done
             done
+            # Grant postgres access to all schemas/tables created by root above
+            $CRDB --execute="
+              GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
+              GRANT ALL ON SCHEMA journey TO postgres;
+            " 2>/dev/null || true
           '
 
       - name: Copy stack file and observability configs
@@ -317,6 +322,11 @@ jobs:
                 fi
               done
             done
+            # Grant postgres access to all schemas/tables created by root above
+            $CRDB --execute="
+              GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
+              GRANT ALL ON SCHEMA journey TO postgres;
+            " 2>/dev/null || true
           '
 
       - name: Copy stack file and observability configs
@@ -427,6 +437,11 @@ jobs:
                 fi
               done
             done
+            # Grant postgres access to all schemas/tables created by root above
+            $CRDB --execute="
+              GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
+              GRANT ALL ON SCHEMA journey TO postgres;
+            " 2>/dev/null || true
           '
 
       - name: Copy stack file and observability configs
