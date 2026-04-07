@@ -21,16 +21,19 @@ type Router struct {
 	journeyHandler *handler.JourneyHandler
 	adminHandler   *handler.AdminHandler
 	logger         *logger.Logger
-	jwtSecret      string
+	// jwksValidator validates RS256 tokens issued by the IAM service.
+	// Keys are fetched lazily from the IAM JWKS endpoint and cached with a 1 h TTL.
+	jwksValidator *middleware.JWKSValidator
 }
 
-// NewRouter creates a new router instance
+// NewRouter creates a new router instance.
+// jwksValidator must point at the IAM service /.well-known/jwks.json endpoint.
 func NewRouter(
 	healthHandler *internalhttp.HealthHandler,
 	journeyHandler *handler.JourneyHandler,
 	adminHandler *handler.AdminHandler,
 	log *logger.Logger,
-	jwtSecret string,
+	jwksValidator *middleware.JWKSValidator,
 ) *Router {
 	return &Router{
 		mux:            mux.NewRouter(),
@@ -38,7 +41,7 @@ func NewRouter(
 		journeyHandler: journeyHandler,
 		adminHandler:   adminHandler,
 		logger:         log,
-		jwtSecret:      jwtSecret,
+		jwksValidator:  jwksValidator,
 	}
 }
 
@@ -60,9 +63,9 @@ func (r *Router) Setup() *mux.Router {
 	r.mux.HandleFunc("/health", r.healthHandler.Health).Methods("GET")
 	r.mux.HandleFunc("/ready", r.healthHandler.Readiness).Methods("GET")
 
-	// API v1 subrouter — all routes require JWT auth
+	// API v1 subrouter — all routes validated with RS256 tokens from IAM service
 	api := r.mux.PathPrefix("/api/v1").Subrouter()
-	api.Use(middleware.JWTAuth(r.jwtSecret))
+	api.Use(middleware.JWTAuth(r.jwksValidator))
 	api.Use(middleware.IdempotencyKeyMiddleware)
 
 	// Driver journey endpoints

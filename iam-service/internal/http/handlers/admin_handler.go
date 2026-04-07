@@ -57,21 +57,16 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, map[string]interface{}{"users": items, "pagination": map[string]int{"page": page, "limit": limit, "total": total}}, traceID)
 }
 
+// GetUser fetches a single user by ID using a direct lookup — no table scan.
 func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	userID := mux.Vars(r)["id"]
-	users, _, err := h.admin.ListUsers(r.Context(), "", 1, 10000)
+	u, err := h.admin.GetUser(r.Context(), userID)
 	if err != nil {
 		response.Error(w, err, traceID)
 		return
 	}
-	for _, u := range users {
-		if u.ID == userID {
-			response.Success(w, userListItem{ID: u.ID, Name: u.Name, Email: u.Email, Role: string(u.Role), VehicleType: string(u.VehicleType), CreatedAt: u.CreatedAt}, traceID)
-			return
-		}
-	}
-	response.Error(w, apperrors.NotFound("User not found."), traceID)
+	response.Success(w, userListItem{ID: u.ID, Name: u.Name, Email: u.Email, Role: string(u.Role), VehicleType: string(u.VehicleType), CreatedAt: u.CreatedAt}, traceID)
 }
 
 func (h *AdminHandler) PromoteUser(w http.ResponseWriter, r *http.Request) {

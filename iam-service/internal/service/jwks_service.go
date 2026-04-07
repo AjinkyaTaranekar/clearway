@@ -65,6 +65,10 @@ func NewJWKSService(privateKeyPath, signingKID, previousKID, previousPubPEM stri
 func (s *JWKSService) PrivateKey() *rsa.PrivateKey { return s.privateKey }
 func (s *JWKSService) SigningKID() string           { return s.signingKID }
 
+// IsReady returns true when the RSA private key has been loaded successfully.
+// Used by the /ready endpoint to gate traffic until the key is available.
+func (s *JWKSService) IsReady() bool { return s.privateKey != nil }
+
 func (s *JWKSService) BuildJWKS() ([]byte, error) {
 	set := jwkSet{}
 	set.Keys = append(set.Keys, pubKeyToJWK(&s.privateKey.PublicKey, s.signingKID))
