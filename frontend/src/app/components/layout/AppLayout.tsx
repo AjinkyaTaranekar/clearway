@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { Bell, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
@@ -84,6 +85,7 @@ export function AppLayout() {
 
       {/* Mobile bottom navigation */}
       <MobileNav />
+      <Analytics />
     </div>
   );
 }
