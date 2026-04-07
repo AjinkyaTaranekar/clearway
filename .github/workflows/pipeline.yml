@@ -195,8 +195,21 @@ jobs:
             done
           '
 
-      - name: Copy stack file
-        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
+      - name: Copy stack file and observability configs
+        run: |
+          scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/docker-stack.yml
+          ssh deploy@${{ secrets.SWARM_HOST_EU }} "mkdir -p ~/vcs/observability/loki ~/vcs/observability/promtail ~/vcs/observability/grafana/provisioning/datasources ~/vcs/observability/grafana/provisioning/dashboards"
+          scp observability/prometheus.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/observability/prometheus.yml
+          scp observability/loki/local-config.yaml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/observability/loki/local-config.yaml
+          scp observability/promtail/config.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/observability/promtail/config.yml
+          scp observability/grafana/provisioning/datasources/datasources.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/observability/grafana/provisioning/datasources/datasources.yml
+          scp observability/grafana/provisioning/dashboards/dashboards.yml deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/observability/grafana/provisioning/dashboards/dashboards.yml
+          scp observability/grafana/provisioning/dashboards/vcs-overview.json deploy@${{ secrets.SWARM_HOST_EU }}:~/vcs/observability/grafana/provisioning/dashboards/vcs-overview.json
+          # Push to all worker nodes too (promtail + cadvisor run globally)
+          for host in ${{ secrets.SWARM_HOST_EU2 }}; do
+            ssh deploy@${host} "mkdir -p ~/vcs/observability/promtail"
+            scp observability/promtail/config.yml deploy@${host}:~/vcs/observability/promtail/config.yml
+          done
 
       - name: Deploy stack (init if first run, update selected services otherwise)
         env:
@@ -219,7 +232,11 @@ jobs:
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
 
-            # Update only selected services to the pinned SHA tag
+            # Always redeploy the observability stack to pick up config changes
+            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+              docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
+
+            # Update only selected app services to the pinned SHA tag
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
               svc=\$(echo \"\$svc\" | xargs)
@@ -306,8 +323,16 @@ jobs:
             done
           '
 
-      - name: Copy stack file
-        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/docker-stack.yml
+      - name: Copy stack file and observability configs
+        run: |
+          scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/docker-stack.yml
+          ssh deploy@${{ secrets.SWARM_HOST_US }} "mkdir -p ~/vcs/observability/loki ~/vcs/observability/promtail ~/vcs/observability/grafana/provisioning/datasources ~/vcs/observability/grafana/provisioning/dashboards"
+          scp observability/prometheus.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/observability/prometheus.yml
+          scp observability/loki/local-config.yaml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/observability/loki/local-config.yaml
+          scp observability/promtail/config.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/observability/promtail/config.yml
+          scp observability/grafana/provisioning/datasources/datasources.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/observability/grafana/provisioning/datasources/datasources.yml
+          scp observability/grafana/provisioning/dashboards/dashboards.yml deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/observability/grafana/provisioning/dashboards/dashboards.yml
+          scp observability/grafana/provisioning/dashboards/vcs-overview.json deploy@${{ secrets.SWARM_HOST_US }}:~/vcs/observability/grafana/provisioning/dashboards/vcs-overview.json
 
       - name: Deploy stack
         env:
@@ -324,6 +349,8 @@ jobs:
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
+            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+              docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
               svc=\$(echo \"\$svc\" | xargs)
@@ -406,8 +433,16 @@ jobs:
             done
           '
 
-      - name: Copy stack file
-        run: scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/docker-stack.yml
+      - name: Copy stack file and observability configs
+        run: |
+          scp docker-stack.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/docker-stack.yml
+          ssh deploy@${{ secrets.SWARM_HOST_AP }} "mkdir -p ~/vcs/observability/loki ~/vcs/observability/promtail ~/vcs/observability/grafana/provisioning/datasources ~/vcs/observability/grafana/provisioning/dashboards"
+          scp observability/prometheus.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/observability/prometheus.yml
+          scp observability/loki/local-config.yaml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/observability/loki/local-config.yaml
+          scp observability/promtail/config.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/observability/promtail/config.yml
+          scp observability/grafana/provisioning/datasources/datasources.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/observability/grafana/provisioning/datasources/datasources.yml
+          scp observability/grafana/provisioning/dashboards/dashboards.yml deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/observability/grafana/provisioning/dashboards/dashboards.yml
+          scp observability/grafana/provisioning/dashboards/vcs-overview.json deploy@${{ secrets.SWARM_HOST_AP }}:~/vcs/observability/grafana/provisioning/dashboards/vcs-overview.json
 
       - name: Deploy stack
         env:
@@ -424,6 +459,8 @@ jobs:
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
+            GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest \
+              docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
               svc=\$(echo \"\$svc\" | xargs)

@@ -1,0 +1,57 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ── Application services ───────────────────────────────────────────────────
+  - job_name: iam-service
+    static_configs:
+      - targets: ['iam-service:8082']
+        labels:
+          service: iam-service
+
+  - job_name: capacity-service
+    static_configs:
+      - targets: ['capacity-service:8081']
+        labels:
+          service: capacity-service
+
+  - job_name: journey-service
+    static_configs:
+      - targets: ['journey-service:8083']
+        labels:
+          service: journey-service
+
+  - job_name: map-service
+    static_configs:
+      - targets: ['map-service:8084']
+        labels:
+          service: map-service
+
+  - job_name: notification-service
+    static_configs:
+      - targets: ['notification-service:8085']
+        labels:
+          service: notification-service
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metric_relabel_configs:
+      # Keep only container metrics (drop machine-level noise)
+      - source_labels: [container_label_com_docker_compose_service]
+        regex: '.+'
+        action: keep
+
+  - job_name: postgres-exporter
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: postgres
+
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: redis

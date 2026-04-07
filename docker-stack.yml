@@ -37,6 +37,12 @@ networks:
 volumes:
   pg_data:
     driver: local
+  prometheus_data:
+    driver: local
+  loki_data:
+    driver: local
+  grafana_data:
+    driver: local
 
 services:
 
@@ -331,6 +337,137 @@ services:
         target: /run/secrets/db_password
       - source: firebase_credentials
         target: /run/secrets/firebase_credentials
+    networks:
+      - vcs-internal
+
+  # ── Observability ──────────────────────────────────────────────────────────
+  # cadvisor + promtail: global (one per Swarm node, collects local containers)
+  # prometheus + loki + grafana: replicated on manager (centralised)
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks:
+      - vcs-internal
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 64M
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/vcs/observability/promtail/config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - vcs-internal
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    volumes:
+      - /root/vcs/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - target: 9090
+        published: 9090
+        mode: host
+    networks:
+      - vcs-internal
+
+  loki:
+    image: grafana/loki:2.9.4
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    volumes:
+      - /root/vcs/observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - vcs-internal
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - /root/vcs/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - target: 3000
+        published: 3000
+        mode: host
+    networks:
+      - vcs-internal
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 32M
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres@db:5432/trafficservice?sslmode=disable"
+      DATA_SOURCE_PASS_FILE: /run/secrets/db_password
+    secrets:
+      - source: db_password
+        target: /run/secrets/db_password
+    networks:
+      - vcs-internal
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 32M
+    environment:
+      REDIS_ADDR: redis:6379
     networks:
       - vcs-internal
 

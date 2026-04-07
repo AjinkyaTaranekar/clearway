@@ -7,6 +7,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/tracing"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
 
 	// Import generated swagger docs so `swag.Register` runs during init()
@@ -46,7 +47,11 @@ func (r *Router) Setup() *mux.Router {
 	// Apply global middleware
 	r.mux.Use(CORSMiddleware)
 	r.mux.Use(tracing.Middleware)
+	r.mux.Use(MetricsMiddleware)
 	r.mux.Use(LoggingMiddleware(r.logger))
+
+	// Observability
+	r.mux.Handle("/metrics", promhttp.Handler())
 
 	// Swagger documentation
 	r.mux.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
