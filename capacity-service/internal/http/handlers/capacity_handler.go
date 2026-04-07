@@ -9,7 +9,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/tracing"
-) // TODO: check import
+)
 
 // CapacityHandler handles reservation and availability check endpoints.
 type CapacityHandler struct {

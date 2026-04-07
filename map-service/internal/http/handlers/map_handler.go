@@ -68,20 +68,51 @@ var hardcodedNodes = []Node{
 	{NodeID: "riverside", Label: "Riverside", Lat: 53.3350, Lng: -6.2700},
 }
 
+// hardcodedEdges defines the Dublin city road network as a directed graph.
+// Each physical road is represented by two directed edges (one per direction)
+// sharing the same segment_id, so the capacity service can reserve capacity
+// on the road regardless of which direction a vehicle travels.
+// This makes ~50% of routes that were previously unreachable now reachable.
 var hardcodedEdges = []graphEdge{
+	// city ↔ north
 	{SegmentID: "seg_city_north", FromNodeID: "city", ToNodeID: "north", TraversalTimeMinutes: 8},
+	{SegmentID: "seg_city_north", FromNodeID: "north", ToNodeID: "city", TraversalTimeMinutes: 8},
+	// north ↔ airport
 	{SegmentID: "seg_north_airport", FromNodeID: "north", ToNodeID: "airport", TraversalTimeMinutes: 16},
+	{SegmentID: "seg_north_airport", FromNodeID: "airport", ToNodeID: "north", TraversalTimeMinutes: 16},
+	// city ↔ east
 	{SegmentID: "seg_city_east", FromNodeID: "city", ToNodeID: "east", TraversalTimeMinutes: 6},
+	{SegmentID: "seg_city_east", FromNodeID: "east", ToNodeID: "city", TraversalTimeMinutes: 6},
+	// east ↔ airport
 	{SegmentID: "seg_east_airport", FromNodeID: "east", ToNodeID: "airport", TraversalTimeMinutes: 20},
+	{SegmentID: "seg_east_airport", FromNodeID: "airport", ToNodeID: "east", TraversalTimeMinutes: 20},
+	// city ↔ riverside
 	{SegmentID: "seg_city_riverside", FromNodeID: "city", ToNodeID: "riverside", TraversalTimeMinutes: 5},
+	{SegmentID: "seg_city_riverside", FromNodeID: "riverside", ToNodeID: "city", TraversalTimeMinutes: 5},
+	// riverside ↔ south
 	{SegmentID: "seg_riverside_south", FromNodeID: "riverside", ToNodeID: "south", TraversalTimeMinutes: 7},
+	{SegmentID: "seg_riverside_south", FromNodeID: "south", ToNodeID: "riverside", TraversalTimeMinutes: 7},
+	// south ↔ industrial
 	{SegmentID: "seg_south_industrial", FromNodeID: "south", ToNodeID: "industrial", TraversalTimeMinutes: 6},
+	{SegmentID: "seg_south_industrial", FromNodeID: "industrial", ToNodeID: "south", TraversalTimeMinutes: 6},
+	// industrial ↔ east
 	{SegmentID: "seg_industrial_east", FromNodeID: "industrial", ToNodeID: "east", TraversalTimeMinutes: 6},
+	{SegmentID: "seg_industrial_east", FromNodeID: "east", ToNodeID: "industrial", TraversalTimeMinutes: 6},
+	// city ↔ west
 	{SegmentID: "seg_city_west", FromNodeID: "city", ToNodeID: "west", TraversalTimeMinutes: 9},
+	{SegmentID: "seg_city_west", FromNodeID: "west", ToNodeID: "city", TraversalTimeMinutes: 9},
+	// west ↔ port
 	{SegmentID: "seg_west_port", FromNodeID: "west", ToNodeID: "port", TraversalTimeMinutes: 8},
+	{SegmentID: "seg_west_port", FromNodeID: "port", ToNodeID: "west", TraversalTimeMinutes: 8},
+	// port ↔ south
 	{SegmentID: "seg_port_south", FromNodeID: "port", ToNodeID: "south", TraversalTimeMinutes: 7},
+	{SegmentID: "seg_port_south", FromNodeID: "south", ToNodeID: "port", TraversalTimeMinutes: 7},
+	// west ↔ northfield
 	{SegmentID: "seg_west_northfield", FromNodeID: "west", ToNodeID: "northfield", TraversalTimeMinutes: 9},
+	{SegmentID: "seg_west_northfield", FromNodeID: "northfield", ToNodeID: "west", TraversalTimeMinutes: 9},
+	// northfield ↔ north
 	{SegmentID: "seg_northfield_north", FromNodeID: "northfield", ToNodeID: "north", TraversalTimeMinutes: 7},
+	{SegmentID: "seg_northfield_north", FromNodeID: "north", ToNodeID: "northfield", TraversalTimeMinutes: 7},
 }
 
 // GetNodes godoc

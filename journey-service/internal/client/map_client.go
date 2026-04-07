@@ -1,112 +1,236 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"sync"
 	"time"
 )
 
-// MapSegment is a road segment returned by Map Service
-type MapSegment struct {
-	SegmentID            string `json:"segment_id"`
-	SegmentName          string `json:"segment_name"`
-	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
-	SequenceOrder        int    `json:"sequence_order"`
-	Region               string `json:"region"`
-}
-
-// RouteResponse is returned by Map Service
-type RouteResponse struct {
-	RouteID              string       `json:"route_id"`
-	TotalDistanceKm      float64      `json:"total_distance_km"`
-	TotalDurationMinutes int          `json:"total_duration_minutes"`
-	Segments             []MapSegment `json:"segments"`
-}
-
-// MapCoordinates holds lat/lng for the route compute request
+// MapCoordinates holds lat/lng for route cache key computation.
+// The journey service receives coordinates from drivers; this type is the
+// cache key so the same origin/destination pair resolves from Redis without
+// calling the map service again.
 type MapCoordinates struct {
 	Lat float64 `json:"lat"`
 	Lng float64 `json:"lng"`
 }
 
-// MapClient calls the Map Service to compute routes
+// MapSegment is a road segment returned by Map Service.
+// JSON tags match the map service's actual response shape.
+type MapSegment struct {
+	SegmentID            string `json:"segment_id"`
+	SegmentName          string `json:"segment_name"`
+	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
+	SequenceOrder        int    `json:"sequence"` // map service returns "sequence"
+	Region               string `json:"region"`   // not in map response; left empty
+}
+
+// RouteResponse is the internal representation of a route returned by the Map Service.
+type RouteResponse struct {
+	TotalTraversalTimeMinutes int          `json:"total_traversal_time_minutes"`
+	Segments                  []MapSegment `json:"segments"`
+}
+
+// ---------------------------------------------------------------------------
+// Internal types matching the Map Service's JSON envelope + route shape
+// ---------------------------------------------------------------------------
+
+// mapNode matches the Node struct returned by GET /api/v1/map/nodes.
+type mapNode struct {
+	NodeID string  `json:"node_id"`
+	Label  string  `json:"label"`
+	Lat    float64 `json:"lat"`
+	Lng    float64 `json:"lng"`
+}
+
+// mapAPIEnvelope is the standard {"success":true,"data":...} wrapper that all
+// map service endpoints return.
+type mapAPIEnvelope struct {
+	Success bool            `json:"success"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// mapNodesData is the inner data shape of GET /api/v1/map/nodes.
+type mapNodesData struct {
+	Nodes []mapNode `json:"nodes"`
+}
+
+// mapRouteData is the inner data shape of GET /api/v1/map/route.
+type mapRouteData struct {
+	TotalTraversalTimeMinutes int          `json:"total_traversal_time_minutes"`
+	Segments                  []MapSegment `json:"segments"`
+}
+
+// ---------------------------------------------------------------------------
+// MapClient
+// ---------------------------------------------------------------------------
+
+// MapClient calls the Map Service to compute routes.
 type MapClient struct {
 	baseURL    string
 	httpClient *http.Client
+
+	// nodes cache — avoids fetching /api/v1/map/nodes on every request.
+	nodesMu        sync.RWMutex
+	nodes          []mapNode
+	nodesFetchedAt time.Time
 }
 
-// NewMapClient creates a new Map Service client
+// NewMapClient creates a new Map Service client.
 func NewMapClient(baseURL string) *MapClient {
 	return &MapClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 2 * time.Second,
+			Timeout: 5 * time.Second,
 		},
 	}
 }
 
-// ComputeRoute calls Map Service for route segments.
-// Falls back to a mock route if Map Service is unreachable.
-func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinates) (*RouteResponse, error) {
-	body, _ := json.Marshal(map[string]interface{}{
-		"origin":      origin,
-		"destination": dest,
-	})
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.baseURL+"/api/v1/routes/compute", bytes.NewReader(body))
+// fetchNodes retrieves the node list from GET /api/v1/map/nodes and stores it.
+func (c *MapClient) fetchNodes(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/api/v1/map/nodes", nil)
 	if err != nil {
-		return fallbackRoute(), nil
+		return fmt.Errorf("create nodes request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// Map Service unreachable — use mock so the service keeps working
-		return fallbackRoute(), nil
+		return fmt.Errorf("fetch nodes: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fallbackRoute(), nil
+		return fmt.Errorf("map service nodes: unexpected status %d", resp.StatusCode)
 	}
 
-	var result RouteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fallbackRoute(), nil
+	var envelope mapAPIEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return fmt.Errorf("decode nodes envelope: %w", err)
+	}
+	if !envelope.Success {
+		return fmt.Errorf("map service nodes: success=false in response")
 	}
 
-	if len(result.Segments) == 0 {
-		return fallbackRoute(), nil
+	var data mapNodesData
+	if err := json.Unmarshal(envelope.Data, &data); err != nil {
+		return fmt.Errorf("decode nodes data: %w", err)
 	}
 
-	return &result, nil
+	c.nodesMu.Lock()
+	c.nodes = data.Nodes
+	c.nodesFetchedAt = time.Now()
+	c.nodesMu.Unlock()
+	return nil
 }
 
-// fallbackRoute returns a mock route with 2 segments when Map Service is unavailable
-func fallbackRoute() *RouteResponse {
-	return &RouteResponse{
-		RouteID:              fmt.Sprintf("rte_mock_%d", time.Now().UnixMilli()),
-		TotalDistanceKm:      45.0,
-		TotalDurationMinutes: 55,
-		Segments: []MapSegment{
-			{
-				SegmentID:            "seg_main",
-				SegmentName:          "Main Route",
-				TraversalTimeMinutes: 30,
-				SequenceOrder:        1,
-				Region:               "central",
-			},
-			{
-				SegmentID:            "seg_ring",
-				SegmentName:          "Ring Road",
-				TraversalTimeMinutes: 25,
-				SequenceOrder:        2,
-				Region:               "outer",
-			},
-		},
+// getNodes returns the cached node list, refreshing if it is older than 1 hour.
+// If the refresh fails but stale data is available, the stale data is returned
+// so that a temporary map service outage does not break all routing.
+func (c *MapClient) getNodes(ctx context.Context) ([]mapNode, error) {
+	c.nodesMu.RLock()
+	nodes := c.nodes
+	fetchedAt := c.nodesFetchedAt
+	c.nodesMu.RUnlock()
+
+	if len(nodes) > 0 && time.Since(fetchedAt) < time.Hour {
+		return nodes, nil
 	}
+
+	refreshErr := c.fetchNodes(ctx)
+
+	c.nodesMu.RLock()
+	nodes = c.nodes
+	c.nodesMu.RUnlock()
+
+	if len(nodes) > 0 {
+		return nodes, nil // return even if stale when refresh failed
+	}
+	if refreshErr != nil {
+		return nil, fmt.Errorf("map service unreachable and no cached nodes: %w", refreshErr)
+	}
+	return nil, fmt.Errorf("map service returned an empty node list")
+}
+
+// nearestNodeID returns the node ID of the node closest to (lat, lng) using
+// Euclidean distance in the lat/lng plane (adequate for a city-scale graph).
+func nearestNodeID(nodes []mapNode, lat, lng float64) string {
+	best := ""
+	bestDist := math.MaxFloat64
+	for _, n := range nodes {
+		d := math.Sqrt((n.Lat-lat)*(n.Lat-lat) + (n.Lng-lng)*(n.Lng-lng))
+		if d < bestDist {
+			bestDist = d
+			best = n.NodeID
+		}
+	}
+	return best
+}
+
+// ComputeRoute converts lat/lng coordinates to the nearest map node IDs and
+// calls GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y.
+//
+// Returns a non-nil error when the map service is unreachable or returns an
+// unexpected response. The caller (journey service) must treat this as a hard
+// failure — no silent fallback is performed here.
+func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinates) (*RouteResponse, error) {
+	nodes, err := c.getNodes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("map service unavailable (nodes): %w", err)
+	}
+
+	originNodeID := nearestNodeID(nodes, origin.Lat, origin.Lng)
+	destNodeID := nearestNodeID(nodes, dest.Lat, dest.Lng)
+
+	if originNodeID == "" || destNodeID == "" {
+		return nil, fmt.Errorf("map service: could not resolve coordinates to nodes")
+	}
+	if originNodeID == destNodeID {
+		return nil, fmt.Errorf("map service: origin and destination resolve to the same node (%s)", originNodeID)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/map/route?origin_node_id=%s&destination_node_id=%s",
+		c.baseURL, originNodeID, destNodeID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("map service: build request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("map service unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("map service: unexpected status %d for route %s→%s",
+			resp.StatusCode, originNodeID, destNodeID)
+	}
+
+	var envelope mapAPIEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("map service: decode route envelope: %w", err)
+	}
+	if !envelope.Success {
+		return nil, fmt.Errorf("map service: success=false for route %s→%s", originNodeID, destNodeID)
+	}
+
+	var data mapRouteData
+	if err := json.Unmarshal(envelope.Data, &data); err != nil {
+		return nil, fmt.Errorf("map service: decode route data: %w", err)
+	}
+
+	if len(data.Segments) == 0 {
+		return nil, fmt.Errorf("map service: no segments returned for route %s→%s", originNodeID, destNodeID)
+	}
+
+	return &RouteResponse{
+		TotalTraversalTimeMinutes: data.TotalTraversalTimeMinutes,
+		Segments:                  data.Segments,
+	}, nil
 }

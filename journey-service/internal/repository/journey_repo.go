@@ -3,25 +3,40 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/model"
 	apperrors "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/errors"
 )
 
-// JourneyRepository handles all database operations for journeys
+// JourneyRepository handles all database operations for journeys.
+// Writes go to the master pool; reads use the slave pool (falls back to master
+// if slave is nil, e.g. when running without replication in dev).
 type JourneyRepository struct {
-	db *sql.DB
+	db    *sql.DB // master — writes
+	slave *sql.DB // slave  — reads (nil → fall back to master)
 }
 
-// NewJourneyRepository creates a new repository
-func NewJourneyRepository(db *sql.DB) *JourneyRepository {
-	return &JourneyRepository{db: db}
+// NewJourneyRepository creates a new repository.
+// slave may be nil; in that case all operations run against master.
+func NewJourneyRepository(master, slave *sql.DB) *JourneyRepository {
+	return &JourneyRepository{db: master, slave: slave}
 }
 
-// RunMigrations executes the SQL migration
+// readDB returns the slave connection pool when available, otherwise master.
+func (r *JourneyRepository) readDB() *sql.DB {
+	if r.slave != nil {
+		return r.slave
+	}
+	return r.db
+}
+
+// RunMigrations executes the SQL migration against the master database.
 func (r *JourneyRepository) RunMigrations(ctx context.Context, sql string) error {
 	_, err := r.db.ExecContext(ctx, sql)
 	if err != nil {
@@ -30,7 +45,15 @@ func (r *JourneyRepository) RunMigrations(ctx context.Context, sql string) error
 	return nil
 }
 
-// Create inserts a new journey and its segments in a single transaction
+// isPQUniqueViolation returns true when err is a PostgreSQL unique-constraint
+// violation (SQLSTATE 23505). Uses structured error inspection rather than
+// string matching so it works correctly across locales and driver versions.
+func isPQUniqueViolation(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505"
+}
+
+// Create inserts a new journey and its segments in a single transaction.
 func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segments []model.JourneySegment) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -53,7 +76,7 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 		j.Version, j.CreatedAt, j.UpdatedAt,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+		if isPQUniqueViolation(err) {
 			return apperrors.Conflict("journey with this idempotency key already exists")
 		}
 		return apperrors.DatabaseError("failed to insert journey", err)
@@ -76,12 +99,12 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 	return tx.Commit()
 }
 
-// GetByID returns a journey and its segments by journey ID
+// GetByID returns a journey and its segments by journey ID.
 func (r *JourneyRepository) GetByID(ctx context.Context, journeyID string) (*model.Journey, error) {
 	j := &model.Journey{}
 	var rejReason, reservationID sql.NullString
 
-	err := r.db.QueryRowContext(ctx, `
+	err := r.readDB().QueryRowContext(ctx, `
 		SELECT journey_id, driver_id, idempotency_key,
 		       origin_lat, origin_lng, dest_lat, dest_lng,
 		       departure_time, estimated_arrival, vehicle_type,
@@ -120,7 +143,7 @@ func (r *JourneyRepository) GetByID(ctx context.Context, journeyID string) (*mod
 }
 
 func (r *JourneyRepository) getSegments(ctx context.Context, journeyID string) ([]model.JourneySegment, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT segment_id, segment_name, sequence_order,
 		       time_window_start, time_window_end, traversal_minutes, region
 		FROM journey.journey_segments
@@ -143,7 +166,7 @@ func (r *JourneyRepository) getSegments(ctx context.Context, journeyID string) (
 	return segments, rows.Err()
 }
 
-// ListByDriverID returns paginated journeys for a driver
+// ListByDriverID returns paginated journeys for a driver.
 func (r *JourneyRepository) ListByDriverID(ctx context.Context, driverID, statusFilter string, page, limit int) ([]model.Journey, int64, error) {
 	if page < 1 {
 		page = 1
@@ -162,13 +185,13 @@ func (r *JourneyRepository) ListByDriverID(ctx context.Context, driverID, status
 	}
 
 	var total int64
-	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM journey.journeys "+where, args...).Scan(&total)
+	err := r.readDB().QueryRowContext(ctx, "SELECT COUNT(*) FROM journey.journeys "+where, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, apperrors.DatabaseError("failed to count journeys", err)
 	}
 
 	args = append(args, limit, offset)
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT journey_id, driver_id, idempotency_key,
 		       origin_lat, origin_lng, dest_lat, dest_lng,
 		       departure_time, estimated_arrival, vehicle_type,
@@ -184,10 +207,10 @@ func (r *JourneyRepository) ListByDriverID(ctx context.Context, driverID, status
 	}
 	defer rows.Close()
 
-	return r.scanJourneys(ctx, rows)
+	return r.scanJourneys(ctx, rows, total)
 }
 
-// AdminList returns all journeys with optional filters
+// AdminList returns all journeys with optional filters.
 func (r *JourneyRepository) AdminList(ctx context.Context, statusFilter, driverIDFilter string, page, limit int) ([]model.Journey, int64, error) {
 	if page < 1 {
 		page = 1
@@ -215,13 +238,13 @@ func (r *JourneyRepository) AdminList(ctx context.Context, statusFilter, driverI
 	}
 
 	var total int64
-	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM journey.journeys "+where, args...).Scan(&total)
+	err := r.readDB().QueryRowContext(ctx, "SELECT COUNT(*) FROM journey.journeys "+where, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, apperrors.DatabaseError("failed to count journeys", err)
 	}
 
 	args = append(args, limit, offset)
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT journey_id, driver_id, idempotency_key,
 		       origin_lat, origin_lng, dest_lat, dest_lng,
 		       departure_time, estimated_arrival, vehicle_type,
@@ -237,10 +260,14 @@ func (r *JourneyRepository) AdminList(ctx context.Context, statusFilter, driverI
 	}
 	defer rows.Close()
 
-	return r.scanJourneys(ctx, rows)
+	return r.scanJourneys(ctx, rows, total)
 }
 
-func (r *JourneyRepository) scanJourneys(ctx context.Context, rows *sql.Rows) ([]model.Journey, int64, error) {
+// scanJourneys scans a result set of journey rows and loads their segments.
+// The total parameter is the DB-level COUNT(*) already computed by the caller;
+// it is passed through unchanged so the API response reflects the real total
+// rather than the page length.
+func (r *JourneyRepository) scanJourneys(ctx context.Context, rows *sql.Rows, total int64) ([]model.Journey, int64, error) {
 	var journeys []model.Journey
 	for rows.Next() {
 		var j model.Journey
@@ -267,7 +294,6 @@ func (r *JourneyRepository) scanJourneys(ctx context.Context, rows *sql.Rows) ([
 		return nil, 0, apperrors.DatabaseError("rows error", err)
 	}
 
-	// Load segments for each journey
 	for i := range journeys {
 		segs, err := r.getSegments(ctx, journeys[i].JourneyID)
 		if err != nil {
@@ -276,10 +302,10 @@ func (r *JourneyRepository) scanJourneys(ctx context.Context, rows *sql.Rows) ([
 		journeys[i].Segments = segs
 	}
 
-	return journeys, int64(len(journeys)), nil
+	return journeys, total, nil
 }
 
-// UpdateStatus updates a journey's status with optimistic locking
+// UpdateStatus updates a journey's status with optimistic locking (master).
 func (r *JourneyRepository) UpdateStatus(ctx context.Context, journeyID string, status model.JourneyStatus, version int, extra map[string]interface{}) error {
 	setClauses := []string{
 		"status = $1",
@@ -310,10 +336,10 @@ func (r *JourneyRepository) UpdateStatus(ctx context.Context, journeyID string, 
 	return nil
 }
 
-// HasActiveJourney returns true if the driver has an APPROVED or ACTIVE journey
+// HasActiveJourney returns true if the driver has an APPROVED or ACTIVE journey.
 func (r *JourneyRepository) HasActiveJourney(ctx context.Context, driverID string) (bool, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx,
+	err := r.readDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM journey.journeys WHERE driver_id = $1 AND status IN ('APPROVED','ACTIVE')",
 		driverID,
 	).Scan(&count)
@@ -323,7 +349,7 @@ func (r *JourneyRepository) HasActiveJourney(ctx context.Context, driverID strin
 	return count > 0, nil
 }
 
-// SegmentAuthRecord holds the result of an enforcement segment lookup
+// SegmentAuthRecord holds the result of an enforcement segment lookup.
 type SegmentAuthRecord struct {
 	JourneyID       string
 	DriverID        string
@@ -336,7 +362,7 @@ type SegmentAuthRecord struct {
 // FindActiveJourneyForSegment returns the ACTIVE journey covering segmentID at ts, or nil if none.
 func (r *JourneyRepository) FindActiveJourneyForSegment(ctx context.Context, segmentID string, ts time.Time) (*SegmentAuthRecord, error) {
 	var rec SegmentAuthRecord
-	err := r.db.QueryRowContext(ctx, `
+	err := r.readDB().QueryRowContext(ctx, `
 		SELECT j.journey_id, j.driver_id, j.status,
 		       js.segment_id, js.time_window_start, js.time_window_end
 		FROM journey.journeys j
@@ -358,9 +384,9 @@ func (r *JourneyRepository) FindActiveJourneyForSegment(ctx context.Context, seg
 	return &rec, nil
 }
 
-// GetExpiredJourneys returns APPROVED journeys where departure_time < NOW() - 30min
+// GetExpiredJourneys returns APPROVED journeys where departure_time < NOW() - 30min.
 func (r *JourneyRepository) GetExpiredJourneys(ctx context.Context) ([]model.Journey, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT journey_id, driver_id, version, reservation_id
 		FROM journey.journeys
 		WHERE status = 'APPROVED' AND departure_time < NOW() - INTERVAL '30 minutes'`)

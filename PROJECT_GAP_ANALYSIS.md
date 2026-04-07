@@ -3,8 +3,8 @@
 ### Audited: 2026-04-07 (post IAM-fix session)
 
 > **Verdict key:** ✅ Fully correct · ⚠️ Partial / needs work · ❌ Broken / missing
-> **Post-fix note:** IAM service and frontend→IAM connectivity were fixed this session.
-> All other findings reflect current code state.
+> **Post-fix note (session 1):** IAM service and frontend→IAM connectivity fixed.
+> **Post-fix note (session 2):** Journey service, map client, capacity client, segment IDs, map graph all fixed. See section 4 and SYS issues.
 
 ---
 
@@ -29,7 +29,7 @@ These issues render core end-to-end flows completely non-functional regardless o
 
 ---
 
-### ❌ SYS-1 CRITICAL — Map API Contract Has Three Simultaneous Mismatches
+### ✅ SYS-1 FIXED — Map API Contract Corrected
 
 The journey service `MapClient` and the map service handler are **completely incompatible**. The Map service is effectively never called at runtime; only the hardcoded fallback fires.
 
@@ -39,16 +39,11 @@ The journey service `MapClient` and the map service handler are **completely inc
 | HTTP method | `POST` | `GET` | ❌ |
 | Parameters | JSON body `{"origin":{"lat":…,"lng":…}, "destination":{…}}` | Query string `?origin_node_id=X&destination_node_id=Y` | ❌ |
 
-**Files:**
-- `journey-service/internal/client/map_client.go` — line 59: calls wrong path with wrong method
-- `map-service/internal/http/router.go` — line 52: registers `GET /api/v1/map/route`
-- `map-service/internal/http/handlers/map_handler.go` — line 113: `GetRoute` reads query params
-
-**Runtime impact:** Every call returns 404 → `fallbackRoute()` fires → mock `seg_main`/`seg_ring` segments used → those IDs don't exist in the capacity DB → reservation silently fails or uses the capacity fallback mock too.
+**Fix applied:** `map_client.go` completely rewritten. Now calls `GET /api/v1/map/nodes` (cached 1h) to fetch node list, finds nearest node to origin/dest coordinates via Euclidean distance, then calls `GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y`. Response envelope unwrapped correctly. `fallbackRoute()` deleted — errors propagated to caller.
 
 ---
 
-### ❌ SYS-2 CRITICAL — Nginx Proxies Wrong Path to Map Service
+### ✅ SYS-2 FIXED — Nginx Map Route Corrected (previous session)
 
 ```nginx
 # nginx/nginx.conf — line 95
@@ -63,7 +58,7 @@ The map service registers handlers at `/api/v1/map/nodes` and `/api/v1/map/route
 
 ---
 
-### ❌ SYS-3 CRITICAL — Segment ID Namespace Mismatch Across Services
+### ✅ SYS-3 FIXED — Segment IDs Unified Across Map and Capacity Services
 
 Even after fixing SYS-1 and SYS-2, every reservation will fail because the two services use incompatible segment ID vocabularies:
 
@@ -76,11 +71,11 @@ Even after fixing SYS-1 and SYS-2, every reservation will fail because the two s
 | `seg_south_industrial` | `seg_luas_red` |
 | … (13 edges) | … (20 rows) |
 
-The journey flow: map-service returns `seg_city_north` → capacity-service looks up `seg_city_north` in `segments` table → finds nothing → reservation fails or falls to mock. **Zero real reservations are possible.**
+**Fix applied:** `capacity-service/migrations/002_seed_segments.sql` rewritten to seed the 13 map-service segment IDs (`seg_city_north`, `seg_north_airport`, etc.) replacing the old Dublin road names. Map service and capacity service now speak the same segment ID vocabulary. Real reservations are now possible end-to-end.
 
 ---
 
-### ❌ SYS-4 CRITICAL — Notification Service Unreachable via Nginx
+### ✅ SYS-4 FIXED — Notification Service Route Added to Nginx (previous session)
 
 `nginx/nginx.conf` has no `location` block for `/api/v1/notifications/`. All notification API requests from the browser fall through to the `try_files $uri /index.html` rule and receive the React SPA HTML. The notification service is completely isolated from the gateway.
 
@@ -95,7 +90,7 @@ location /api/v1/notifications/ {
 
 ---
 
-### ❌ SYS-5 CRITICAL — Capacity Isolation Level Contradicts Its Own Comment
+### ✅ SYS-5 FIXED — Capacity Isolation Level Corrected to Serializable
 
 `capacity-service/internal/service/reservation_service.go` line 79–80:
 ```go
@@ -107,7 +102,7 @@ The comment promises Serializable isolation to prevent double-booking phantom re
 
 ---
 
-### ❌ SYS-6 SIGNIFICANT — Silent Mock Fallbacks Mask All Service Failures
+### ✅ SYS-6 FIXED — Silent Mock Fallbacks Removed from Both Clients
 
 Both inter-service clients return successful mock responses when the downstream service is unreachable:
 
@@ -218,7 +213,7 @@ No `*_test.go` files in the capacity service. Core reservation logic (double-boo
 
 ## 4. JOURNEY SERVICE — Port 8083 (Ajinkya Taranekar)
 
-### ❌ CRITICAL-JRN-1: Map Client Calls Wrong Endpoint (see SYS-1)
+### ✅ CRITICAL-JRN-1 FIXED: Map Client Calls Correct Endpoint
 
 `journey-service/internal/client/map_client.go` — line 59:
 ```go
@@ -227,7 +222,7 @@ req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
 ```
 Must become `GET /api/v1/map/route` with `origin_node_id` and `destination_node_id` as query parameters. The entire parameter contract must be redesigned to bridge coordinate-based input (what journey has) to node-ID-based input (what map expects).
 
-### ❌ CRITICAL-JRN-2: Pagination Bug — Wrong Total Count
+### ✅ CRITICAL-JRN-2 FIXED: Pagination Returns Correct DB Total Count
 
 `journey-service/internal/repository/journey_repo.go` — `scanJourneys()` line 279:
 ```go
@@ -235,15 +230,15 @@ return journeys, int64(len(journeys)), nil   // ← BUG: len(page) ≠ DB total
 ```
 The `AdminList` query does a separate `SELECT COUNT(*)` (confirmed at line ~210) to get the real total. But `scanJourneys` ignores it and returns the page length instead. Every paginated response reports `total = page_size`, breaking any frontend pagination control.
 
-**Fix:** Run a separate count query and pass it through, or add `COUNT(*) OVER()` window function to the main query and scan it into a `var total int64`.
+**Fix applied:** `scanJourneys` now accepts a `total int64` parameter (the pre-computed `COUNT(*)` from the caller) and returns it unchanged. Both `ListByDriverID` and `AdminList` pass their `total` through. Page length no longer leaks as the total.
 
-### ❌ SIGNIFICANT-JRN-1: Handler Tests Use HS256; Middleware Now Requires RS256
+### ✅ SIGNIFICANT-JRN-1 FIXED: Handler Tests Use RSA Key + Mock JWKS Server
 
 `journey-service/internal/handler/journey_handler_test.go` signs test tokens with `jwt.SigningMethodHS256` and a hardcoded string key. After the RS256 JWKS middleware fix, these tests will fail with "unexpected signing method". Tests must be updated to either:
 - Mock the JWKS endpoint and sign test tokens with an RSA key, or
 - Skip JWT middleware in handler-level unit tests (clearly documented)
 
-### ❌ SIGNIFICANT-JRN-2: Fragile Unique Violation Detection in Create
+### ✅ SIGNIFICANT-JRN-2 FIXED: Structured pq Error Detection
 
 `journey-service/internal/repository/journey_repo.go` — `Create()`:
 ```go
@@ -253,7 +248,7 @@ if strings.Contains(err.Error(), "unique") {
 ```
 Same fragile pattern as capacity service. Replace with structured pq error detection.
 
-### ⚠️ SIGNIFICANT-JRN-3: No Slave Pool — All Reads Hit Master
+### ✅ SIGNIFICANT-JRN-3 FIXED: Slave Pool Added to Journey Repository
 
 `journey-service/internal/repository/journey_repo.go`:
 ```go
@@ -276,7 +271,13 @@ type JourneyRepository struct {
 - Event publishing to Redis Streams ✅
 - Background expiry job (`RunExpiryJob`) ✅
 - Migration runner ✅
-- JWKS-based RS256 token validation (fixed this session) ✅
+- JWKS-based RS256 token validation ✅
+- Map client API contract fixed (GET /api/v1/map/route + node lookup) ✅
+- Capacity client mock fallback removed ✅
+- Pagination total count corrected ✅
+- pq unique violation detection uses structured errors.As ✅
+- Slave pool for read queries ✅
+- Handler tests use RSA key + mock JWKS server ✅
 
 ---
 
@@ -286,15 +287,15 @@ type JourneyRepository struct {
 
 The map service exposes `GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y`. The journey service calls `POST /api/v1/routes/compute` with a JSON body. **This service is never called.** One of the two must change; they must agree on path, method, and parameter format.
 
-### ❌ CRITICAL-MAP-2: Segment IDs Don't Match Capacity Service (see SYS-3)
+### ✅ CRITICAL-MAP-2 FIXED: Segment IDs Unified (see SYS-3)
 
 Dijkstra output uses `seg_city_north`, `seg_north_airport`, etc. Capacity service seeds `seg_m50`, `seg_m1_n`, etc. The IDs must be unified across both services.
 
-### ❌ CRITICAL-MAP-3: Directed-Only Graph — ~50% of Routes Unreachable
+### ✅ CRITICAL-MAP-3 FIXED: Bidirectional Edges Added to Graph
 
 All 13 edges are added once (`A→B`). No reverse edges exist. City Centre→Airport works; Airport→City Centre does not. For a road network representing bidirectional roads, every edge should also add its reverse.
 
-**File:** `map-service/internal/http/handlers/map_handler.go` — `hardcodedEdges` slice (lines 71–85)
+**Fix applied:** All 13 edges now have reverse counterparts in `hardcodedEdges`. Same `segment_id` is used for both directions (road is physically the same). All 10 nodes are now fully connected in both directions.
 
 ### ❌ SIGNIFICANT-MAP-1: No Tests
 
@@ -432,7 +433,7 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 | Consistency model | ❌ | Not explicitly stated for any service (RC? RR? Serializable?) |
 | Update strategy | ⚠️ | Refresh token rotation; automated migration runner; no documented rollback |
 | Transactions | ✅ | IAM register/refresh; capacity reserve; journey status transitions |
-| Isolation level | ❌ | Capacity claims Serializable, uses Read Committed — **code contradicts comment** |
+| Isolation level | ✅ | Capacity now uses `sql.LevelSerializable` — matches comment and prevents phantom reads |
 | Sharding | ❌ | Not implemented, not discussed |
 | Exploit locality | ❌ | Not discussed |
 | Caching | ✅ | Redis: route cache (journey), availability cache (capacity), idempotency cache |
@@ -445,13 +446,13 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 |---|---|---|
 | Concurrent requests synchronized | ⚠️ | `SELECT … FOR UPDATE` + sorted locking in capacity; optimistic locking in journey; but isolation level undermines guarantee |
 | Immediate access to earned points | ✅ | Journeys reflected in DB immediately after booking; no async delay |
-| Double spending possible | ⚠️ | Idempotency key + FOR UPDATE reduces risk; RC isolation level leaves phantom read window |
+| Double spending possible | ✅ | Idempotency key + FOR UPDATE + Serializable isolation — phantom reads no longer possible |
 | Conflicting requests handled | ⚠️ | Optimistic locking returns 409 on version conflict; sorted lock order prevents deadlock |
 
 ### Failure Handling
 | Checklist Item | Status | Evidence / Gap |
 |---|---|---|
-| Communication failures tolerated | ⚠️ | HTTP timeouts configured; map/capacity clients have fallbacks — but fallbacks grant fake success, masking the failure |
+| Communication failures tolerated | ✅ | HTTP timeouts configured; map/capacity clients return errors on failure — no fake success fallbacks |
 | Node/replica failure detected | ❌ | `/health` and `/ready` endpoints exist; no watchdog, no auto-restart beyond Docker `restart: unless-stopped` |
 | Disconnected nodes/replicas | ❌ | Not handled; slave DB disconnect not detected or handled |
 | Replica recovery supported | ❌ | Not described or implemented |
@@ -469,12 +470,12 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 ### Other Features
 | Checklist Item | Status | Evidence / Gap |
 |---|---|---|
-| Test application/testing framework | ⚠️ | IAM: 17 unit tests; Journey: handler tests (now broken due to HS256→RS256 change); Capacity/Map/Notification: zero tests; no integration test suite |
+| Test application/testing framework | ⚠️ | IAM: 17 unit tests; Journey: handler tests fixed (RSA + mock JWKS); Capacity/Map/Notification: zero tests; no integration test suite |
 | GUI Interface | ✅ | React SPA with login, register, journey booking, journey management, admin dashboard |
 | Middleware used | ⚠️ | PostgreSQL, Redis, Docker Compose, gorilla/mux, zerolog used; **none is justified** in any document |
 | Appropriately motivated | ❌ | No document explains why these specific middleware/technology choices were made |
 
-**Checklist Score: 8/32 fully satisfied · 10/32 partial · 14/32 missing or broken**
+**Checklist Score (post session 2): ~13/32 fully satisfied · 9/32 partial · 10/32 missing or broken**
 
 ---
 
@@ -535,29 +536,29 @@ Service owners are implied by spec file authors but never formally documented.
 
 ### 🔴 P1 — Must Fix: System Cannot Function Without These
 
-| # | Fix | Files | Owner |
-|---|---|---|---|
-| 1 | **Align map API contract** — agree on one API shape (recommend: `GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y`). Update `MapClient` to use `GET` with query params; add coordinate-to-node lookup or change booking form to use node IDs. | `journey-service/internal/client/map_client.go`; `map-service/internal/http/handlers/map_handler.go` | Map + Journey |
-| 2 | **Fix nginx map route** — change `location /api/v1/routes/` to `location /api/v1/map/` | `nginx/nginx.conf` | Infra |
-| 3 | **Unify segment IDs** — agree on one naming scheme. Recommend: update map service edges to use capacity service IDs (`seg_m50` etc.) since those reflect real Dublin roads. | `map-service/internal/http/handlers/map_handler.go`; `capacity-service/migrations/002_seed_segments.sql` | Map + Capacity |
-| 4 | **Fix capacity isolation level** — change `sql.LevelReadCommitted` to `sql.LevelSerializable` | `capacity-service/internal/service/reservation_service.go` line 80 | Jai |
-| 5 | **Add nginx notification route** | `nginx/nginx.conf` | Infra |
-| 6 | **Rotate Supabase credentials** — password `3uuzHVMpT2CqxuwJ` is in git | `journey-service/config.yaml`, `map-service/config.yaml`, `notification-service/config.yaml` | All |
-| 7 | **Fix journey pagination** — `scanJourneys` returns `int64(len(journeys))`; must return DB total count | `journey-service/internal/repository/journey_repo.go` line 279 | Ajinkya |
+| # | Fix | Files | Owner | Status |
+|---|---|---|---|---|
+| 1 | **Align map API contract** | `journey-service/internal/client/map_client.go` | Journey | ✅ DONE |
+| 2 | **Fix nginx map route** | `nginx/nginx.conf` | Infra | ✅ DONE (prev session) |
+| 3 | **Unify segment IDs** — capacity seed now uses map service segment IDs | `capacity-service/migrations/002_seed_segments.sql` | Journey | ✅ DONE |
+| 4 | **Fix capacity isolation level** — `LevelSerializable` | `capacity-service/internal/service/reservation_service.go` | Capacity | ✅ DONE |
+| 5 | **Add nginx notification route** | `nginx/nginx.conf` | Infra | ✅ DONE (prev session) |
+| 6 | **Rotate Supabase credentials** — password in git | `*/config.yaml` | All | ❌ MANUAL ACTION REQUIRED |
+| 7 | **Fix journey pagination** — pass DB total through `scanJourneys` | `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
 
 ### 🟠 P2 — Should Fix: Significant Correctness Issues
 
-| # | Fix | Files | Owner |
-|---|---|---|---|
-| 8 | **Remove silent fallback mocks** — map and capacity clients should return errors on failure, not fake success | `journey-service/internal/client/map_client.go`; `capacity_client.go` | Ajinkya |
-| 9 | **Fix journey handler tests** — update to sign test tokens with RSA key (not HS256) after the middleware change | `journey-service/internal/handler/journey_handler_test.go` | Ajinkya |
-| 10 | **Fix fragile pq detection** — `strings.Contains` → `errors.As(err, &pqErr) && pqErr.Code == "23505"` in both services | `capacity-service/internal/service/reservation_service.go`; `journey-service/internal/repository/journey_repo.go` | Jai + Ajinkya |
-| 11 | **Add redis/go-redis to notification service** — prerequisite for everything else in that service | `notification-service/go.mod` | Ziwei |
-| 12 | **Implement notification Redis Streams consumer** | New: `notification-service/internal/event/consumer.go` | Ziwei |
-| 13 | **Add FCM library + send logic** | `notification-service/go.mod`; new FCM client file | Ziwei |
-| 14 | **Replace notification in-memory store with PostgreSQL** | New: `notification-service/migrations/`; new repo files | Ziwei |
-| 15 | **Add directed-graph reverse edges** in map service | `map-service/internal/http/handlers/map_handler.go` | Map owner |
-| 16 | **Add slave pool to journey repo** | `journey-service/internal/repository/journey_repo.go` | Ajinkya |
+| # | Fix | Files | Owner | Status |
+|---|---|---|---|---|
+| 8 | **Remove silent fallback mocks** | `journey-service/internal/client/map_client.go`; `capacity_client.go` | Ajinkya | ✅ DONE |
+| 9 | **Fix journey handler tests** — RSA key + mock JWKS server | `journey-service/internal/handler/journey_handler_test.go` | Ajinkya | ✅ DONE |
+| 10 | **Fix fragile pq detection** in both services | `capacity-service/internal/service/reservation_service.go`; `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
+| 11 | **Add redis/go-redis to notification service** | `notification-service/go.mod` | Ziwei | ❌ PENDING |
+| 12 | **Implement notification Redis Streams consumer** | New: `notification-service/internal/event/consumer.go` | Ziwei | ❌ PENDING |
+| 13 | **Add FCM library + send logic** | `notification-service/go.mod` | Ziwei | ❌ PENDING |
+| 14 | **Replace notification in-memory store with PostgreSQL** | New: `notification-service/migrations/` | Ziwei | ❌ PENDING |
+| 15 | **Add directed-graph reverse edges** in map service | `map-service/internal/http/handlers/map_handler.go` | Map | ✅ DONE |
+| 16 | **Add slave pool to journey repo** | `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
 
 ### 🟡 P3 — Quality Fixes
 
