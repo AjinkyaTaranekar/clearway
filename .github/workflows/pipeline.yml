@@ -135,7 +135,7 @@ jobs:
 
   # ── Reusable migration script (inlined per region) ─────────────────────────
   # Migrations run before stack update. Uses docker exec on the running
-  # postgres container — no extra secrets needed (local socket auth).
+  # CockroachDB container — no extra secrets needed (--insecure mode).
 
   # ── Deploy → EU ────────────────────────────────────────────────────────────
   deploy-eu:
@@ -230,9 +230,9 @@ jobs:
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
 
-            # Always redeploy the observability stack to pick up config changes
+            # Always redeploy to pick up config changes; --prune removes stale services
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
-              docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
+              docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
 
             # Update only selected app services to the pinned SHA tag
             IFS=',' read -ra ARR <<< \"\$SVCS\"
@@ -346,7 +346,7 @@ jobs:
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
-              docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
+              docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
               svc=\$(echo \"\$svc\" | xargs)
@@ -456,7 +456,7 @@ jobs:
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
-              docker stack deploy --with-registry-auth -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
+              docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
               svc=\$(echo \"\$svc\" | xargs)

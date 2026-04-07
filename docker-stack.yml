@@ -59,8 +59,8 @@ services:
     command:
       - "bash"
       - "-c"
-      - >
-        EXTERNAL_IP=$(curl -sf
+      - >-
+        EXTERNAL_IP=$$(curl -sf
         http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip
         -H 'Metadata-Flavor: Google') &&
         exec /cockroach/cockroach start --insecure
@@ -89,11 +89,11 @@ services:
     networks:
       - vcs-internal
     healthcheck:
-      test: ["CMD-SHELL", "/cockroach/cockroach sql --insecure --execute='SELECT 1' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 30s
 
   redis:
     image: redis:7-alpine

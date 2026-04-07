@@ -37,7 +37,7 @@ EXTRA_VMS=("$@")   # optional additional VMs in the same cell (workers)
 
 PROJECT="distributed-capacity-system"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GITHUB_REPOSITORY="ajinkyataranekar/clearway"
+GITHUB_REPOSITORY="ajinkyataranekar/distributed-vehicle-capacity-system"
 IMAGE_TAG="latest"
 
 ALL_VMS=("$MANAGER_VM" "${EXTRA_VMS[@]}")
@@ -89,28 +89,49 @@ info "Step 2 — copying stack file and deploying on $MANAGER_VM"
 gcloud compute scp "$REPO_ROOT/docker-stack.yml" \
   "$MANAGER_VM":~/docker-stack.yml --project="$PROJECT" --zone="$ZONE" 2>/dev/null
 
+# Remove vcs_db if it exists — Docker Swarm cannot change a service's mode
+# (replicated → global) in-place. Since we migrated from postgres (replicated)
+# to CockroachDB (global), we must remove and recreate it.
+info "Step 2a — removing stale vcs_db service if present (postgres → CockroachDB migration)"
+remote "$MANAGER_VM" "
+  if sudo docker service inspect vcs_db >/dev/null 2>&1; then
+    echo 'Removing existing vcs_db service...'
+    sudo docker service rm vcs_db
+    sleep 5
+  fi
+" || true
+
 remote "$MANAGER_VM" "
   sudo CRDB_JOIN='$CRDB_JOIN' \
        GITHUB_REPOSITORY='$GITHUB_REPOSITORY' \
        IMAGE_TAG='$IMAGE_TAG' \
-    docker stack deploy -c ~/docker-stack.yml vcs 2>&1
+    docker stack deploy --with-registry-auth -c ~/docker-stack.yml vcs 2>&1
 "
 
-# ── Step 3: Wait for CockroachDB to be healthy ──────────────────────────────
-info "Step 3 — waiting for CockroachDB to be healthy (up to 3 min)"
+# ── Step 3: Wait for CockroachDB container to be running ────────────────────
+# We check docker ps (container level), not docker service ps (task level).
+# Task state depends on the healthcheck, but the healthcheck requires the cluster
+# to be initialized first — that happens in step 4. So we just wait for the
+# container to exist and the HTTP port to respond (works before init).
+info "Step 3 — waiting for CockroachDB container to start (up to 3 min)"
 CRDB_READY=false
 for i in $(seq 1 36); do
-  STATUS=$(remote "$MANAGER_VM" \
-    "sudo docker service ps vcs_db --format '{{.CurrentState}}' 2>/dev/null | head -1")
-  if echo "$STATUS" | grep -q "Running"; then
-    info "  CockroachDB is Running (attempt $i)"
-    CRDB_READY=true
-    break
+  CONTAINER=$(remote "$MANAGER_VM" \
+    "sudo docker ps --filter name=vcs_db --filter status=running --format '{{.ID}}' 2>/dev/null | head -1")
+  if [ -n "$CONTAINER" ]; then
+    # Also verify the HTTP port is open (proves the process is up)
+    HTTP_OK=$(remote "$MANAGER_VM" \
+      "curl -sf http://localhost:8080/health >/dev/null 2>&1 && echo ok || true")
+    if [ "$HTTP_OK" = "ok" ]; then
+      info "  CockroachDB is up (attempt $i, container $CONTAINER)"
+      CRDB_READY=true
+      break
+    fi
   fi
-  warning "  attempt $i/36: $STATUS — waiting 5s"
+  warning "  attempt $i/36: container=${CONTAINER:-none} — waiting 5s"
   sleep 5
 done
-"$CRDB_READY" || error "CockroachDB did not start after 3 minutes. Check: gcloud compute ssh $MANAGER_VM --zone $ZONE -- 'sudo docker service logs vcs_db --tail 30'"
+$CRDB_READY || error "CockroachDB did not start after 3 minutes. Check: gcloud compute ssh $MANAGER_VM --zone $ZONE -- 'sudo docker service logs vcs_db --tail 30'"
 
 # Give the SQL port a few extra seconds to open after the container is Running
 sleep 10
