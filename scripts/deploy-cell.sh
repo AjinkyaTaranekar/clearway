@@ -160,6 +160,7 @@ remote "$MANAGER_VM" "
       CREATE DATABASE IF NOT EXISTS trafficservice;
       CREATE USER IF NOT EXISTS postgres;
       GRANT ALL ON DATABASE trafficservice TO postgres WITH GRANT OPTION;
+      GRANT CREATE ON DATABASE defaultdb TO postgres;
     \" 2>&1
 "
 

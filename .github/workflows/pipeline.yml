@@ -192,10 +192,13 @@ jobs:
               done
             done
             # Grant postgres access to all schemas/tables created by root above
+            # Also grant CREATE on defaultdb — viper may connect there if env override fails
             $CRDB --execute="
               GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
               GRANT ALL ON SCHEMA journey TO postgres;
             " 2>/dev/null || true
+            docker exec "$DB" /cockroach/cockroach sql --insecure --host=localhost:26257 \
+              --execute="GRANT CREATE ON DATABASE defaultdb TO postgres;" 2>/dev/null || true
           '
 
       - name: Copy stack file and observability configs
@@ -323,10 +326,13 @@ jobs:
               done
             done
             # Grant postgres access to all schemas/tables created by root above
+            # Also grant CREATE on defaultdb — viper may connect there if env override fails
             $CRDB --execute="
               GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
               GRANT ALL ON SCHEMA journey TO postgres;
             " 2>/dev/null || true
+            docker exec "$DB" /cockroach/cockroach sql --insecure --host=localhost:26257 \
+              --execute="GRANT CREATE ON DATABASE defaultdb TO postgres;" 2>/dev/null || true
           '
 
       - name: Copy stack file and observability configs
@@ -438,10 +444,13 @@ jobs:
               done
             done
             # Grant postgres access to all schemas/tables created by root above
+            # Also grant CREATE on defaultdb — viper may connect there if env override fails
             $CRDB --execute="
               GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
               GRANT ALL ON SCHEMA journey TO postgres;
             " 2>/dev/null || true
+            docker exec "$DB" /cockroach/cockroach sql --insecure --host=localhost:26257 \
+              --execute="GRANT CREATE ON DATABASE defaultdb TO postgres;" 2>/dev/null || true
           '
 
       - name: Copy stack file and observability configs
