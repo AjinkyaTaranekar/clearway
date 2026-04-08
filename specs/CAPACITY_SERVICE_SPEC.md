@@ -1,4 +1,4 @@
-# Capacity Service (S3) — Complete Specification
+# Capacity Service (S3) - Complete Specification
 
 > **Owner:** Jai Nagle
 > **Language:** Go 1.22+ (gorilla/mux)
@@ -12,7 +12,7 @@
 
 The Capacity Service is the authoritative source of truth for road segment slot availability in the Distributed Traffic Service. It enforces a hard upper bound on the number of vehicles that may simultaneously occupy any road segment during any time window, ensuring no segment is ever over-subscribed.
 
-In a multi-VM deployment, all VMs run identical stacks behind a load balancer. Each VM's Capacity Service independently manages its local PostgreSQL replica. PostgreSQL multi-master logical replication keeps all VMs' capacity data in sync within milliseconds. A reservation committed on VM B will be visible to VM A's Capacity Service before any subsequent booking request arrives — given the ~100ms replication lag and the minimum 1-hour advance booking requirement.
+In a multi-VM deployment, all VMs run identical stacks behind a load balancer. Each VM's Capacity Service independently manages its local PostgreSQL replica. PostgreSQL multi-master logical replication keeps all VMs' capacity data in sync within milliseconds. A reservation committed on VM B will be visible to VM A's Capacity Service before any subsequent booking request arrives - given the ~100ms replication lag and the minimum 1-hour advance booking requirement.
 
 ---
 
@@ -90,7 +90,7 @@ Within a single VM, Capacity Service is called by Journey Service over the local
 
 | From → To | Protocol | Sync/Async | Why |
 |-----------|----------|------------|-----|
-| Journey Service → Capacity Service (reserve) | REST POST | **Sync** | The driver is waiting for a booking decision. The reservation must complete before Journey Service can respond. Async would require a pending state and callback mechanism — worse UX and more complexity. Both services are on the same VM so latency is sub-millisecond. |
+| Journey Service → Capacity Service (reserve) | REST POST | **Sync** | The driver is waiting for a booking decision. The reservation must complete before Journey Service can respond. Async would require a pending state and callback mechanism - worse UX and more complexity. Both services are on the same VM so latency is sub-millisecond. |
 | Journey Service → Capacity Service (check) | REST GET | **Sync** | Availability preview is a blocking UX interaction. Cache hit rate is high (30s TTL). |
 | Redis Streams → Capacity Service (release) | Redis XREAD | **Async** | Releasing capacity is not on any driver's critical path. The driver already has their cancellation/completion confirmation in the HTTP response. A 2-second delay in capacity release is invisible. Async also decouples Journey Service from Capacity Service for terminal state transitions. |
 | Map Service → Capacity Service (occupancy) | REST GET | **Sync** | Admin map poll. Not latency-sensitive (60s poll interval). Capacity Service has no push mechanism; Map Service needs to merge occupancy with topology before returning to the frontend. |
@@ -99,13 +99,13 @@ Within a single VM, Capacity Service is called by Journey Service over the local
 ### 3.3 Why These Choices
 
 **Reserve is sync because the driver is waiting.**
-Journey Service cannot respond to the driver until it knows whether capacity was successfully reserved. There is no useful work to do in parallel after the route is computed. Both services are on the same VM — the intra-VM REST call is effectively a function call with HTTP overhead, completing in under 5ms under normal conditions.
+Journey Service cannot respond to the driver until it knows whether capacity was successfully reserved. There is no useful work to do in parallel after the route is computed. Both services are on the same VM - the intra-VM REST call is effectively a function call with HTTP overhead, completing in under 5ms under normal conditions.
 
 **Slot release is async because the driver already has the answer.**
 When a driver cancels, Journey Service marks the journey CANCELLED, responds 200 OK to the driver, then publishes `journey.cancelled` to Redis Streams. Capacity Service processes this event and releases slots. The 1-hour advance booking requirement means the brief delay (seconds) has zero practical impact: no other driver could book and start a journey on those exact segment/windows in the seconds it takes for the event to be processed.
 
 **Idempotency keys are stored in PostgreSQL, not Redis.**
-PostgreSQL logical replication ensures idempotency records propagate to all VMs within ~100ms. If Journey Service retries a reserve call and the retry hits a different VM (due to load balancing), that VM will have the original idempotency record via replication and return the cached response. Redis is per-VM and not shared — a Redis-based idempotency store would fail for cross-VM retries. PostgreSQL's `UNIQUE` constraint on `idempotency_key` also provides a hard conflict guard if replication lag creates a brief race window.
+PostgreSQL logical replication ensures idempotency records propagate to all VMs within ~100ms. If Journey Service retries a reserve call and the retry hits a different VM (due to load balancing), that VM will have the original idempotency record via replication and return the cached response. Redis is per-VM and not shared - a Redis-based idempotency store would fail for cross-VM retries. PostgreSQL's `UNIQUE` constraint on `idempotency_key` also provides a hard conflict guard if replication lag creates a brief race window.
 
 **`SELECT FOR UPDATE` is used over optimistic concurrency control for reservations.**
 Optimistic concurrency control would require the application to retry on version conflict. Under high contention on a popular segment/window, this could cause many retries and unpredictable latency on the driver's critical path. `SELECT FOR UPDATE` serializes concurrent reservation attempts for the same segment rows, guaranteeing that the capacity check and slot insertion happen atomically. The lock is held for milliseconds. The trade-off is serialized throughput on hot segments, acceptable for a prototype.
@@ -158,7 +158,7 @@ Reserve capacity for all segments in a journey. Called synchronously by Journey 
 - `time_window_start` / `time_window_end`: the exact traversal window for that segment, computed by Journey Service using the cascading time window algorithm. Capacity Service stores these as-is and uses overlap-based checking.
 - `idempotency_key`: if this key already exists in `capacity.idempotency_cache` (and is not expired), return the stored response without re-processing.
 
-**Response (201 Created — all segments reserved):**
+**Response (201 Created - all segments reserved):**
 ```json
 {
   "status": "reserved",
@@ -181,7 +181,7 @@ Reserve capacity for all segments in a journey. Called synchronously by Journey 
 }
 ```
 
-**Response (200 OK — capacity unavailable, nothing reserved):**
+**Response (200 OK - capacity unavailable, nothing reserved):**
 ```json
 {
   "status": "failed",
@@ -205,8 +205,8 @@ Reserve capacity for all segments in a journey. Called synchronously by Journey 
 | `invalid_time_window` | `time_window_end <= time_window_start` or `time_window_end` is in the past |
 
 **Error Responses:**
-- `400` — Malformed request (missing fields, invalid `vehicle_type`, empty `reservations` array)
-- `500` — Database error
+- `400` - Malformed request (missing fields, invalid `vehicle_type`, empty `reservations` array)
+- `500` - Database error
 
 > **Atomicity guarantee:** The entire reservation executes in a single PostgreSQL transaction with `SELECT FOR UPDATE` on all segment rows. If any segment check fails, the transaction rolls back before any inserts occur.
 
@@ -263,8 +263,8 @@ Top-level `available` is `true` only if all segments return `is_available: true`
 **Caching:** Results are served from Redis per segment/window (key: `cap:avail:{segment_id}:{time_start_unix}:{time_end_unix}`, TTL: 30 seconds). Cache is populated on PostgreSQL fallback and invalidated after any reservation or release on the same segment/window.
 
 **Error Responses:**
-- `400` — Missing or invalid query parameters
-- `404` — One or more `segment_id` values not found
+- `400` - Missing or invalid query parameters
+- `404` - One or more `segment_id` values not found
 
 ---
 
@@ -380,7 +380,7 @@ Returns `200 OK` only when both the PostgreSQL connection pool and Redis connect
 
 ## 6. What Capacity Service Needs from Other Services
 
-### From Journey Service (S2) — via Redis Streams (async)
+### From Journey Service (S2) - via Redis Streams (async)
 
 Capacity Service is a **consumer** on the `journey.events` Redis Streams stream, consumer group `capacity-service`. It acts on three event types:
 
@@ -435,14 +435,14 @@ Capacity Service is a **consumer** on the `journey.events` Redis Streams stream,
 
 **Processing logic for all three:**
 1. Find all rows in `capacity.reservations` where `journey_id = $journey_id AND status = 'active'`
-2. If none found: log warning (never reserved, or already released) — no-op, XACK
+2. If none found: log warning (never reserved, or already released) - no-op, XACK
 3. `UPDATE ... SET status = 'released', released_at = NOW()`
 4. Delete Redis availability cache keys for all affected segment/window combinations
 5. XACK the message
 
 Capacity Service uses `journey_id` as the primary release key (not `reservation_id`), since `journey_id` is always present and unambiguous even if `reservation_id` has not yet replicated.
 
-### From IAM Service (S1) — no runtime calls
+### From IAM Service (S1) - no runtime calls
 
 Capacity Service fetches JWKS public keys from IAM on startup and refreshes every hour. JWT validation for the occupancy endpoint's admin check is performed locally. No runtime REST call to IAM per request.
 
@@ -597,14 +597,14 @@ XREADGROUP GROUP capacity-service ${VM_ID}-capacity COUNT 10 BLOCK 5000 STREAMS 
 2. If not `journey.cancelled`, `journey.completed`, or `journey.expired`: XACK and skip
 3. Extract `journey_id` from payload
 4. `UPDATE capacity.reservations SET status='released', released_at=NOW() WHERE journey_id=$1 AND status='active'`
-5. If `rows_affected = 0`: no-op (never reserved or already released — log a warning)
+5. If `rows_affected = 0`: no-op (never reserved or already released - log a warning)
 6. DEL Redis cache keys for released segment/window combinations
 7. XACK
 
 **Retry on DB failure:**
 - Do NOT XACK on failure
 - Exponential backoff: 1s, 2s, 4s (max 3 retries)
-- After 3 failures: XACK and log `level=error` with `event_id`, `journey_id`, `reason` — prevents a single bad message from blocking all subsequent ones
+- After 3 failures: XACK and log `level=error` with `event_id`, `journey_id`, `reason` - prevents a single bad message from blocking all subsequent ones
 - Pending message recovery on restart: `XAUTOCLAIM journey.events capacity-service ${VM_ID}-capacity 60000 0-0 COUNT 100`
 
 ---
@@ -685,7 +685,7 @@ COMMIT;
 | E2 | Two VMs simultaneously reserve the last slot on the same segment | Both VMs hold `SELECT FOR UPDATE` on their local copy of the segment row at the same time | PostgreSQL row locking is per-instance. Both VMs can acquire the lock locally and commit. After replication converges, combined reservations may exceed `max_capacity` by one booking. Probability is negligible: replication lag is ~100ms and bookings require 1-hour advance. Post-replication, the orphan cleanup job and normal slot release will restore consistency. |
 | E3 | Journey Service retries `POST /capacity/reserve` with the same `idempotency_key` after a timeout | Double-booking | Step 1 of the transaction checks `capacity.idempotency_cache`. If found: return stored response, no new inserts. The PostgreSQL `UNIQUE` constraint on `idempotency_key` catches any race between the check and a concurrent first-time insert. |
 | E4 | Retry hits a different VM before replication propagates the idempotency record | ~100ms window where VM B hasn't seen VM A's idempotency insert yet | VM B's transaction tries to INSERT the same `idempotency_key`. The `UNIQUE` constraint raises a conflict. Application catches it, queries for the existing record by key, and returns the cached response. |
-| E5 | `journey.cancelled` event consumed twice (duplicate delivery after consumer crash) | Double-release attempt | `UPDATE WHERE status='active'` is idempotent. Second update matches 0 rows — no-op. Log a warning. |
+| E5 | `journey.cancelled` event consumed twice (duplicate delivery after consumer crash) | Double-release attempt | `UPDATE WHERE status='active'` is idempotent. Second update matches 0 rows - no-op. Log a warning. |
 | E6 | Release event for a journey that was REJECTED (never had slots reserved) | Lookup returns 0 rows | No-op. XACK. Log warning with `journey_id`. |
 | E7 | Redis consumer crashes after DB commit but before XACK | Message re-delivered on restart | Release is idempotent (see E5). Re-processing is safe. |
 | E8 | Two reservations with partially overlapping windows on the same segment (08:00–08:25 and 08:10–08:35) | Both occupy the segment concurrently in the 08:10–08:25 overlap | The overlap condition `existing_start < new_end AND existing_end > new_start` correctly detects any overlap. Both reservations count against concurrent capacity. Correct behaviour. |
@@ -693,7 +693,7 @@ COMMIT;
 | E10 | Segment `max_capacity` is 0 (hypothetical seeding error) | All reservations fail with `at_capacity` | `0.0 + slots_needed > 0.0` is always true. Correct behaviour. The `CHECK (max_capacity > 0)` constraint prevents this from being inserted via migration. |
 | E11 | All 20 segments needed in one reserve call | Long-held transaction locking 20 rows | 20 row locks held for ~5ms. Acceptable. Consistent sort order prevents deadlock with other concurrent transactions. |
 | E12 | `idempotency_key` reused with a different `journey_id` | Caller gets a cached response for the wrong journey | Return the original cached response. Log a warning with both the cached `journey_id` and the requested `journey_id`. Idempotency contract: a key is permanently tied to the first operation it identified. |
-| E13 | `time_window_end` is in the past (departure time slipped past the booking validation window) | Stale reservation for a time slot that has already elapsed | Capacity Service validates `time_window_end > NOW()` on reserve. Returns `400 Bad Request`. Defence-in-depth against Journey Service bugs — the 1-hour advance booking rule should already prevent this. |
+| E13 | `time_window_end` is in the past (departure time slipped past the booking validation window) | Stale reservation for a time slot that has already elapsed | Capacity Service validates `time_window_end > NOW()` on reserve. Returns `400 Bad Request`. Defence-in-depth against Journey Service bugs - the 1-hour advance booking rule should already prevent this. |
 | E14 | Admin force-cancel of an ACTIVE journey (driver is physically on the road) | Slots released while journey is in progress | Correct behaviour per spec. `journey.cancelled` event is published; Capacity Service releases slots. The driver's physical journey is unaffected; only the system record is updated. |
 | E15 | Very high load: hundreds of concurrent bookings for the same segment/window | All transactions queue on `SELECT FOR UPDATE` → latency spike | Acceptable for a prototype. Production mitigation: segment-level sharding or atomic slot counter via Redis Lua script. Out of scope for this iteration. |
 
@@ -745,7 +745,7 @@ DELETE FROM capacity.idempotency_cache WHERE expires_at < NOW();
    d. Calls VM B's Capacity Service: POST /api/v1/capacity/reserve
 
 4. VM B's Capacity Service:
-   a. Checks idempotency_cache (miss — first attempt)
+   a. Checks idempotency_cache (miss - first attempt)
    b. Validates all segment_ids exist
    c. SELECT … FOR UPDATE on segment rows (sorted order)
    d. Checks available capacity for each segment/window (overlap queries)
@@ -794,7 +794,7 @@ DELETE FROM capacity.idempotency_cache WHERE expires_at < NOW();
 ### 12.4 Replication Monitoring
 
 ```sql
--- On each VM — check WAL lag to all subscribers
+-- On each VM - check WAL lag to all subscribers
 SELECT
     application_name,
     state,
@@ -802,7 +802,7 @@ SELECT
 FROM pg_stat_replication;
 ```
 
-Alert threshold: lag > 1 second. The 30-second availability cache TTL provides a buffer — stale capacity data is visible for at most 30 seconds even at high replication lag.
+Alert threshold: lag > 1 second. The 30-second availability cache TTL provides a buffer - stale capacity data is visible for at most 30 seconds even at high replication lag.
 
 ---
 
@@ -832,7 +832,7 @@ REDIS_PASSWORD=<secret>
 REDIS_DB=0
 REDIS_CONNECT_TIMEOUT_SECONDS=5
 
-# IAM JWKS (for admin endpoint auth — no runtime calls per request)
+# IAM JWKS (for admin endpoint auth - no runtime calls per request)
 JWKS_URL=http://iam-service:8082/api/v1/auth/.well-known/jwks.json
 JWKS_REFRESH_INTERVAL_SECONDS=3600
 
@@ -843,7 +843,7 @@ IDEMPOTENCY_TTL_HOURS=24                # How long to keep idempotency records
 # Redis Streams
 STREAM_NAME=journey.events
 CONSUMER_GROUP=capacity-service
-CONSUMER_NAME=${VM_ID}-capacity         # e.g. "vm-a-capacity" — unique per VM
+CONSUMER_NAME=${VM_ID}-capacity         # e.g. "vm-a-capacity" - unique per VM
 STREAM_READ_COUNT=10                    # Messages per XREADGROUP call
 STREAM_BLOCK_MS=5000                    # XREADGROUP BLOCK wait time
 
@@ -932,7 +932,7 @@ var SlotWeights = map[VehicleType]float64{
 }
 ```
 
-`slots_used` is resolved once in `reservation_service.go` and passed to all repository calls. The repository layer only works with `float64` slot counts — it has no knowledge of vehicle types.
+`slots_used` is resolved once in `reservation_service.go` and passed to all repository calls. The repository layer only works with `float64` slot counts - it has no knowledge of vehicle types.
 
 ---
 
@@ -1095,13 +1095,13 @@ Capacity Service does not need browser-origin CORS headers. It is never called c
 
 Journey Service (already specced) expects exactly these shapes. Capacity Service must not deviate:
 
-**Reserve — success:**
+**Reserve - success:**
 ```
 HTTP 201
 { "status": "reserved", "reservation_id": "rsv_...", "journey_id": "jrn_..." }
 ```
 
-**Reserve — failure:**
+**Reserve - failure:**
 ```
 HTTP 200   ← NOT 4xx. Journey Service reads the body to determine outcome.
 {

@@ -34,7 +34,7 @@ variable "ssh_public_key_path" {
 }
 
 variable "management_cidr" {
-  description = "CIDR allowed to SSH. Set to your IP/32 (e.g. 203.0.113.5/32). Default opens to all — tighten in production."
+  description = "CIDR allowed to SSH. Set to your IP/32 (e.g. 203.0.113.5/32). Default opens to all - tighten in production."
   type        = string
   default     = "*"
 }

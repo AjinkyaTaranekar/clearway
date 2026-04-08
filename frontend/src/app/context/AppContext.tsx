@@ -142,7 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const res = await notifApi.listNotifications();
         setNotifications(res.notifications.map(mapApiNotification));
       } catch {
-        // notifications are non-critical — no toast
+        // notifications are non-critical - no toast
       }
     };
     load();

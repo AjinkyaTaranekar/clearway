@@ -1,22 +1,22 @@
-# CS7NS6 Checklist — Gaps & Fixes
+# CS7NS6 Checklist - Gaps & Fixes
 
 > This document maps every gap between our current architecture/specs and the
 > Exercise 2 marking checklist, with the exact change needed to close each one.
 
 ---
 
-## Gap 1 — "For enforcement" checkbox
+## Gap 1 - "For enforcement" checkbox
 
 ### Problem
 The checklist has two separate service rows:  
-`Appropriate services provided — For drivers □   For enforcement □`
+`Appropriate services provided - For drivers □   For enforcement □`
 
 Our system serves drivers fully but has no enforcement surface. "Enforcement" in
 a road-capacity system means traffic wardens, Gardaí, or automated roadside
 cameras verifying that a vehicle currently on a segment has an approved, active
 journey. Our admin endpoints serve internal ops, not enforcement agents.
 
-### Fix — Add an enforcement query endpoint to Journey Service
+### Fix - Add an enforcement query endpoint to Journey Service
 
 Add to `specs/JOURNEY_SERVICE_SPEC.md` under section 5.2 (alongside admin):
 
@@ -62,7 +62,7 @@ GET /api/v1/enforcement/verify
 - The query checks `journey.journey_segments` for a matching `segment_id` with a
   `time_window_start ≤ timestamp ≤ time_window_end`, joined to `journey.journeys`
   where `status = 'ACTIVE'`
-- Vehicle plate is stored in the driver profile (IAM Service) — Journey Service
+- Vehicle plate is stored in the driver profile (IAM Service) - Journey Service
   joins via `driver_id` to look up plate, or the enforcement client includes it
   as a hint (faster, avoids cross-service call)
 - This endpoint is read-only; it does not modify journey state
@@ -74,14 +74,14 @@ GET /api/v1/enforcement/verify
 
 ---
 
-## Gap 2 — Quantitative requirements
+## Gap 2 - Quantitative requirements
 
 ### Problem
 All requirements in the specs and report are qualitative ("fast", "low latency",
 "scalable"). The checklist explicitly distinguishes `Qualitative? □  Quantitative? □`.
 Without numbers the marker cannot verify requirements are met.
 
-### Fix — Add SLA table to the report and each spec
+### Fix - Add SLA table to the report and each spec
 
 Add the following section to the interim report and mirror it in each service spec:
 
@@ -117,14 +117,14 @@ These numbers assume all services are on the same VM (intra-Docker-network calls
 
 ---
 
-## Gap 3 — Historic data / load pattern reference
+## Gap 3 - Historic data / load pattern reference
 
 ### Problem
 The report mentions "read:write = 10:1, peak evenings and weekends" without
 citing any source. The checklist checks `Motivated by reference to historic data? □`
 and `And load pattern? □`.
 
-### Fix — Add references and load model to the report
+### Fix - Add references and load model to the report
 
 Add to section 1 (Introduction) or a new "Requirements Motivation" section:
 
@@ -151,21 +151,21 @@ Add to section 1 (Introduction) or a new "Requirements Motivation" section:
 
 ---
 
-## Gap 4 — Sharding rationale
+## Gap 4 - Sharding rationale
 
 ### Problem
 The checklist has `Sharding □` and `Exploit locality □`. We exploit locality
 (co-located services) but sharding is not mentioned. The marker needs to see
 that we *considered* sharding and made a deliberate decision.
 
-### Fix — Add sharding decision to the report (Architecture section)
+### Fix - Add sharding decision to the report (Architecture section)
 
 Add to section 2 (Technical Architecture):
 
 > **Sharding strategy.**  
 > Data sharding within a cell is not required at prototype scale. The anticipated
 > peak load of ~10,000 registered drivers produces a `journey.journeys` table of
-> at most ~1M rows after 6 months — well within PostgreSQL's single-node capacity
+> at most ~1M rows after 6 months - well within PostgreSQL's single-node capacity
 > (PostgreSQL comfortably handles 100M+ rows on a B1ms VM with appropriate indexes).
 >
 > Geographic sharding *is* implemented implicitly through the cell-based architecture:
@@ -182,14 +182,14 @@ Add to section 2 (Technical Architecture):
 
 ---
 
-## Gap 5 — Redis eviction policy (replacement strategy)
+## Gap 5 - Redis eviction policy (replacement strategy)
 
 ### Problem
 The checklist checks `Caching □   In memory? □   Replacement strategy □`.
 We use Redis (in-memory ✅, caching ✅) but the replacement strategy was not
 explicitly documented in any spec.
 
-### Fix — Already implemented in docker-stack.yml; add to specs
+### Fix - Already implemented in docker-stack.yml; add to specs
 
 The `docker-stack.yml` already configures:
 ```
@@ -216,13 +216,13 @@ Add to `specs/CAPACITY_SERVICE_SPEC.md` and `specs/JOURNEY_SERVICE_SPEC.md`:
 
 ---
 
-## Gap 6 — Isolation level explicit specification
+## Gap 6 - Isolation level explicit specification
 
 ### Problem
 The checklist checks `Transactions □   Isolation level □`. Our specs say
 "SELECT FOR UPDATE" in Capacity Service but never name the isolation level.
 
-### Fix — Add to Capacity Service spec
+### Fix - Add to Capacity Service spec
 
 Add to `specs/CAPACITY_SERVICE_SPEC.md` in the database/concurrency section:
 
@@ -237,7 +237,7 @@ Add to `specs/CAPACITY_SERVICE_SPEC.md` in the database/concurrency section:
 >    at the lock: the first commits, the second reads the updated `slots_used`
 >    and either succeeds (if capacity remains) or returns `at_capacity`.
 > 3. `SERIALIZABLE` isolation is not used because it would increase abort rates
->    under contention without correctness benefit — our `SELECT FOR UPDATE` already
+>    under contention without correctness benefit - our `SELECT FOR UPDATE` already
 >    provides the required mutual exclusion.
 >
 > ```sql
@@ -255,7 +255,7 @@ Add to `specs/CAPACITY_SERVICE_SPEC.md` in the database/concurrency section:
 
 ---
 
-## Gap 7 — Network partition handling (including minority partition)
+## Gap 7 - Network partition handling (including minority partition)
 
 ### Problem
 The checklist checks:  
@@ -267,14 +267,14 @@ The checklist checks:
 Our architecture document mentions split-brain briefly but does not address the
 case where no node has a majority (3-way 1+1+1 split).
 
-### Fix — Add partition section to the architecture report
+### Fix - Add partition section to the architecture report
 
 Add as section 8 (or augment section 7 "Failure Handling"):
 
 > **Network Partition Behaviour**
 >
 > The system uses a crash-recovery model with no Byzantine faults. We do not run a
-> consensus protocol (Raft/Paxos) — instead we rely on PostgreSQL logical
+> consensus protocol (Raft/Paxos) - instead we rely on PostgreSQL logical
 > replication with a defined conflict resolution policy.
 >
 > **Case 1: 2+1 partition (one node isolated)**  
@@ -282,7 +282,7 @@ Add as section 8 (or augment section 7 "Failure Handling"):
 > probe marks the isolated node as unhealthy within 30 seconds and stops routing
 > traffic to it. The two-node partition continues serving all requests normally.
 > The isolated node also continues serving requests from its local state (no
-> read/write prohibition — we are AP, not CP for this failure mode). On partition
+> read/write prohibition - we are AP, not CP for this failure mode). On partition
 > heal, PostgreSQL logical replication resumes and the isolated node's writes are
 > merged using last-write-wins on `updated_at`. Conflicting state transitions are
 > rejected by the `version` optimistic lock: a stale update (`WHERE version = N`
@@ -291,7 +291,7 @@ Add as section 8 (or augment section 7 "Failure Handling"):
 >
 > **Case 2: 3-way 1+1+1 partition (no majority)**  
 > All three nodes are mutually isolated. All three continue to serve local requests
-> — availability is preserved at the cost of consistency. This is the deliberate
+> - availability is preserved at the cost of consistency. This is the deliberate
 > AP trade-off. The risk is three concurrent state modifications to the same
 > journey record. This is bounded by the optimistic lock: when partitions heal
 > and replication runs, the `version` field catches stale updates. The
@@ -307,48 +307,48 @@ Add as section 8 (or augment section 7 "Failure Handling"):
 > **Case 3: Merging after partition**  
 > PostgreSQL logical replication automatically resumes on network heal. No manual
 > intervention needed for the replication stream. Applications that were in-flight
-> during the partition may receive a conflict error on their next write — the
+> during the partition may receive a conflict error on their next write - the
 > client retries with a new idempotency key.
 >
 > **Consistency guarantee post-merge:**  
 > All terminal states (CANCELLED, COMPLETED, REJECTED, EXPIRED) are idempotent
-> and monotonic — a journey cannot transition from a terminal state to a non-terminal
+> and monotonic - a journey cannot transition from a terminal state to a non-terminal
 > state. The `CHECK` constraint on `status` and the application-level state machine
 > enforce this. Even after a merge, a COMPLETED journey cannot become ACTIVE again.
 
 ---
 
-## Gap 8 — Test application / testing framework
+## Gap 8 - Test application / testing framework
 
 ### Problem
 The checklist checks `Test application/testing framework □`. The Makefile has
 `make test` (`go test ./...`) but no tests are written.
 
-### Fix — Write at minimum integration tests for the critical path
+### Fix - Write at minimum integration tests for the critical path
 
 Priority order (write these first):
 
-**1. `journey-service` — time window computation (pure unit test, no DB)**
+**1. `journey-service` - time window computation (pure unit test, no DB)**
 ```
 internal/service/time_window_test.go
 ```
 Tests: single segment, multiple segments, midnight crossover, zero segments.
 
-**2. `journey-service` — journey state machine (table-driven)**
+**2. `journey-service` - journey state machine (table-driven)**
 ```
 internal/service/journey_service_test.go
 ```
 Tests: valid transitions, invalid transitions (e.g. COMPLETED → ACTIVE should fail),
 optimistic lock conflict.
 
-**3. `capacity-service` — atomic reservation (integration, uses test DB)**
+**3. `capacity-service` - atomic reservation (integration, uses test DB)**
 ```
 internal/service/reservation_test.go
 ```
 Tests: successful multi-segment reserve, partial failure rolls back all,
 concurrent reservations on last slot (one wins, one gets at_capacity).
 
-**4. `journey-service` — HTTP handler tests**
+**4. `journey-service` - HTTP handler tests**
 ```
 internal/handler/journey_handler_test.go
 ```

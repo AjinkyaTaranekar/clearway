@@ -128,7 +128,7 @@ export async function iamRegister(params: RegisterParams): Promise<AuthTokens> {
 /**
  * Revoke the active refresh token on the IAM service (server-side logout).
  * Requires a valid access token.  Failure is intentionally swallowed by the
- * caller — local token state is always cleared regardless.
+ * caller - local token state is always cleared regardless.
  */
 export async function iamLogout(accessToken: string, refreshToken: string): Promise<void> {
   await iamFetch<void>('/api/v1/auth/logout', {

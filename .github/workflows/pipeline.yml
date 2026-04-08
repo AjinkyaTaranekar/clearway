@@ -1,6 +1,6 @@
 name: Pipeline
 
-# Purely manual — no automatic triggers.
+# Purely manual - no automatic triggers.
 # Defaults: all services, all regions.
 on:
   workflow_dispatch:
@@ -86,11 +86,11 @@ jobs:
 
   # ── Build & push selected Docker images ────────────────────────────────────
   build-push:
-    name: "Build — ${{ matrix.service }}"
+    name: "Build - ${{ matrix.service }}"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: [setup, build-frontend]
-    # build-frontend is skipped when nginx not selected — that's fine
+    # build-frontend is skipped when nginx not selected - that's fine
     if: always() && needs.setup.result == 'success' &&
         (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
     permissions:
@@ -135,7 +135,7 @@ jobs:
 
   # ── Reusable migration script (inlined per region) ─────────────────────────
   # Migrations run before stack update. Uses docker exec on the running
-  # CockroachDB container — no extra secrets needed (--insecure mode).
+  # CockroachDB container - no extra secrets needed (--insecure mode).
 
   # ── Deploy → EU ────────────────────────────────────────────────────────────
   deploy-eu:
@@ -192,7 +192,7 @@ jobs:
               done
             done
             # Grant postgres access to all schemas/tables created by root above
-            # Also grant CREATE on defaultdb — viper may connect there if env override fails
+            # Also grant CREATE on defaultdb - viper may connect there if env override fails
             $CRDB --execute="
               GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
               GRANT ALL ON SCHEMA journey TO postgres;
@@ -326,7 +326,7 @@ jobs:
               done
             done
             # Grant postgres access to all schemas/tables created by root above
-            # Also grant CREATE on defaultdb — viper may connect there if env override fails
+            # Also grant CREATE on defaultdb - viper may connect there if env override fails
             $CRDB --execute="
               GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
               GRANT ALL ON SCHEMA journey TO postgres;
@@ -444,7 +444,7 @@ jobs:
               done
             done
             # Grant postgres access to all schemas/tables created by root above
-            # Also grant CREATE on defaultdb — viper may connect there if env override fails
+            # Also grant CREATE on defaultdb - viper may connect there if env override fails
             $CRDB --execute="
               GRANT ALL ON ALL TABLES IN SCHEMA journey TO postgres;
               GRANT ALL ON SCHEMA journey TO postgres;

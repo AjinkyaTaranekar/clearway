@@ -40,7 +40,7 @@ export default function AdminDashboardPage() {
   const stats = [
     {
       label: 'Total bookings',
-      value: analytics ? analytics.total_journeys : '—',
+      value: analytics ? analytics.total_journeys : '-',
       sub: 'Last 24 h',
       icon: List,
       color: '#2F6B55',
@@ -48,7 +48,7 @@ export default function AdminDashboardPage() {
     },
     {
       label: 'Approval rate',
-      value: analytics ? `${analytics.approval_rate.toFixed(1)}%` : '—',
+      value: analytics ? `${analytics.approval_rate.toFixed(1)}%` : '-',
       sub: 'Last 24 h',
       icon: TrendingUp,
       color: '#2E7D32',
@@ -56,7 +56,7 @@ export default function AdminDashboardPage() {
     },
     {
       label: 'Active now',
-      value: analytics ? analytics.active : '—',
+      value: analytics ? analytics.active : '-',
       sub: 'On road',
       icon: Activity,
       color: '#1A4E80',
@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
     },
     {
       label: 'Rejection rate',
-      value: analytics ? `${analytics.rejection_rate.toFixed(1)}%` : '—',
+      value: analytics ? `${analytics.rejection_rate.toFixed(1)}%` : '-',
       sub: 'Last 24 h',
       icon: TrendingDown,
       color: '#B42318',

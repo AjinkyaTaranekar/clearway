@@ -1,5 +1,5 @@
 output "load_balancer_public_ip" {
-  description = "Public IP of the Azure Load Balancer — point your DNS / Cloudflare proxy here"
+  description = "Public IP of the Azure Load Balancer - point your DNS / Cloudflare proxy here"
   value       = azurerm_public_ip.lb.ip_address
 }
 

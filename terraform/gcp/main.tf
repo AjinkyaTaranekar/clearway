@@ -1,5 +1,5 @@
 ###############################################################################
-# GCP — Distributed Vehicle Capacity System
+# GCP - Distributed Vehicle Capacity System
 # 3 × e2-medium VMs, VPC, Firewall rules, Network Load Balancer
 ###############################################################################
 
@@ -128,7 +128,7 @@ resource "google_compute_instance" "vm" {
     network_ip = google_compute_address.vm_internal[count.index].address
 
     access_config {
-      # Ephemeral external IP — use for SSH access during setup
+      # Ephemeral external IP - use for SSH access during setup
       # Remove access_config block to make VMs private (behind LB only)
     }
   }
@@ -144,7 +144,7 @@ resource "google_compute_instance" "vm" {
 }
 
 ##############################################################################
-# Network Load Balancer (Layer 4 TCP — port 80)
+# Network Load Balancer (Layer 4 TCP - port 80)
 ##############################################################################
 
 resource "google_compute_address" "lb" {

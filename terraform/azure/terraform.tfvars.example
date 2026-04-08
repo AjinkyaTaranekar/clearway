@@ -4,7 +4,7 @@
 subscription_id     = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 resource_group_name = "vcs-rg"
 location            = "northeurope"   # Azure Ireland (Dublin) region
-vm_size             = "Standard_B2s"  # 2 vCPU / 4 GB — sufficient for prototype
+vm_size             = "Standard_B2s"  # 2 vCPU / 4 GB - sufficient for prototype
 admin_username      = "vcsadmin"
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 management_cidr     = "YOUR.IP.HERE/32"  # restrict SSH to your IP

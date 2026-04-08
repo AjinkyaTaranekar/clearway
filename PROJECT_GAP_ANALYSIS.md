@@ -1,4 +1,4 @@
-# Final Project Gap Analysis — Distributed Vehicle Capacity System
+# Final Project Gap Analysis - Distributed Vehicle Capacity System
 ## CS7NS6 Exercise 2 · Strict Audit Against Spec, Checklist & Report Outline
 ### Audited: 2026-04-07 (post IAM-fix session)
 
@@ -11,14 +11,14 @@
 ## TABLE OF CONTENTS
 
 1. [System-Wide Broken Integrations](#1-system-wide-broken-integrations)
-2. [IAM Service — Port 8082 (Deepika Nag)](#2-iam-service--port-8082-deepika-nag)
-3. [Capacity Service — Port 8081 (Jai Nagle)](#3-capacity-service--port-8081-jai-nagle)
-4. [Journey Service — Port 8083 (Ajinkya Taranekar)](#4-journey-service--port-8083-ajinkya-taranekar)
-5. [Map Service — Port 8084](#5-map-service--port-8084)
-6. [Notification Service — Port 8085 (Ziwei Zhao)](#6-notification-service--port-8085-ziwei-zhao)
+2. [IAM Service - Port 8082 (Deepika Nag)](#2-iam-service--port-8082-deepika-nag)
+3. [Capacity Service - Port 8081 (Jai Nagle)](#3-capacity-service--port-8081-jai-nagle)
+4. [Journey Service - Port 8083 (Ajinkya Taranekar)](#4-journey-service--port-8083-ajinkya-taranekar)
+5. [Map Service - Port 8084](#5-map-service--port-8084)
+6. [Notification Service - Port 8085 (Ziwei Zhao)](#6-notification-service--port-8085-ziwei-zhao)
 7. [Frontend & API Gateway](#7-frontend--api-gateway)
-8. [CS7NS6 Checklist — Item by Item](#8-cs7ns6-checklist--item-by-item)
-9. [Report Outline — Section by Section](#9-report-outline--section-by-section)
+8. [CS7NS6 Checklist - Item by Item](#8-cs7ns6-checklist--item-by-item)
+9. [Report Outline - Section by Section](#9-report-outline--section-by-section)
 10. [Ordered Fix List](#10-ordered-fix-list)
 
 ---
@@ -29,7 +29,7 @@ These issues render core end-to-end flows completely non-functional regardless o
 
 ---
 
-### ✅ SYS-1 FIXED — Map API Contract Corrected
+### ✅ SYS-1 FIXED - Map API Contract Corrected
 
 The journey service `MapClient` and the map service handler are **completely incompatible**. The Map service is effectively never called at runtime; only the hardcoded fallback fires.
 
@@ -39,14 +39,14 @@ The journey service `MapClient` and the map service handler are **completely inc
 | HTTP method | `POST` | `GET` | ❌ |
 | Parameters | JSON body `{"origin":{"lat":…,"lng":…}, "destination":{…}}` | Query string `?origin_node_id=X&destination_node_id=Y` | ❌ |
 
-**Fix applied:** `map_client.go` completely rewritten. Now calls `GET /api/v1/map/nodes` (cached 1h) to fetch node list, finds nearest node to origin/dest coordinates via Euclidean distance, then calls `GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y`. Response envelope unwrapped correctly. `fallbackRoute()` deleted — errors propagated to caller.
+**Fix applied:** `map_client.go` completely rewritten. Now calls `GET /api/v1/map/nodes` (cached 1h) to fetch node list, finds nearest node to origin/dest coordinates via Euclidean distance, then calls `GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y`. Response envelope unwrapped correctly. `fallbackRoute()` deleted - errors propagated to caller.
 
 ---
 
-### ✅ SYS-2 FIXED — Nginx Map Route Corrected (previous session)
+### ✅ SYS-2 FIXED - Nginx Map Route Corrected (previous session)
 
 ```nginx
-# nginx/nginx.conf — line 95
+# nginx/nginx.conf - line 95
 location /api/v1/routes/ {
     proxy_pass http://map-service:8084;   # forwards /api/v1/routes/* to map-service
 }
@@ -58,7 +58,7 @@ The map service registers handlers at `/api/v1/map/nodes` and `/api/v1/map/route
 
 ---
 
-### ✅ SYS-3 FIXED — Segment IDs Unified Across Map and Capacity Services
+### ✅ SYS-3 FIXED - Segment IDs Unified Across Map and Capacity Services
 
 Even after fixing SYS-1 and SYS-2, every reservation will fail because the two services use incompatible segment ID vocabularies:
 
@@ -75,7 +75,7 @@ Even after fixing SYS-1 and SYS-2, every reservation will fail because the two s
 
 ---
 
-### ✅ SYS-4 FIXED — Notification Service Route Added to Nginx (previous session)
+### ✅ SYS-4 FIXED - Notification Service Route Added to Nginx (previous session)
 
 `nginx/nginx.conf` has no `location` block for `/api/v1/notifications/`. All notification API requests from the browser fall through to the `try_files $uri /index.html` rule and receive the React SPA HTML. The notification service is completely isolated from the gateway.
 
@@ -90,7 +90,7 @@ location /api/v1/notifications/ {
 
 ---
 
-### ✅ SYS-5 FIXED — Capacity Isolation Level Corrected to Serializable
+### ✅ SYS-5 FIXED - Capacity Isolation Level Corrected to Serializable
 
 `capacity-service/internal/service/reservation_service.go` line 79–80:
 ```go
@@ -102,12 +102,12 @@ The comment promises Serializable isolation to prevent double-booking phantom re
 
 ---
 
-### ✅ SYS-6 FIXED — Silent Mock Fallbacks Removed from Both Clients
+### ✅ SYS-6 FIXED - Silent Mock Fallbacks Removed from Both Clients
 
 Both inter-service clients return successful mock responses when the downstream service is unreachable:
 
-**`journey-service/internal/client/map_client.go`** — on any error: returns `seg_main`/`seg_ring`
-**`journey-service/internal/client/capacity_client.go`** — on any error: returns `status: "reserved"` with a fake reservation ID
+**`journey-service/internal/client/map_client.go`** - on any error: returns `seg_main`/`seg_ring`
+**`journey-service/internal/client/capacity_client.go`** - on any error: returns `status: "reserved"` with a fake reservation ID
 
 This means:
 - If the map service is down → journeys are created with fake segment IDs
@@ -119,7 +119,7 @@ Fallbacks should return an error to the caller, not a fake success.
 
 ---
 
-### ❌ SYS-7 SIGNIFICANT — Supabase Credentials Committed to Git
+### ❌ SYS-7 SIGNIFICANT - Supabase Credentials Committed to Git
 
 Three `config.yaml` files contain a live cloud database password in plaintext:
 
@@ -135,7 +135,7 @@ database:
 
 ---
 
-## 2. IAM SERVICE — Port 8082 (Deepika Nag)
+## 2. IAM SERVICE - Port 8082 (Deepika Nag)
 
 ### ✅ Fixed This Session
 
@@ -166,7 +166,7 @@ Unit tests exist for pure functions (hash, token generation, validation). No int
 
 ---
 
-## 3. CAPACITY SERVICE — Port 8081 (Jai Nagle)
+## 3. CAPACITY SERVICE - Port 8081 (Jai Nagle)
 
 ### ❌ CRITICAL-CAP-1: Segment IDs Don't Exist (see SYS-3)
 
@@ -178,7 +178,7 @@ Comment says "serialisable"; code uses `sql.LevelReadCommitted`. Must be `sql.Le
 
 ### ❌ SIGNIFICANT-CAP-1: Fragile Unique Violation Detection
 
-`reservation_service.go` — `isUniqueViolation()`:
+`reservation_service.go` - `isUniqueViolation()`:
 ```go
 func isUniqueViolation(err error) bool {
     return strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate")
@@ -192,7 +192,7 @@ return errors.As(err, &pqErr) && pqErr.Code == "23505"
 
 ### ⚠️ MINOR-CAP-1: Stray TODO Comment in Production Code
 
-`reservation_service.go` line 18: `}) // TODO: check import` — dead comment in production code.
+`reservation_service.go` line 18: `}) // TODO: check import` - dead comment in production code.
 
 ### ⚠️ MINOR-CAP-2: No Tests
 
@@ -211,11 +211,11 @@ No `*_test.go` files in the capacity service. Core reservation logic (double-boo
 
 ---
 
-## 4. JOURNEY SERVICE — Port 8083 (Ajinkya Taranekar)
+## 4. JOURNEY SERVICE - Port 8083 (Ajinkya Taranekar)
 
 ### ✅ CRITICAL-JRN-1 FIXED: Map Client Calls Correct Endpoint
 
-`journey-service/internal/client/map_client.go` — line 59:
+`journey-service/internal/client/map_client.go` - line 59:
 ```go
 req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
     c.baseURL+"/api/v1/routes/compute", bytes.NewReader(body))
@@ -224,7 +224,7 @@ Must become `GET /api/v1/map/route` with `origin_node_id` and `destination_node_
 
 ### ✅ CRITICAL-JRN-2 FIXED: Pagination Returns Correct DB Total Count
 
-`journey-service/internal/repository/journey_repo.go` — `scanJourneys()` line 279:
+`journey-service/internal/repository/journey_repo.go` - `scanJourneys()` line 279:
 ```go
 return journeys, int64(len(journeys)), nil   // ← BUG: len(page) ≠ DB total
 ```
@@ -240,7 +240,7 @@ The `AdminList` query does a separate `SELECT COUNT(*)` (confirmed at line ~210)
 
 ### ✅ SIGNIFICANT-JRN-2 FIXED: Structured pq Error Detection
 
-`journey-service/internal/repository/journey_repo.go` — `Create()`:
+`journey-service/internal/repository/journey_repo.go` - `Create()`:
 ```go
 if strings.Contains(err.Error(), "unique") {
     return nil, apperrors.ConflictError("duplicate journey")
@@ -253,7 +253,7 @@ Same fragile pattern as capacity service. Replace with structured pq error detec
 `journey-service/internal/repository/journey_repo.go`:
 ```go
 type JourneyRepository struct {
-    db *sql.DB   // single connection — all reads and writes hit master
+    db *sql.DB   // single connection - all reads and writes hit master
 }
 ```
 `ListByDriverID`, `AdminList`, `CountByStatus` should use a slave connection. Journey service spec and system architecture describe master/slave replication.
@@ -281,7 +281,7 @@ type JourneyRepository struct {
 
 ---
 
-## 5. MAP SERVICE — Port 8084
+## 5. MAP SERVICE - Port 8084
 
 ### ❌ CRITICAL-MAP-1: API Contract Incompatible with Journey Client (see SYS-1)
 
@@ -314,11 +314,11 @@ No `*_test.go` files anywhere in the map service. Dijkstra (a custom implementat
 
 ---
 
-## 6. NOTIFICATION SERVICE — Port 8085 (Ziwei Zhao)
+## 6. NOTIFICATION SERVICE - Port 8085 (Ziwei Zhao)
 
 This service has the largest gap between specification and implementation. It is functionally incomplete.
 
-### ❌ CRITICAL-NOT-1: No Redis Client — Cannot Consume Events
+### ❌ CRITICAL-NOT-1: No Redis Client - Cannot Consume Events
 
 `notification-service/go.mod` contains no `github.com/redis/go-redis/v9` dependency. Without the Redis client library, no consumer can be written. The spec requires subscribing to the `journey.events` Redis Stream.
 
@@ -326,11 +326,11 @@ This service has the largest gap between specification and implementation. It is
 
 Even if the Redis client were present, there is no consumer loop. The event type definitions (`events.go`) and mapper exist, but no code calls `XREADGROUP`, `XACK`, or processes any events. The notification service has no awareness of journey lifecycle events.
 
-### ❌ CRITICAL-NOT-3: No FCM Integration — Push Notifications Never Sent
+### ❌ CRITICAL-NOT-3: No FCM Integration - Push Notifications Never Sent
 
 The spec (§5) requires Firebase Cloud Messaging delivery. No FCM library appears in `go.mod`. No FCM client, credential loading, or send function exists anywhere in the service.
 
-### ❌ CRITICAL-NOT-4: All Data Lost on Restart — No PostgreSQL Persistence
+### ❌ CRITICAL-NOT-4: All Data Lost on Restart - No PostgreSQL Persistence
 
 ```go
 // notification-service/internal/service/memory_store.go
@@ -379,8 +379,8 @@ The booking form uses hardcoded location names from `coordinates.ts`. The map se
 ### ❌ Remaining: Frontend Has No IAM Admin UI
 
 The IAM service provides:
-- `GET /api/v1/admin/auth/users` — list users
-- `POST /api/v1/admin/auth/promote` — promote to admin
+- `GET /api/v1/admin/auth/users` - list users
+- `POST /api/v1/admin/auth/promote` - promote to admin
 - `POST /api/v1/admin/auth/force-logout`
 
 None of these have corresponding frontend pages. The admin dashboard only surfaces journey management.
@@ -402,7 +402,7 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 
 ---
 
-## 8. CS7NS6 CHECKLIST — ITEM BY ITEM
+## 8. CS7NS6 CHECKLIST - ITEM BY ITEM
 
 ### Services Provided
 | Checklist Item | Status | Evidence / Gap |
@@ -433,7 +433,7 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 | Consistency model | ❌ | Not explicitly stated for any service (RC? RR? Serializable?) |
 | Update strategy | ⚠️ | Refresh token rotation; automated migration runner; no documented rollback |
 | Transactions | ✅ | IAM register/refresh; capacity reserve; journey status transitions |
-| Isolation level | ✅ | Capacity now uses `sql.LevelSerializable` — matches comment and prevents phantom reads |
+| Isolation level | ✅ | Capacity now uses `sql.LevelSerializable` - matches comment and prevents phantom reads |
 | Sharding | ❌ | Not implemented, not discussed |
 | Exploit locality | ❌ | Not discussed |
 | Caching | ✅ | Redis: route cache (journey), availability cache (capacity), idempotency cache |
@@ -446,13 +446,13 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 |---|---|---|
 | Concurrent requests synchronized | ⚠️ | `SELECT … FOR UPDATE` + sorted locking in capacity; optimistic locking in journey; but isolation level undermines guarantee |
 | Immediate access to earned points | ✅ | Journeys reflected in DB immediately after booking; no async delay |
-| Double spending possible | ✅ | Idempotency key + FOR UPDATE + Serializable isolation — phantom reads no longer possible |
+| Double spending possible | ✅ | Idempotency key + FOR UPDATE + Serializable isolation - phantom reads no longer possible |
 | Conflicting requests handled | ⚠️ | Optimistic locking returns 409 on version conflict; sorted lock order prevents deadlock |
 
 ### Failure Handling
 | Checklist Item | Status | Evidence / Gap |
 |---|---|---|
-| Communication failures tolerated | ✅ | HTTP timeouts configured; map/capacity clients return errors on failure — no fake success fallbacks |
+| Communication failures tolerated | ✅ | HTTP timeouts configured; map/capacity clients return errors on failure - no fake success fallbacks |
 | Node/replica failure detected | ❌ | `/health` and `/ready` endpoints exist; no watchdog, no auto-restart beyond Docker `restart: unless-stopped` |
 | Disconnected nodes/replicas | ❌ | Not handled; slave DB disconnect not detected or handled |
 | Replica recovery supported | ❌ | Not described or implemented |
@@ -479,9 +479,9 @@ Nginx neither depends on nor proxies the notification service, consistent with S
 
 ---
 
-## 9. REPORT OUTLINE — SECTION BY SECTION
+## 9. REPORT OUTLINE - SECTION BY SECTION
 
-### Section 1 — Requirements
+### Section 1 - Requirements
 **Required:** Functional + non-functional requirements; qualitative AND quantitative; historic data; load pattern.
 **Status:** ❌ **Does not exist as a document.**
 The spec files contain partial qualitative requirements. No document states: latency targets, throughput, availability SLO, load characterisation, or reference to any real traffic data.
@@ -489,42 +489,42 @@ The spec files contain partial qualitative requirements. No document states: lat
 
 ---
 
-### Section 2 — Specification
+### Section 2 - Specification
 **Required:** API specification; fault behaviour per requirement; note what is NOT fully addressed.
 **Status:** ⚠️ **Partially exists.**
 Five `specs/*.md` files document APIs. No spec documents fault behaviour (e.g., "what happens if capacity-service is unreachable when a journey is being created?"). No spec acknowledges known gaps (e.g., notification service non-functional).
 
 ---
 
-### Section 3 — Architecture & Design
+### Section 3 - Architecture & Design
 **Required:** System architecture diagram; how services are distributed/connected; each member describes their primary service.
 **Status:** ❌ **Does not exist as a document.**
 No architecture diagram exists. No document describes end-to-end service interaction. The critical broken wiring (SYS-1 to SYS-4) has never been documented.
 
 ---
 
-### Section 4 — Implementation
+### Section 4 - Implementation
 **Required:** Behavioural diagrams for important algorithms; failure mode descriptions; member failure detection; consensus; partition tolerance.
 **Status:** ❌ **Does not exist.**
 No sequence diagrams, state machine diagrams, flow diagrams, or failure mode documents exist in the repository. The journey state machine and Dijkstra algorithm are implemented in code but never diagrammed.
 
 ---
 
-### Section 5 — Testing
+### Section 5 - Testing
 **Required:** Test plan; test results.
 **Status:** ❌ **No test plan document; no test results document.**
 Some unit tests exist (IAM: 17 tests; Journey: handler tests, now broken by RS256 change). Capacity, Map, and Notification services have zero tests. There is no integration test suite, no load test, and no documented test results.
 
 ---
 
-### Section 6 — Allocation of Work
+### Section 6 - Allocation of Work
 **Required:** Clear statement of who built what.
 **Status:** ❌ **Does not exist anywhere in the repository.**
 Service owners are implied by spec file authors but never formally documented.
 
 ---
 
-### Section 7 — Summary
+### Section 7 - Summary
 **Required:** Achievements and lessons learned.
 **Status:** ❌ **Does not exist.**
 
@@ -534,24 +534,24 @@ Service owners are implied by spec file authors but never formally documented.
 
 ## 10. ORDERED FIX LIST
 
-### 🔴 P1 — Must Fix: System Cannot Function Without These
+### 🔴 P1 - Must Fix: System Cannot Function Without These
 
 | # | Fix | Files | Owner | Status |
 |---|---|---|---|---|
 | 1 | **Align map API contract** | `journey-service/internal/client/map_client.go` | Journey | ✅ DONE |
 | 2 | **Fix nginx map route** | `nginx/nginx.conf` | Infra | ✅ DONE (prev session) |
-| 3 | **Unify segment IDs** — capacity seed now uses map service segment IDs | `capacity-service/migrations/002_seed_segments.sql` | Journey | ✅ DONE |
-| 4 | **Fix capacity isolation level** — `LevelSerializable` | `capacity-service/internal/service/reservation_service.go` | Capacity | ✅ DONE |
+| 3 | **Unify segment IDs** - capacity seed now uses map service segment IDs | `capacity-service/migrations/002_seed_segments.sql` | Journey | ✅ DONE |
+| 4 | **Fix capacity isolation level** - `LevelSerializable` | `capacity-service/internal/service/reservation_service.go` | Capacity | ✅ DONE |
 | 5 | **Add nginx notification route** | `nginx/nginx.conf` | Infra | ✅ DONE (prev session) |
-| 6 | **Rotate Supabase credentials** — password in git | `*/config.yaml` | All | ❌ MANUAL ACTION REQUIRED |
-| 7 | **Fix journey pagination** — pass DB total through `scanJourneys` | `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
+| 6 | **Rotate Supabase credentials** - password in git | `*/config.yaml` | All | ❌ MANUAL ACTION REQUIRED |
+| 7 | **Fix journey pagination** - pass DB total through `scanJourneys` | `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
 
-### 🟠 P2 — Should Fix: Significant Correctness Issues
+### 🟠 P2 - Should Fix: Significant Correctness Issues
 
 | # | Fix | Files | Owner | Status |
 |---|---|---|---|---|
 | 8 | **Remove silent fallback mocks** | `journey-service/internal/client/map_client.go`; `capacity_client.go` | Ajinkya | ✅ DONE |
-| 9 | **Fix journey handler tests** — RSA key + mock JWKS server | `journey-service/internal/handler/journey_handler_test.go` | Ajinkya | ✅ DONE |
+| 9 | **Fix journey handler tests** - RSA key + mock JWKS server | `journey-service/internal/handler/journey_handler_test.go` | Ajinkya | ✅ DONE |
 | 10 | **Fix fragile pq detection** in both services | `capacity-service/internal/service/reservation_service.go`; `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
 | 11 | **Add redis/go-redis to notification service** | `notification-service/go.mod` | Ziwei | ❌ PENDING |
 | 12 | **Implement notification Redis Streams consumer** | New: `notification-service/internal/event/consumer.go` | Ziwei | ❌ PENDING |
@@ -560,7 +560,7 @@ Service owners are implied by spec file authors but never formally documented.
 | 15 | **Add directed-graph reverse edges** in map service | `map-service/internal/http/handlers/map_handler.go` | Map | ✅ DONE |
 | 16 | **Add slave pool to journey repo** | `journey-service/internal/repository/journey_repo.go` | Ajinkya | ✅ DONE |
 
-### 🟡 P3 — Quality Fixes
+### 🟡 P3 - Quality Fixes
 
 | # | Fix | Files |
 |---|---|---|
@@ -572,7 +572,7 @@ Service owners are implied by spec file authors but never formally documented.
 | 22 | Run `swag init` for IAM and Map services | `iam-service/`; `map-service/` |
 | 23 | Implement IAM Redis rate limiting (spec §8) | New: `iam-service/internal/middleware/ratelimit.go` |
 
-### 📝 P4 — Report / Documentation (Required for Grade)
+### 📝 P4 - Report / Documentation (Required for Grade)
 
 | # | Required Document | Content Needed |
 |---|---|---|
@@ -587,5 +587,5 @@ Service owners are implied by spec file authors but never formally documented.
 
 ---
 
-*Final audit — 2026-04-07*
+*Final audit - 2026-04-07*
 *Checked against: CS7NS6 Exercise 2 Checklist · CS7NS6 Report Outline · Five service specs · Live codebase*

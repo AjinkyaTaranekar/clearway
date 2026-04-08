@@ -12,7 +12,7 @@ This means:
 
 The Vercel edge middleware correctly geo-routes users to their nearest cell based on IP country.
 However, when a US user's request hits the US cell and attempts a write (e.g. booking a journey),
-it hits a **read-only replica** — the write either fails or the app must forward it back to EU,
+it hits a **read-only replica** - the write either fails or the app must forward it back to EU,
 adding a full transatlantic round trip.
 
 **Example of the broken flow:**
@@ -28,7 +28,7 @@ for writes despite being routed to a US node.
 ## The Requirement
 
 > A user in the US booking a journey for a relative in the EU should have their request served by
-> the nearest datacenter (US). The write should land locally, then replicate to other regions —
+> the nearest datacenter (US). The write should land locally, then replicate to other regions -
 > not the other way around.
 
 This is the classic **multi-master / active-active** distributed database requirement:
@@ -40,14 +40,14 @@ every node accepts writes, and data propagates globally after the fact.
 
 CockroachDB is a distributed SQL database built specifically for this pattern:
 
-- **Postgres wire-protocol compatible** — no application code changes required. Services keep
+- **Postgres wire-protocol compatible** - no application code changes required. Services keep
   connecting on the same port with the same SQL dialect.
-- **Built-in multi-master** — every node accepts writes. No primary/replica distinction.
-- **Raft consensus** — writes are durably committed across a quorum of nodes before acknowledging,
+- **Built-in multi-master** - every node accepts writes. No primary/replica distinction.
+- **Raft consensus** - writes are durably committed across a quorum of nodes before acknowledging,
   giving strong consistency without manual replication config.
-- **`REGIONAL BY ROW` tables** — pins the Raft leaseholder for each row to the region that owns
+- **`REGIONAL BY ROW` tables** - pins the Raft leaseholder for each row to the region that owns
   it, meaning local writes achieve local latency (the leaseholder is already on the same node).
-- **Automatic failover** — if a node goes down, the cluster continues serving from the remaining
+- **Automatic failover** - if a node goes down, the cluster continues serving from the remaining
   nodes. No manual promotion of a replica to primary.
 
 Compared to the alternatives:
@@ -73,7 +73,7 @@ US user → US LB → US CockroachDB node → write committed locally (Raft quor
 With `REGIONAL BY ROW` configured:
 - The leaseholder for a US user's rows lives on the US node
 - Reads and writes for that row are served locally without cross-region round trips
-- EU users' rows are pinned to the EU leaseholder — same benefit
+- EU users' rows are pinned to the EU leaseholder - same benefit
 
 ### What changes at the infrastructure level:
 
@@ -88,7 +88,7 @@ CockroachDB's internal Raft protocol.
   for EU rows)                    for US rows)                    for APAC rows)
 ```
 
-Each application service still connects to its **local** CockroachDB node — nothing changes from
+Each application service still connects to its **local** CockroachDB node - nothing changes from
 the service's perspective except the port number (`5432` → `26257`).
 
 ---
@@ -133,7 +133,7 @@ db:
 ### 3. Application Environment Variables
 
 All services: change `VCS_DATABASE_MASTER_PORT` and `VCS_DATABASE_SLAVE_PORT` from `5432` to `26257`.
-Remove `db_password` secret references — CockroachDB runs in insecure mode for this demo.
+Remove `db_password` secret references - CockroachDB runs in insecure mode for this demo.
 
 ### 4. One-time Cluster Bootstrap (SSH, run once on EU node)
 
@@ -157,7 +157,7 @@ ALTER TABLE bookings SET LOCALITY REGIONAL BY ROW;
 
 ## What Stays the Same
 
-- All Go service source code — zero changes
+- All Go service source code - zero changes
 - Docker overlay network (`vcs-internal`) within each cell
 - Redis (still local per cell, no cross-region sync needed)
 - Nginx / LB setup
@@ -171,35 +171,35 @@ ALTER TABLE bookings SET LOCALITY REGIONAL BY ROW;
 | Risk | Mitigation |
 |---|---|
 | Insecure mode (no TLS between nodes) | Acceptable for academic demo; production would use `cockroach cert` |
-| e2-medium only has 4GB RAM | CockroachDB `--cache=.25 --max-sql-memory=.25` caps it at ~1GB — fits within current limits |
-| 3-node Raft quorum — losing 2 nodes halts writes | Acceptable for demo; production would run 5+ nodes |
+| e2-medium only has 4GB RAM | CockroachDB `--cache=.25 --max-sql-memory=.25` caps it at ~1GB - fits within current limits |
+| 3-node Raft quorum - losing 2 nodes halts writes | Acceptable for demo; production would run 5+ nodes |
 | Schema compatibility (Postgres → CRDB) | CockroachDB is highly compatible; any issues surface immediately on first migration run |
-| Existing Postgres data | Demo environment — no production data to migrate |
+| Existing Postgres data | Demo environment - no production data to migrate |
 
 ---
 
 ## Migration Steps (in order)
 
-- [x] Update `docker-stack.yml` — swap image, command, remove `db_password` secret from `db` service
-- [x] Update all service env vars — port `5432` → `26257`, remove password secret mounts
+- [x] Update `docker-stack.yml` - swap image, command, remove `db_password` secret from `db` service
+- [x] Update all service env vars - port `5432` → `26257`, remove password secret mounts
 - [x] Update `docker-compose.yml` for local dev (`start-single-node --insecure`)
 - [x] Replace `postgres-exporter` with CockroachDB native Prometheus endpoint in `prometheus.yml`
 - [ ] Add GCP firewall rule for port `26257`
 - [ ] Deploy updated stack to all three cells
-- [ ] SSH into EU node — run `cockroach init` to bootstrap the cluster
+- [ ] SSH into EU node - run `cockroach init` to bootstrap the cluster
 - [ ] Verify cluster: `cockroach node status --insecure`
 - [ ] Run multi-region SQL to configure `REGIONAL BY ROW`
 - [ ] Smoke test: book a journey from a US IP, confirm write lands on US node
 
 ---
 
-## TODO — Next Steps After Initial Deploy
+## TODO - Next Steps After Initial Deploy
 
 > **Context:** As of the initial migration, the system runs a single-region CockroachDB cluster
 > (EU cell only). The steps below are required to achieve the full multi-region active-active
 > architecture described in this document.
 
-### Step 1 — Open GCP Firewall for Inter-Node Traffic
+### Step 1 - Open GCP Firewall for Inter-Node Traffic
 
 CockroachDB nodes need to reach each other on TCP port `26257`. Run this once in GCP Cloud Shell:
 
@@ -215,7 +215,7 @@ Replace `<EU_IP>`, `<US_IP>`, `<APAC_IP>` with the external IPs of each cell's m
 
 ---
 
-### Step 2 — Deploy Stack to US and APAC Cells
+### Step 2 - Deploy Stack to US and APAC Cells
 
 SSH into each cell's manager and deploy with the correct `CRDB_ADVERTISE_IP` and `CRDB_JOIN`:
 
@@ -238,7 +238,7 @@ docker stack deploy -c docker-stack.yml vcs
 
 ---
 
-### Step 3 — Bootstrap the CockroachDB Cluster
+### Step 3 - Bootstrap the CockroachDB Cluster
 
 Run this **once only** on the EU manager after all three nodes are up:
 
@@ -254,11 +254,11 @@ docker exec -it $(docker ps -qf name=vcs_db) \
   /cockroach/cockroach node status --insecure --host=localhost:26257
 ```
 
-You should see 3 rows — one per cell.
+You should see 3 rows - one per cell.
 
 ---
 
-### Step 4 — Create the Database
+### Step 4 - Create the Database
 
 ```bash
 docker exec -it $(docker ps -qf name=vcs_db) \
@@ -268,7 +268,7 @@ docker exec -it $(docker ps -qf name=vcs_db) \
 
 ---
 
-### Step 5 — Configure Multi-Region Localities
+### Step 5 - Configure Multi-Region Localities
 
 Tell CockroachDB which region each node belongs to. Add `--locality` to the `command` in
 `docker-stack.yml` for each cell before deploying:
@@ -301,7 +301,7 @@ command: >
 
 ---
 
-### Step 6 — Configure Multi-Region Tables
+### Step 6 - Configure Multi-Region Tables
 
 Once localities are set, run this SQL to enable regional pinning:
 
@@ -311,7 +311,7 @@ ALTER DATABASE trafficservice ADD REGION "us-east1";
 ALTER DATABASE trafficservice ADD REGION "asia-east1";
 
 -- Pin rows to the region of the user who created them
--- (requires a crdb_region column — CockroachDB adds it automatically)
+-- (requires a crdb_region column - CockroachDB adds it automatically)
 ALTER TABLE journeys   SET LOCALITY REGIONAL BY ROW;
 ALTER TABLE bookings   SET LOCALITY REGIONAL BY ROW;
 ALTER TABLE users      SET LOCALITY REGIONAL BY ROW;
@@ -319,19 +319,19 @@ ALTER TABLE users      SET LOCALITY REGIONAL BY ROW;
 
 ---
 
-### Step 7 — Smoke Test
+### Step 7 - Smoke Test
 
 1. Make a booking from a US IP (or use a VPN)
 2. On the US node, run:
    ```sql
    SELECT crdb_region, id, created_at FROM bookings ORDER BY created_at DESC LIMIT 5;
    ```
-3. Confirm `crdb_region = 'us-east1'` — the write landed locally
+3. Confirm `crdb_region = 'us-east1'` - the write landed locally
 
 ---
 
 ### Notes
 
-- **No data migration needed** — this is a fresh cluster; schema is created by service migrations on first boot
-- **`db_password` secret** — the Docker secret still exists on nodes but is no longer used; safe to leave or remove with `docker secret rm db_password` after confirming all services are healthy
-- **Grafana dashboard** — the existing VCS overview dashboard will pick up CockroachDB metrics automatically once Prometheus starts scraping `db:8080/_status/vars`
+- **No data migration needed** - this is a fresh cluster; schema is created by service migrations on first boot
+- **`db_password` secret** - the Docker secret still exists on nodes but is no longer used; safe to leave or remove with `docker secret rm db_password` after confirming all services are healthy
+- **Grafana dashboard** - the existing VCS overview dashboard will pick up CockroachDB metrics automatically once Prometheus starts scraping `db:8080/_status/vars`

@@ -486,7 +486,7 @@ export default function SettingsPage() {
                         {vehicleLabel(vehicle.vehicle_type)}
                       </div>
                       <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
-                        License: {vehicle.license_info?.license_number || '—'}
+                        License: {vehicle.license_info?.license_number || '-'}
                       </div>
                       <div style={{ color: vehicle.is_emergency_vehicle ? '#1E6639' : '#7A4500', fontSize: '0.75rem', marginTop: '3px' }}>
                         {vehicle.is_emergency_vehicle ? 'Emergency priority: enabled' : 'Emergency priority: disabled'}

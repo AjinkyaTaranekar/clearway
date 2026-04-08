@@ -61,7 +61,7 @@ export default function AnalyticsPage() {
   }, [window]);
 
   const fmt = (n: number | undefined, decimals = 0) =>
-    n === undefined ? '—' : decimals ? n.toFixed(decimals) : String(n);
+    n === undefined ? '-' : decimals ? n.toFixed(decimals) : String(n);
 
   const pieData = kpis
     ? [
@@ -79,11 +79,11 @@ export default function AnalyticsPage() {
       icon: Activity,
       color: '#2F6B55',
       bg: '#E8F4ED',
-      sub: kpis ? `${kpis.window} window` : '—',
+      sub: kpis ? `${kpis.window} window` : '-',
     },
     {
       label: 'Approval rate',
-      value: kpis ? `${kpis.approval_rate.toFixed(1)}%` : '—',
+      value: kpis ? `${kpis.approval_rate.toFixed(1)}%` : '-',
       icon: TrendingUp,
       color: '#2E7D32',
       bg: '#E8F4ED',
@@ -91,7 +91,7 @@ export default function AnalyticsPage() {
     },
     {
       label: 'Rejection rate',
-      value: kpis ? `${kpis.rejection_rate.toFixed(1)}%` : '—',
+      value: kpis ? `${kpis.rejection_rate.toFixed(1)}%` : '-',
       icon: TrendingDown,
       color: '#B42318',
       bg: '#FDECEA',
@@ -223,7 +223,7 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Summary card — approval vs rejection trend */}
+          {/* Summary card - approval vs rejection trend */}
           <div className="lg:col-span-2 bg-white rounded-xl p-5" style={{ border: '1px solid var(--border)' }}>
             <div className="mb-4">
               <h3 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1F2421', fontSize: '1rem', marginBottom: '4px' }}>

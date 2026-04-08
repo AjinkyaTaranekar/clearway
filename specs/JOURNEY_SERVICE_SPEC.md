@@ -11,7 +11,7 @@
 
 The Journey Service is the central orchestrator of the Distributed Traffic Service. It owns the entire booking lifecycle: receiving driver requests, coordinating with Map and Capacity services to validate and reserve road segments, managing journey state transitions, and publishing events for downstream consumers.
 
-In a multi-VM deployment, all VMs run identical stacks behind a load balancer. Journey Service on each VM coordinates with its co-located Capacity and Map services — no cross-VM service calls are needed. Data consistency across VMs is maintained by PostgreSQL multi-master logical replication.
+In a multi-VM deployment, all VMs run identical stacks behind a load balancer. Journey Service on each VM coordinates with its co-located Capacity and Map services - no cross-VM service calls are needed. Data consistency across VMs is maintained by PostgreSQL multi-master logical replication.
 
 ---
 
@@ -82,7 +82,7 @@ Within a single VM, Journey Service calls Capacity Service and Map Service over 
 
 | From → To | Protocol | Sync/Async | Why |
 |-----------|----------|------------|-----|
-| Journey → IAM/Auth | Local JWT validation | Sync | Driver is waiting. Must validate before any work. No network call needed — uses cached JWKS public keys. |
+| Journey → IAM/Auth | Local JWT validation | Sync | Driver is waiting. Must validate before any work. No network call needed - uses cached JWKS public keys. |
 | Journey → Map Service | REST (GET) | Sync | Journey Service needs the segment list before it can compute time windows or call Capacity. Driver is waiting. |
 | Journey → Capacity Service | REST (POST) | Sync | Must confirm segment availability before responding to driver. All-or-nothing reservation. Both services run on the same VM. |
 | Journey → Redis Streams | Redis XADD | Async | Publish event AFTER responding to driver. Notification delivery and analytics are not on the critical path. |
@@ -108,7 +108,7 @@ The booking response (200 OK with status: APPROVED) goes back in the HTTP respon
 When a driver cancels, Journey Service marks the journey as CANCELLED in PostgreSQL, responds 200 OK to the driver immediately, then publishes a journey.cancelled event. Capacity Service consumes this event and releases slots. The 1-hour advance booking requirement means this brief inconsistency window (seconds) is harmless. No other driver could book those slots and depart within seconds.
 
 **Multi-master PostgreSQL replication is async but near-real-time.**
-A write committed on VM A (e.g., a new journey booking) is replicated to VM B and VM C via PostgreSQL logical replication within milliseconds. All VMs converge to the same state. A driver whose request hits VM B immediately after VM A committed their booking will see the record within the replication lag window (typically < 100ms on a LAN). This is acceptable — the driver already received the booking confirmation in the HTTP response.
+A write committed on VM A (e.g., a new journey booking) is replicated to VM B and VM C via PostgreSQL logical replication within milliseconds. All VMs converge to the same state. A driver whose request hits VM B immediately after VM A committed their booking will see the record within the replication lag window (typically < 100ms on a LAN). This is acceptable - the driver already received the booking confirmation in the HTTP response.
 
 ---
 
@@ -357,7 +357,7 @@ Used by traffic wardens, Gardaí, or automated roadside systems.
 | `vehicle_plate` | string | No | Vehicle registration plate (hint from enforcement client) |
 | `timestamp` | ISO 8601 | No | Time to check; defaults to now |
 
-**Response (200 OK — authorized):**
+**Response (200 OK - authorized):**
 ```json
 {
   "authorized": true,
@@ -371,7 +371,7 @@ Used by traffic wardens, Gardaí, or automated roadside systems.
 }
 ```
 
-**Response (200 OK — not authorized):**
+**Response (200 OK - not authorized):**
 ```json
 {
   "authorized": false,
@@ -381,13 +381,13 @@ Used by traffic wardens, Gardaí, or automated roadside systems.
 ```
 
 **Error responses:**
-- `400` — Missing `segment_id` or unparseable `timestamp`
-- `401` — Missing or invalid JWT
-- `403` — JWT role is not `enforcement` or `admin`
+- `400` - Missing `segment_id` or unparseable `timestamp`
+- `401` - Missing or invalid JWT
+- `403` - JWT role is not `enforcement` or `admin`
 
 **Implementation notes:**
 - Queries `journey.journey_segments` joined to `journey.journeys` where `status = 'ACTIVE'` and `time_window_start ≤ timestamp ≤ time_window_end`
-- Read-only — does not modify any journey state
+- Read-only - does not modify any journey state
 - `vehicle_plate` is accepted as a hint but not verified server-side (plate is stored in IAM, avoided to prevent a cross-service call on the enforcement critical path)
 
 ---
@@ -626,9 +626,9 @@ Any VM can handle any request. The load balancer distributes using round-robin o
 
 3. VM B's Journey Service:
    a. Validates JWT locally (cached JWKS)
-   b. Calls VM B's Map Service — GET route segments
+   b. Calls VM B's Map Service - GET route segments
    c. Computes cascading time windows
-   d. Calls VM B's Capacity Service — atomically reserve all segments
+   d. Calls VM B's Capacity Service - atomically reserve all segments
    e. Persists journey to VM B's PostgreSQL
 
 4. VM B responds to driver: APPROVED
@@ -642,7 +642,7 @@ Any VM can handle any request. The load balancer distributes using round-robin o
 
 ### 8.2 Multi-Master PostgreSQL Replication
 
-Each VM runs a full PostgreSQL instance. All instances participate in **logical replication** — every VM is both a publisher (sending its writes) and a subscriber (receiving writes from all other VMs).
+Each VM runs a full PostgreSQL instance. All instances participate in **logical replication** - every VM is both a publisher (sending its writes) and a subscriber (receiving writes from all other VMs).
 
 **Setup (PostgreSQL 16 logical replication):**
 
@@ -685,14 +685,14 @@ Each VM has its own Redis instance used for:
 
 **Eviction policy: `allkeys-lru`**
 
-Redis is configured with `--maxmemory 96mb --maxmemory-policy allkeys-lru`. When the memory limit is reached, the Least Recently Used key is evicted regardless of whether it has a TTL set. This is the correct policy because Redis holds only cache data — all source-of-truth state is in PostgreSQL. An eviction is never a correctness issue, only a latency one (the next request triggers a fresh upstream call and re-populates the cache).
+Redis is configured with `--maxmemory 96mb --maxmemory-policy allkeys-lru`. When the memory limit is reached, the Least Recently Used key is evicted regardless of whether it has a TTL set. This is the correct policy because Redis holds only cache data - all source-of-truth state is in PostgreSQL. An eviction is never a correctness issue, only a latency one (the next request triggers a fresh upstream call and re-populates the cache).
 
 | Key pattern | TTL | On eviction |
 |-------------|-----|-------------|
 | `route:{lat1}:{lng1}:{lat2}:{lng2}` | 24 h | Map Service call on next request |
 | `idempotency:{key}` | 24 h | Request re-processed; DB unique constraint catches duplicates |
 
-Since each VM's Redis is independent, the Notification Service on each VM only consumes events published by Journey Service on that same VM. A driver whose booking is handled by VM A receives their Firebase push notification from VM A's Notification Service. This is correct — no cross-VM Redis coordination needed.
+Since each VM's Redis is independent, the Notification Service on each VM only consumes events published by Journey Service on that same VM. A driver whose booking is handled by VM A receives their Firebase push notification from VM A's Notification Service. This is correct - no cross-VM Redis coordination needed.
 
 If a VM goes down mid-request, the load balancer stops routing to it. Events already in that VM's Redis Streams will be delivered once the VM recovers (Redis Streams with consumer groups guarantee at-least-once delivery).
 
@@ -728,7 +728,7 @@ The one exception: immediately after a write, the same client may want to read t
 | VM B PostgreSQL replication lag spikes | Reads from VM B may return slightly stale data. Writes still succeed. Monitoring alerts at 1s lag. Journeys are eventually consistent. |
 | Split brain: network partition isolates VM B | VM B continues serving requests with its local DB. Writes diverge. On partition heal, PostgreSQL logical replication conflict resolution (last-write-wins) merges changes. The optimistic lock on `version` prevents invalid state transitions from winning. |
 | Capacity reservation race across VMs | Two drivers book the last slot for the same segment/time-window from different VMs simultaneously. Capacity Service uses a DB-level transaction with SELECT FOR UPDATE. Whichever VM commits first wins; the other gets a serialization failure and returns REJECTED to the driver. |
-| Idempotency key sent to different VMs | Client sends same `Idempotency-Key` to VM A then VM B (e.g., after timeout retry). VM A commits and replicates to VM B. VM B checks its idempotency_cache (now populated via replication) and returns the cached response without re-processing. Replication lag means there is a small window (~100ms) where VM B might re-process before the record arrives — the UNIQUE constraint on `idempotency_key` will reject the duplicate insert. |
+| Idempotency key sent to different VMs | Client sends same `Idempotency-Key` to VM A then VM B (e.g., after timeout retry). VM A commits and replicates to VM B. VM B checks its idempotency_cache (now populated via replication) and returns the cached response without re-processing. Replication lag means there is a small window (~100ms) where VM B might re-process before the record arrives - the UNIQUE constraint on `idempotency_key` will reject the duplicate insert. |
 
 ---
 
@@ -885,7 +885,7 @@ CREATE TABLE journey.idempotency_cache (
 | E9 | Capacity reservation succeeds but DB write fails | Slots reserved in Capacity Service but no journey record exists | Orphaned reservation cleanup job (§12.2) runs every 15 minutes. Capacity Service releases reservations with no matching journey_id after 1 hour. |
 | E10 | Two VMs simultaneously approve the last capacity slot | Race condition: both VMs' Capacity Services might both approve before replication catches up | Capacity Service uses `SELECT FOR UPDATE` on the slot row within a transaction. Only one transaction wins; the other gets a serialization error and returns REJECTED. |
 | E11 | Departure time in the past | Invalid booking attempt | Reject immediately with 422. Check: `departure_time > now() + 1 hour`. |
-| E12 | Replication lag causes stale read after write | Driver books on VM A, immediately queries from VM B before replication arrives | Journeys are not polled immediately after booking — the result is in the POST /journeys response. Subsequent list queries will return the record once replication propagates (< 100ms). Acceptable for this use case. |
+| E12 | Replication lag causes stale read after write | Driver books on VM A, immediately queries from VM B before replication arrives | Journeys are not polled immediately after booking - the result is in the POST /journeys response. Subsequent list queries will return the record once replication propagates (< 100ms). Acceptable for this use case. |
 | E13 | Driver books, journey approved, then same route booked by 1000 other drivers exhausting capacity, first driver cancels and re-books | Re-booking may now be rejected even though they "had" the slot | Expected behavior. Cancellation releases capacity. Re-booking is a new request subject to current availability. No "hold" mechanism. |
 | E14 | Admin force-cancels a journey that is ACTIVE | Driver is currently on the road | Allowed. Journey moves to CANCELLED. Capacity released. In a real system this might trigger a notification to pull over; for prototype, just update state. |
 | E15 | Idempotency key reused with different payload | Client sends same key but different origin/destination | Return the original response for that key. Do NOT process the new payload. Log a warning. The idempotency_cache table stores the original response. |
@@ -950,7 +950,7 @@ IAM_SERVICE_URL=http://iam-service:8082
 JWKS_URL=http://iam-service:8082/api/v1/auth/.well-known/jwks.json
 JWKS_REFRESH_INTERVAL=3600
 
-# Timeouts (all intra-VM calls — should be fast)
+# Timeouts (all intra-VM calls - should be fast)
 CAPACITY_TIMEOUT_MS=3000
 MAP_SERVICE_TIMEOUT_MS=2000
 
@@ -1067,7 +1067,7 @@ Driver     Load Balancer  Journey Svc    Map Svc     Capacity Svc   Redis Stream
 
 ## 16. Frontend Integration
 
-The frontend is a React 18 PWA already built and running at `frontend/`. It is currently **fully mocked** — all data comes from `AppContext` and `mockData.ts`. Wiring it to real backend APIs is a second phase. This section describes the full integration contract between frontend and backend so that both can be built in parallel without surprises.
+The frontend is a React 18 PWA already built and running at `frontend/`. It is currently **fully mocked** - all data comes from `AppContext` and `mockData.ts`. Wiring it to real backend APIs is a second phase. This section describes the full integration contract between frontend and backend so that both can be built in parallel without surprises.
 
 ### 16.1 Tech Stack
 
@@ -1079,8 +1079,8 @@ The frontend is a React 18 PWA already built and running at `frontend/`. It is c
 | Forms | React Hook Form 7.x |
 | Charts | Recharts 2.15.2 (admin analytics) |
 | Toasts | Sonner 2.x |
-| State | React Context (`AppContext`) — mock today, real API calls tomorrow |
-| HTTP | Not yet implemented — see §16.6 for the API client blueprint |
+| State | React Context (`AppContext`) - mock today, real API calls tomorrow |
+| HTTP | Not yet implemented - see §16.6 for the API client blueprint |
 
 ### 16.2 Application Routes
 
@@ -1116,7 +1116,7 @@ Each page and the real backend calls it needs once mocking is removed:
 | `/driver` (dashboard) | `GET /api/v1/journeys?limit=3&status=approved,active` | Journey (8083) | Recent journeys summary |
 | `/driver/book` | `GET /api/v1/map/nodes` | Map (8084) | Resolve node names → lat/lng for origin/destination dropdowns |
 | | `POST /api/v1/journeys` | Journey (8083) | Submit booking with Idempotency-Key header |
-| `/driver/booking-result` | — | — | Reads result from state set by the booking call; no additional API call |
+| `/driver/booking-result` | - | - | Reads result from state set by the booking call; no additional API call |
 | `/driver/journeys` | `GET /api/v1/journeys?page=1&limit=20&status=…` | Journey (8083) | Paginated, filterable by status |
 | `/driver/journeys/:id` | `GET /api/v1/journeys/:id` | Journey (8083) | Full journey detail + segments + timeline |
 | | `PUT /api/v1/journeys/:id/activate` | Journey (8083) | "Start journey" button |
@@ -1169,7 +1169,7 @@ Each page and the real backend calls it needs once mocking is removed:
 ```
 
 JWT must contain claims: `sub` (user id), `role` (`"driver"` or `"admin"`), `exp`.
-Journey Service (and all other services) validate this token **locally** using JWKS public keys fetched from IAM on startup — no runtime IAM call per request.
+Journey Service (and all other services) validate this token **locally** using JWKS public keys fetched from IAM on startup - no runtime IAM call per request.
 
 ### 16.5 Data Model Alignment
 
@@ -1188,7 +1188,7 @@ The frontend uses `'Car' | 'Van' | 'Motorcycle' | 'HGV'`. The backend spec curre
 
 The frontend `BookJourneyPage` currently uses human-readable location names (e.g., `"City Centre"`). The Journey Service API expects `{ lat, lng }` coordinates.
 
-**Resolution strategy (Option A — recommended):**
+**Resolution strategy (Option A - recommended):**
 Map Service exposes `GET /api/v1/map/nodes` returning all graph nodes with coordinates. Frontend fetches this list on `BookJourneyPage` mount, builds a `name → {lat,lng}` lookup, and converts before calling `POST /api/v1/journeys`. The hardcoded `ORIGINS` / `DESTINATIONS` arrays in `BookJourneyPage.tsx` become dynamic from this endpoint.
 
 The frontend node names already match `mockData.ts` map nodes:
@@ -1209,7 +1209,7 @@ The frontend node names already match `mockData.ts` map nodes:
 | `'active'` | `ACTIVE` |
 | `'completed'` | `COMPLETED` |
 | `'cancelled'` | `CANCELLED` |
-| `'expired'` *(not yet in frontend types)* | `EXPIRED` — **add to frontend `JourneyStatus` type** |
+| `'expired'` *(not yet in frontend types)* | `EXPIRED` - **add to frontend `JourneyStatus` type** |
 
 The frontend should lowercase status values when displaying. The backend should accept and return uppercase. No status translation layer needed in the API; handle in the frontend display layer.
 
@@ -1240,7 +1240,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     },
   });
   if (res.status === 401) {
-    // attempt token refresh then retry — omitted for brevity
+    // attempt token refresh then retry - omitted for brevity
     localStorage.removeItem('cw_token');
     window.location.href = '/auth';
     throw new Error('Unauthenticated');
@@ -1293,7 +1293,7 @@ export const notificationAPI = {
 
 The following endpoints are required by the frontend but not yet in the current service specs. They must be added before the frontend can be fully wired:
 
-#### `GET /api/v1/map/nodes` — Map Service
+#### `GET /api/v1/map/nodes` - Map Service
 
 Returns all graph nodes for the origin/destination dropdowns in `BookJourneyPage`.
 
@@ -1314,7 +1314,7 @@ Returns all graph nodes for the origin/destination dropdowns in `BookJourneyPage
 }
 ```
 
-#### `GET /api/v1/map/traffic` — Map Service (aggregated with Capacity data)
+#### `GET /api/v1/map/traffic` - Map Service (aggregated with Capacity data)
 
 Returns segment topology + live occupancy for the admin traffic map SVG.
 
@@ -1346,7 +1346,7 @@ Returns segment topology + live occupancy for the admin traffic map SVG.
 
 For a prototype, the first approach is recommended.
 
-#### `GET /api/v1/admin/analytics` — Journey Service
+#### `GET /api/v1/admin/analytics` - Journey Service
 
 Feeds the Recharts components in `AnalyticsPage.tsx`.
 
@@ -1371,7 +1371,7 @@ Feeds the Recharts components in `AnalyticsPage.tsx`.
 
 Query params: `from_date` (ISO 8601), `to_date` (ISO 8601), `region` (optional filter).
 
-#### `GET /api/v1/admin/analytics/summary` — Journey Service
+#### `GET /api/v1/admin/analytics/summary` - Journey Service
 
 For the admin dashboard KPI cards (smaller, faster than full analytics).
 
@@ -1397,7 +1397,7 @@ Access-Control-Expose-Headers: X-Trace-ID, Retry-After
 Access-Control-Max-Age: 86400
 ```
 
-The boilerplate `CORSMiddleware` in each service already sets `Access-Control-Allow-Origin: *` — tighten this for production and ensure `Idempotency-Key` is in the allow-headers list.
+The boilerplate `CORSMiddleware` in each service already sets `Access-Control-Allow-Origin: *` - tighten this for production and ensure `Idempotency-Key` is in the allow-headers list.
 
 ### 16.9 FCM Device Token Registration
 

@@ -1,4 +1,4 @@
-# Notification Service (S5) — Complete Specification
+# Notification Service (S5) - Complete Specification
 
 > **Owner:** Ziwei Zhao  
 > **Language:** Go 1.22+ (gorilla/mux)  
@@ -165,10 +165,10 @@ Register or update the driver’s FCM device token. Called by the frontend after
 
 **Error Responses:**
 
-* `400` — malformed request (missing `driver_id`, missing `fcm_token`, invalid `platform`)
-* `401` — invalid or expired JWT
-* `403` — `driver_id` does not match JWT subject and caller is not admin
-* `500` — database error
+* `400` - malformed request (missing `driver_id`, missing `fcm_token`, invalid `platform`)
+* `401` - invalid or expired JWT
+* `403` - `driver_id` does not match JWT subject and caller is not admin
+* `500` - database error
 
 ---
 
@@ -226,8 +226,8 @@ GET /api/v1/notifications?page=1&limit=20&read=false
 
 **Error Responses:**
 
-* `401` — invalid or expired JWT
-* `500` — database error
+* `401` - invalid or expired JWT
+* `500` - database error
 
 ---
 
@@ -249,9 +249,9 @@ Mark a single notification as read.
 
 **Error Responses:**
 
-* `401` — invalid or expired JWT
-* `404` — notification not found or not owned by this driver
-* `500` — database error
+* `401` - invalid or expired JWT
+* `404` - notification not found or not owned by this driver
+* `500` - database error
 
 ---
 
@@ -273,8 +273,8 @@ Mark all notifications as read for the authenticated driver.
 
 **Error Responses:**
 
-* `401` — invalid or expired JWT
-* `500` — database error
+* `401` - invalid or expired JWT
+* `500` - database error
 
 ---
 
@@ -322,9 +322,9 @@ Returns recent notifications across all drivers. Used by the admin notifications
 
 **Error Responses:**
 
-* `401` — invalid or expired JWT
-* `403` — caller is not an admin
-* `500` — database error
+* `401` - invalid or expired JWT
+* `403` - caller is not an admin
+* `500` - database error
 
 ---
 
@@ -380,7 +380,7 @@ No other backend service depends on Notification Service’s API for correctness
 
 ## 6. What Notification Service Needs from Other Services
 
-### From Journey Service (S2) — via Redis Streams (async)
+### From Journey Service (S2) - via Redis Streams (async)
 
 Notification Service is a **consumer** on the `journey.events` Redis Streams stream, consumer group `notification-service`. It acts on six event types:
 
@@ -517,7 +517,7 @@ Notification Service is a **consumer** on the `journey.events` Redis Streams str
 * Enough contextual fields to render human-readable messages (e.g. rejection reason, origin/destination labels where available)
 * Event publication only after the journey state is committed in PostgreSQL
 
-### From IAM Service (S1) — no runtime calls
+### From IAM Service (S1) - no runtime calls
 
 Notification Service fetches JWKS public keys from IAM on startup and refreshes every hour. JWT validation for driver and admin HTTP endpoints is performed locally. No runtime REST call to IAM is made per request.
 
@@ -942,7 +942,7 @@ REDIS_PASSWORD=<secret>
 REDIS_DB=0
 REDIS_CONNECT_TIMEOUT_SECONDS=5
 
-# IAM JWKS (for auth on HTTP endpoints — no runtime calls per request)
+# IAM JWKS (for auth on HTTP endpoints - no runtime calls per request)
 JWKS_URL=http://iam-service:8082/api/v1/auth/.well-known/jwks.json
 JWKS_REFRESH_INTERVAL_SECONDS=3600
 

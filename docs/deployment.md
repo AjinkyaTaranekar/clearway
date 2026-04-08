@@ -6,7 +6,7 @@
 Docker Swarm: 1 manager node + 2 worker nodes.  
 Each VM runs one replica of every service (`mode: global`).  
 PostgreSQL instances replicate data to each other via logical replication.  
-Redis is local to each node — no cross-node sync.
+Redis is local to each node - no cross-node sync.
 
 ```
 Internet → Azure Load Balancer (TCP 80/443)
@@ -144,7 +144,7 @@ export IMAGE_TAG=<new-sha>
 docker stack deploy --with-registry-auth -c docker-stack.yml vcs
 ```
 
-Docker Swarm performs rolling updates: `parallelism: 1`, `order: start-first` — the new container is started and health-checked before the old one is stopped. Zero-downtime.
+Docker Swarm performs rolling updates: `parallelism: 1`, `order: start-first` - the new container is started and health-checked before the old one is stopped. Zero-downtime.
 
 ---
 
@@ -164,7 +164,7 @@ docker service logs -f vcs_journey-service
 docker service update --force vcs_journey-service
 
 # Scale a service (override global mode for testing)
-# Note: global mode services cannot be scaled — they always run on every node
+# Note: global mode services cannot be scaled - they always run on every node
 
 # Drain a node for maintenance
 docker node update --availability drain <node-id>

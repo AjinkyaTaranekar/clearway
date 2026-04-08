@@ -1,5 +1,5 @@
 ###############################################################################
-# AWS — Distributed Vehicle Capacity System
+# AWS - Distributed Vehicle Capacity System
 # 3 × t3.small EC2 instances, VPC, Security Groups, Network Load Balancer
 ###############################################################################
 
@@ -18,7 +18,7 @@ provider "aws" {
 }
 
 ##############################################################################
-# VPC + Subnet (single AZ for Swarm overlay — all 3 VMs on same subnet)
+# VPC + Subnet (single AZ for Swarm overlay - all 3 VMs on same subnet)
 ##############################################################################
 
 resource "aws_vpc" "vcs" {
@@ -65,7 +65,7 @@ resource "aws_security_group" "vcs" {
   vpc_id      = aws_vpc.vcs.id
   tags        = merge(var.tags, { Name = "vcs-sg" })
 
-  # SSH — restrict to management IP in production
+  # SSH - restrict to management IP in production
   ingress {
     description = "SSH"
     from_port   = 22
@@ -215,7 +215,7 @@ resource "aws_eip" "vm" {
 }
 
 ##############################################################################
-# Network Load Balancer (Layer 4 TCP — port 80)
+# Network Load Balancer (Layer 4 TCP - port 80)
 ##############################################################################
 
 resource "aws_lb" "vcs" {

@@ -143,7 +143,7 @@ definitions:
     type: object
 info:
   contact: {}
-  description: Distributed Vehicle Capacity System — Journey Service. Manages journey
+  description: Distributed Vehicle Capacity System - Journey Service. Manages journey
     bookings, state transitions, and enforcement checks.
   license:
     name: Apache 2.0

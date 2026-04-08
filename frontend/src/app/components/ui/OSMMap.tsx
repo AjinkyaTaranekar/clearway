@@ -1,5 +1,5 @@
 /**
- * OSMMap — React wrapper around MapLibre using OpenStreetMap raster tiles.
+ * OSMMap - React wrapper around MapLibre using OpenStreetMap raster tiles.
  * Search/routing are handled server-side; this component is display only.
  */
 

@@ -23,7 +23,7 @@ RUN swag init -g cmd/server/main.go -o docs && \
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -ldflags="-w -s" -o server ./cmd/server
 
-# Final stage — alpine for wget healthcheck and shell-based secret bridging
+# Final stage - alpine for wget healthcheck and shell-based secret bridging
 FROM alpine:3.20
 
 # Install runtime dependencies: wget (healthcheck), ca-certificates (TLS), tzdata (timezone)

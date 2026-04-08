@@ -26,7 +26,7 @@ These decisions have been made by the team. Do not question or redesign them. Bu
 
 **Multi-VM Load Balanced Architecture:**
 - The system runs as N identical VMs behind a load balancer (Nginx or AWS ALB)
-- Every VM runs all 5 services, its own PostgreSQL instance, and its own Redis instance — a complete, self-contained stack
+- Every VM runs all 5 services, its own PostgreSQL instance, and its own Redis instance - a complete, self-contained stack
 - The load balancer distributes driver requests across VMs using round-robin or least-connections. Any VM can handle any request.
 - All VMs share state via **PostgreSQL multi-master logical replication**: every VM is both a publisher and a subscriber, so writes on VM A propagate to VM B and VM C within milliseconds
 - There are NO cross-VM service-to-service REST calls. Journey Service always calls the Capacity Service and Map Service running on the same VM.
@@ -45,19 +45,19 @@ These decisions have been made by the team. Do not question or redesign them. Bu
 
 **Communication Patterns (Finalized):**
 
-Synchronous (REST/HTTP, driver is waiting for response — all intra-VM):
+Synchronous (REST/HTTP, driver is waiting for response - all intra-VM):
 - Journey Service -> IAM: JWT validation is done LOCALLY using cached JWKS public keys. No runtime REST call to IAM. IAM just serves a JWKS endpoint that Journey Service fetches on startup and refreshes hourly.
 - Journey Service -> Map Service: GET route segments. Journey Service caches responses in Redis with 24-hour TTL. Both run on the same VM.
 - Journey Service -> Capacity Service: Reserve/check slots for all segments. Both run on the same VM.
 
-Asynchronous (Redis Streams, fire-and-forget after responding to driver — all intra-VM):
+Asynchronous (Redis Streams, fire-and-forget after responding to driver - all intra-VM):
 - Journey Service publishes events: journey.booked, journey.rejected, journey.cancelled, journey.activated, journey.completed, journey.expired
 - Notification Service (same VM) consumes these events and sends Firebase push notifications
 - Capacity Service (same VM) consumes journey.cancelled, journey.completed, journey.expired events to RELEASE reserved slots
 
 Cross-VM data sync (handled by the database layer, NOT by services):
 - PostgreSQL logical replication propagates all writes from each VM to every other VM automatically
-- Services do not need to implement any replication logic — this is handled at the infrastructure level
+- Services do not need to implement any replication logic - this is handled at the infrastructure level
 
 **Key Business Rules:**
 - Journeys must be booked at least 1 hour before departure
@@ -104,29 +104,29 @@ Each segment gets its own specific time window based on cumulative travel time. 
 - Push Notifications: Firebase Cloud Messaging
 - Infrastructure: AWS (no budget constraints)
 
-**Frontend (already built — React PWA):**
+**Frontend (already built - React PWA):**
 
 A React 18 + TypeScript Progressive Web App exists at `frontend/`. It is currently fully mocked (no real API calls). The frontend has two roles: **driver** and **admin**. Your service spec must describe the API contract your service exposes so the frontend can be wired up.
 
 Driver pages and what they need:
-- `/auth` — Login. Needs IAM `POST /api/v1/auth/login` returning JWT + user profile.
-- `/driver` — Dashboard. Needs Journey Service `GET /api/v1/journeys` (recent bookings).
-- `/driver/book` — Book journey. Needs Map Service `GET /api/v1/map/nodes` (origin/destination lookup) + Journey Service `POST /api/v1/journeys`.
-- `/driver/journeys` — Journey list. Needs Journey Service `GET /api/v1/journeys` (paginated, filterable).
-- `/driver/journeys/:id` — Journey detail. Needs Journey Service `GET`, activate, complete, cancel endpoints.
-- `/driver/notifications` — Notifications. Needs Notification Service `GET /api/v1/notifications`, mark-read endpoints.
-- `/driver/settings` — Profile. Needs IAM `GET/PUT /api/v1/auth/profile` + Notification Service `POST /api/v1/notifications/device-token` (FCM registration).
+- `/auth` - Login. Needs IAM `POST /api/v1/auth/login` returning JWT + user profile.
+- `/driver` - Dashboard. Needs Journey Service `GET /api/v1/journeys` (recent bookings).
+- `/driver/book` - Book journey. Needs Map Service `GET /api/v1/map/nodes` (origin/destination lookup) + Journey Service `POST /api/v1/journeys`.
+- `/driver/journeys` - Journey list. Needs Journey Service `GET /api/v1/journeys` (paginated, filterable).
+- `/driver/journeys/:id` - Journey detail. Needs Journey Service `GET`, activate, complete, cancel endpoints.
+- `/driver/notifications` - Notifications. Needs Notification Service `GET /api/v1/notifications`, mark-read endpoints.
+- `/driver/settings` - Profile. Needs IAM `GET/PUT /api/v1/auth/profile` + Notification Service `POST /api/v1/notifications/device-token` (FCM registration).
 
 Admin pages and what they need:
-- `/admin` — Dashboard. Needs Journey Service admin list + analytics summary.
-- `/admin/journeys` — All journeys. Needs Journey Service `GET /api/v1/admin/journeys` (filterable by status, region, date).
-- `/admin/journeys/:id` — Admin detail. Needs Journey Service force-cancel endpoint.
-- `/admin/analytics` — Recharts analytics. Needs Journey Service `GET /api/v1/admin/analytics` (booking trend, regional stats, KPIs).
-- `/admin/map` — Traffic map SVG. Needs Map Service `GET /api/v1/map/traffic` (segment occupancy + node topology).
-- `/admin/notifications` — All notifications. Needs Notification Service admin list endpoint.
+- `/admin` - Dashboard. Needs Journey Service admin list + analytics summary.
+- `/admin/journeys` - All journeys. Needs Journey Service `GET /api/v1/admin/journeys` (filterable by status, region, date).
+- `/admin/journeys/:id` - Admin detail. Needs Journey Service force-cancel endpoint.
+- `/admin/analytics` - Recharts analytics. Needs Journey Service `GET /api/v1/admin/analytics` (booking trend, regional stats, KPIs).
+- `/admin/map` - Traffic map SVG. Needs Map Service `GET /api/v1/map/traffic` (segment occupancy + node topology).
+- `/admin/notifications` - All notifications. Needs Notification Service admin list endpoint.
 
 Frontend data model notes:
-- Vehicle types in frontend: `Car`, `Van`, `Motorcycle`, `HGV`. Backend must support: `car`, `van`, `motorcycle`, `truck` (HGV maps to truck). `van` is not in the original spec — it must be added.
+- Vehicle types in frontend: `Car`, `Van`, `Motorcycle`, `HGV`. Backend must support: `car`, `van`, `motorcycle`, `truck` (HGV maps to truck). `van` is not in the original spec - it must be added.
 - Journey statuses in frontend: lowercase (`approved`, `active`, etc.). Backend uses uppercase. Frontend handles the display-layer conversion.
 - Origin/destination: frontend uses human-readable node names. Map Service must expose `GET /api/v1/map/nodes` so the frontend can resolve names to lat/lng coordinates before calling Journey Service.
 - Auth: JWT stored in `localStorage["cw_token"]`. All API calls send `Authorization: Bearer <token>` header. On 401, frontend attempts token refresh then redirects to `/auth`.
@@ -165,7 +165,7 @@ Events include a `regions_involved` field so that Capacity Services in each regi
    - Configuration (environment variables)
    - Project Structure (Go project layout)
    - Sequence Diagrams (for primary flows)
-   - **Frontend Integration** — which frontend pages call this service, exact endpoint + request/response shapes the frontend expects, any data model alignment notes (e.g. casing, field names), and CORS requirements. The frontend is a React 18 PWA already built with mocked data; this section tells the frontend developer exactly what to wire up.
+   - **Frontend Integration** - which frontend pages call this service, exact endpoint + request/response shapes the frontend expects, any data model alignment notes (e.g. casing, field names), and CORS requirements. The frontend is a React 18 PWA already built with mocked data; this section tells the frontend developer exactly what to wire up.
 
 3. For the communication pattern with each other service, explain WHY it is sync or async. Don't just state the choice. Justify it.
 
@@ -263,7 +263,7 @@ Frontend integration notes:
 - The admin settings page (`/admin/settings`) calls `GET /api/v1/auth/profile`.
 - Frontend stores the JWT in `localStorage["cw_token"]` and sends it as `Authorization: Bearer <token>` on every request.
 - On 401, the frontend calls `POST /api/v1/auth/refresh` with `{ refresh_token }` to get a new access token.
-- The frontend role-toggles between "driver" and "admin" on the login screen — my login response `role` field must be `"driver"` or `"admin"` exactly (lowercase).
+- The frontend role-toggles between "driver" and "admin" on the login screen - my login response `role` field must be `"driver"` or `"admin"` exactly (lowercase).
 - CORS: must allow `http://localhost:5173` in development (Vite dev server).
 
 I need you to ask me clarifying questions before generating the spec.
@@ -341,14 +341,14 @@ My service owns the "map" schema in PostgreSQL (for segment metadata persistence
 
 Important considerations:
 - The segment graph must include segments from ALL regions (not just the local cell), because a Dublin user might request a route to Manchester which involves UK segments
-- Segments have a region/area label for display purposes but no routing logic depends on it — there are no cross-VM Capacity calls
+- Segments have a region/area label for display purposes but no routing logic depends on it - there are no cross-VM Capacity calls
 - TomTom API is called client-side (from the React PWA) for map rendering. My service provides a routing/directions URL or coordinates that the frontend uses.
 - For the prototype, the graph can be hardcoded/seeded from a JSON file rather than dynamically managed
 
 Frontend integration notes:
 - I am called directly by the frontend in two cases:
-  1. `GET /api/v1/map/nodes` — The `BookJourneyPage` (`/driver/book`) needs all graph nodes with labels and coordinates so the driver can select origin/destination by name. The frontend converts the selected name to lat/lng before calling Journey Service. Response shape: `{ nodes: [{ node_id, label, lat, lng }] }`.
-  2. `GET /api/v1/map/traffic` — The admin traffic map page (`/admin/map`) needs segment topology (from/to nodes, x/y positions for SVG rendering) plus live occupancy from Capacity Service. Response shape: `{ segments: [{ segment_id, name, region, level, occupancy_pct, vehicles, capacity, trend, from_node, to_node }], nodes: [{ node_id, label, x, y }] }`. I need to either call Capacity Service internally or let this endpoint be served by an aggregation layer.
+  1. `GET /api/v1/map/nodes` - The `BookJourneyPage` (`/driver/book`) needs all graph nodes with labels and coordinates so the driver can select origin/destination by name. The frontend converts the selected name to lat/lng before calling Journey Service. Response shape: `{ nodes: [{ node_id, label, lat, lng }] }`.
+  2. `GET /api/v1/map/traffic` - The admin traffic map page (`/admin/map`) needs segment topology (from/to nodes, x/y positions for SVG rendering) plus live occupancy from Capacity Service. Response shape: `{ segments: [{ segment_id, name, region, level, occupancy_pct, vehicles, capacity, trend, from_node, to_node }], nodes: [{ node_id, label, x, y }] }`. I need to either call Capacity Service internally or let this endpoint be served by an aggregation layer.
 - The 10 nodes already defined in the frontend mock data (`mockData.ts mapNodes`): City Centre, North Gate, Airport, East Quay, South Terminal, Industrial Park, West Depot, Port Terminal, Northfield, Riverside. My actual node graph for the prototype should include at minimum these same named locations.
 - CORS: must allow `http://localhost:5173` in development since the frontend calls me directly.
 
@@ -398,11 +398,11 @@ Important considerations:
 
 Frontend integration notes:
 - I am called directly by the frontend in these cases:
-  1. `POST /api/v1/notifications/device-token` — Called after login when the driver grants browser notification permission. Body: `{ driver_id, fcm_token }`. This is how I learn which FCM token belongs to which driver.
-  2. `GET /api/v1/notifications` — The notifications page (`/driver/notifications`) fetches the driver's notification history. Response shape matches the frontend `Notification` type: `{ notifications: [{ id, title, message, type, read, timestamp, journey_id? }], unread_count }`. `type` values: `"info" | "success" | "warning" | "error"`.
-  3. `PUT /api/v1/notifications/:id/read` — Mark a single notification as read.
-  4. `PUT /api/v1/notifications/read-all` — Mark all notifications as read for the authenticated driver.
-  5. `GET /api/v1/admin/notifications` — Admin notifications page (`/admin/notifications`) needs recent notifications across all drivers (admin role required, paginated).
+  1. `POST /api/v1/notifications/device-token` - Called after login when the driver grants browser notification permission. Body: `{ driver_id, fcm_token }`. This is how I learn which FCM token belongs to which driver.
+  2. `GET /api/v1/notifications` - The notifications page (`/driver/notifications`) fetches the driver's notification history. Response shape matches the frontend `Notification` type: `{ notifications: [{ id, title, message, type, read, timestamp, journey_id? }], unread_count }`. `type` values: `"info" | "success" | "warning" | "error"`.
+  3. `PUT /api/v1/notifications/:id/read` - Mark a single notification as read.
+  4. `PUT /api/v1/notifications/read-all` - Mark all notifications as read for the authenticated driver.
+  5. `GET /api/v1/admin/notifications` - Admin notifications page (`/admin/notifications`) needs recent notifications across all drivers (admin role required, paginated).
 - Notification types map from journey events as follows (for `type` field):
   - `journey.booked` (approved) → `type: "success"`
   - `journey.rejected` → `type: "error"`

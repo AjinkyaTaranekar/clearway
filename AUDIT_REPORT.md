@@ -1,4 +1,4 @@
-# AUDIT REPORT — Distributed Vehicle Capacity System
+# AUDIT REPORT - Distributed Vehicle Capacity System
 
 > **Auditor:** Principal-level distributed systems review  
 > **Date:** 2026-04-07  
@@ -11,24 +11,24 @@
 
 | ID | Area | Service | Finding | Failure Mode | Severity | Assignee |
 |----|------|---------|---------|--------------|----------|----------|
-| F-01 | Booking — segment reservation | Map Service + Capacity Service | **Segment ID namespace mismatch.** Map Service hardcodes IDs like `seg_m50`, `seg_m1_n`, `seg_quays_e`. Capacity Service seeds `seg_city_north`, `seg_north_airport`, `seg_city_east`. The seed file comment claims they align — they do not. Every set of IDs is completely different. | Journey Service calls Capacity with the segment IDs returned by Map Service. Capacity does a `SELECT … WHERE segment_id = $1` against its seeded rows. Because no such rows exist, every booking request returns `unknown_segment` on the very first segment. **The entire booking flow is broken end-to-end in production.** No journey can ever be APPROVED. | P0 | Xiaoxuan Duan (Map Service), Jai Nagle (Capacity Service) |
-| F-02 | Event bus — notification delivery | Journey Service + Notification Service | **Redis stream key mismatch.** Journey publisher writes events to stream key `"data"`: `Values: map[string]interface{}{"data": string(data)}`. Notification consumer looks for key `"payload"` first. When that fails it falls through to `mapToJSON(msg.Values)`, which produces `{"data":"<escaped json>"}`. Unmarshalling that as `Envelope` succeeds structurally but yields an empty `EventType`. `MapEvent` returns "unknown event type" → message is silently ACKed and discarded. | **Every journey lifecycle event is silently dropped by the notification consumer.** No notification records are ever written to PostgreSQL. The in-app notifications list will always be empty for every driver. The Capacity Service consumer uses the correct `"data"` key and works correctly; the Notification consumer is the outlier. | P0 | Ziwei Zhao (Notification Service) |
-| F-03 | Event reliability — outbox pattern | Journey Service (cross-cutting) | **Fire-and-forget event publishing with no outbox.** `publisher.Publish()` calls `redis.XAdd` and silently swallows the error: *"Silently ignores errors — events are best-effort, not on the critical path."* Events are published **after** the PostgreSQL commit, not atomically with it. If Redis is unavailable or the process crashes between the DB commit and the XAdd, the event is permanently lost. | **Capacity slots are never released.** Capacity Service consumes `journey.cancelled`, `journey.completed`, and `journey.expired` events to free reserved slots. If those events are dropped, the reserved slots remain occupied forever. Over time, every segment approaches its capacity ceiling regardless of actual vehicle counts. Subsequent bookings are incorrectly rejected. This is a silent data corruption path. | P0 | Ajinkya Taranekar (Journey Service) |
-| F-04 | Push notifications — FCM | Notification Service | **FCM push dispatch is completely absent.** The notification consumer writes a `Notification` record to PostgreSQL and immediately ACKs. There is no Firebase SDK imported anywhere in `notification-service/go.mod`. No FCM client is constructed in `main.go`. Device tokens are accepted and stored via `POST /api/v1/notifications/device-token` but are never fetched or used to push. The `DeliveryStatus` field is set to `pending` on insert and never updated. | Drivers receive zero push notifications for any journey lifecycle event (booked, approved, cancelled, expired). The spec explicitly requires FCM as the delivery mechanism. Delivery status is permanently `pending` for every record. | P0 | Ziwei Zhao (Notification Service) |
-| F-05 | Admin traffic visualisation | Frontend + Map Service | **Traffic map page uses hardcoded mock data; live API endpoint does not exist.** `TrafficMapPage.tsx` imports `trafficSegments` and `mapNodes` directly from `mockData.ts` and never calls any backend. Map Service router (`router.go`) only registers `/api/v1/map/nodes`, `/api/v1/map/route`, and `/api/v1/routes/compute`. There is no `/api/v1/map/traffic` route. The nginx config has a proxy block for `/api/v1/map/` that would route the call if it existed, but it never arrives because the frontend never makes it. | The admin sees permanently static, fabricated traffic data with no relationship to actual bookings. The primary admin-facing feature of the system — live road occupancy — is entirely non-functional. The spec defines this as the core admin capability and provides a detailed response contract. | P0 | Xiaoxuan Duan (Map Service + Frontend) |
-| F-06 | Map Service — missing endpoints | Map Service | **`GET /api/v1/map/traffic` and `GET /api/v1/map/segments` are not implemented.** The spec requires both. The handler file (`map_handler.go`) has no `GetTraffic` or `GetSegments` function. Map Service also has no internal client to call Capacity Service, and no `CAPACITY_BASE_URL` env var in `docker-compose.yml`. Even implementing the handler skeleton would immediately fail on the Capacity Service call. | Admin traffic map cannot be built without the traffic endpoint. Segment metadata (static topology for admin UI) cannot be retrieved. Any future frontend or tooling relying on `/api/v1/map/segments` will get a 404. | P1 | Xiaoxuan Duan (Map Service) |
-| F-07 | Map Service — graph not DB-backed | Map Service | **Graph is fully hardcoded in Go source, not loaded from PostgreSQL.** The spec says Map Service reads nodes and segments from its own PostgreSQL schema (`map`) and keeps the graph in memory. In reality, `hardcodedNodes` and `hardcodedEdges` are Go slice literals in `map_handler.go`. The `VCS_DATABASE_*` env vars are injected but never read by the map handler. There is no `map` database schema or migration. | In a multi-VM deployment, topology changes (segment additions, capacity updates) must be made by redeploying code rather than DB updates. More critically, the graph cannot be updated at runtime; the spec's topology-consistency guarantee via PostgreSQL replication does not hold. Admin cannot manage the road network through a data plane — it requires code changes. | P1 | Xiaoxuan Duan (Map Service) |
+| F-01 | Booking - segment reservation | Map Service + Capacity Service | **Segment ID namespace mismatch.** Map Service hardcodes IDs like `seg_m50`, `seg_m1_n`, `seg_quays_e`. Capacity Service seeds `seg_city_north`, `seg_north_airport`, `seg_city_east`. The seed file comment claims they align - they do not. Every set of IDs is completely different. | Journey Service calls Capacity with the segment IDs returned by Map Service. Capacity does a `SELECT … WHERE segment_id = $1` against its seeded rows. Because no such rows exist, every booking request returns `unknown_segment` on the very first segment. **The entire booking flow is broken end-to-end in production.** No journey can ever be APPROVED. | P0 | Xiaoxuan Duan (Map Service), Jai Nagle (Capacity Service) |
+| F-02 | Event bus - notification delivery | Journey Service + Notification Service | **Redis stream key mismatch.** Journey publisher writes events to stream key `"data"`: `Values: map[string]interface{}{"data": string(data)}`. Notification consumer looks for key `"payload"` first. When that fails it falls through to `mapToJSON(msg.Values)`, which produces `{"data":"<escaped json>"}`. Unmarshalling that as `Envelope` succeeds structurally but yields an empty `EventType`. `MapEvent` returns "unknown event type" → message is silently ACKed and discarded. | **Every journey lifecycle event is silently dropped by the notification consumer.** No notification records are ever written to PostgreSQL. The in-app notifications list will always be empty for every driver. The Capacity Service consumer uses the correct `"data"` key and works correctly; the Notification consumer is the outlier. | P0 | Ziwei Zhao (Notification Service) |
+| F-03 | Event reliability - outbox pattern | Journey Service (cross-cutting) | **Fire-and-forget event publishing with no outbox.** `publisher.Publish()` calls `redis.XAdd` and silently swallows the error: *"Silently ignores errors - events are best-effort, not on the critical path."* Events are published **after** the PostgreSQL commit, not atomically with it. If Redis is unavailable or the process crashes between the DB commit and the XAdd, the event is permanently lost. | **Capacity slots are never released.** Capacity Service consumes `journey.cancelled`, `journey.completed`, and `journey.expired` events to free reserved slots. If those events are dropped, the reserved slots remain occupied forever. Over time, every segment approaches its capacity ceiling regardless of actual vehicle counts. Subsequent bookings are incorrectly rejected. This is a silent data corruption path. | P0 | Ajinkya Taranekar (Journey Service) |
+| F-04 | Push notifications - FCM | Notification Service | **FCM push dispatch is completely absent.** The notification consumer writes a `Notification` record to PostgreSQL and immediately ACKs. There is no Firebase SDK imported anywhere in `notification-service/go.mod`. No FCM client is constructed in `main.go`. Device tokens are accepted and stored via `POST /api/v1/notifications/device-token` but are never fetched or used to push. The `DeliveryStatus` field is set to `pending` on insert and never updated. | Drivers receive zero push notifications for any journey lifecycle event (booked, approved, cancelled, expired). The spec explicitly requires FCM as the delivery mechanism. Delivery status is permanently `pending` for every record. | P0 | Ziwei Zhao (Notification Service) |
+| F-05 | Admin traffic visualisation | Frontend + Map Service | **Traffic map page uses hardcoded mock data; live API endpoint does not exist.** `TrafficMapPage.tsx` imports `trafficSegments` and `mapNodes` directly from `mockData.ts` and never calls any backend. Map Service router (`router.go`) only registers `/api/v1/map/nodes`, `/api/v1/map/route`, and `/api/v1/routes/compute`. There is no `/api/v1/map/traffic` route. The nginx config has a proxy block for `/api/v1/map/` that would route the call if it existed, but it never arrives because the frontend never makes it. | The admin sees permanently static, fabricated traffic data with no relationship to actual bookings. The primary admin-facing feature of the system - live road occupancy - is entirely non-functional. The spec defines this as the core admin capability and provides a detailed response contract. | P0 | Xiaoxuan Duan (Map Service + Frontend) |
+| F-06 | Map Service - missing endpoints | Map Service | **`GET /api/v1/map/traffic` and `GET /api/v1/map/segments` are not implemented.** The spec requires both. The handler file (`map_handler.go`) has no `GetTraffic` or `GetSegments` function. Map Service also has no internal client to call Capacity Service, and no `CAPACITY_BASE_URL` env var in `docker-compose.yml`. Even implementing the handler skeleton would immediately fail on the Capacity Service call. | Admin traffic map cannot be built without the traffic endpoint. Segment metadata (static topology for admin UI) cannot be retrieved. Any future frontend or tooling relying on `/api/v1/map/segments` will get a 404. | P1 | Xiaoxuan Duan (Map Service) |
+| F-07 | Map Service - graph not DB-backed | Map Service | **Graph is fully hardcoded in Go source, not loaded from PostgreSQL.** The spec says Map Service reads nodes and segments from its own PostgreSQL schema (`map`) and keeps the graph in memory. In reality, `hardcodedNodes` and `hardcodedEdges` are Go slice literals in `map_handler.go`. The `VCS_DATABASE_*` env vars are injected but never read by the map handler. There is no `map` database schema or migration. | In a multi-VM deployment, topology changes (segment additions, capacity updates) must be made by redeploying code rather than DB updates. More critically, the graph cannot be updated at runtime; the spec's topology-consistency guarantee via PostgreSQL replication does not hold. Admin cannot manage the road network through a data plane - it requires code changes. | P1 | Xiaoxuan Duan (Map Service) |
 | F-08 | Admin analytics | Frontend | **Analytics page renders hardcoded mock data.** `AnalyticsPage.tsx` imports `analyticsData` and `trendData` directly from `mockData.ts`. No analytics API exists on any backend service. KPI figures (approval rate, rejection rate, active journeys) never reflect actual booking data. | Admin analytics are completely detached from reality. The system could be rejecting 90% of bookings and the dashboard would still show a healthy 88% approval rate. There is no backend analytics endpoint to implement against. | P1 | Ajinkya Taranekar (backend endpoint) + Xiaoxuan Duan (Frontend) |
 | F-09 | Device token registration | Frontend + Notification Service | **FCM device token is never registered from the frontend.** `registerDeviceToken()` exists in `notificationApi.ts` and is correctly defined, but is never called from any React component, `AppContext`, or application lifecycle hook. There is no service worker file, no VAPID key, and no web push configuration. | Even if FCM dispatch were implemented server-side, no device token would ever exist in the database for any driver because the registration call is never made. Push notifications would fail to deliver because there is no token to push to. | P1 | Ziwei Zhao (Notification Service + Frontend) |
-| F-10 | Admin force-cancel — audit trail | Journey Service | **Admin identity is not recorded in the cancel audit event.** `AdminCancelJourney` publishes `CancelledPayload{CancelledBy: "admin"}` without the admin's user ID. The JWT middleware extracts the caller's subject (`driverID`) but the admin handler never passes it to the service. No durable audit log table exists in the journey schema. | The spec requires force-cancel to be "logged with the admin's identity." At present, there is no way to determine which admin cancelled a journey after the fact. This is a compliance gap, not just a hardening issue. | P1 | Ajinkya Taranekar (Journey Service) |
-| F-11 | Enforcement role — RBAC gap | Journey Service + IAM Service | **`enforcement` role is referenced in middleware but cannot be issued.** The journey router applies `middleware.EnforcementOnly` to the `GET /api/v1/enforcement/verify` route. The IAM spec defines only two roles: `driver` and `admin`. The IAM registration and login endpoints have no mechanism to issue a JWT with `role: enforcement`. | The enforcement verify endpoint is effectively inaccessible without an enforcement-role JWT. Admins cannot use their JWT on this route; drivers cannot either. The `EnforcementPage.tsx` calls `enforcementVerify()` from a logged-in driver session, which will hit a 403 if the middleware strictly checks for the enforcement role. | P1 | Ajinkya Taranekar (Journey Service), Deepika Nag (IAM Service) |
+| F-10 | Admin force-cancel - audit trail | Journey Service | **Admin identity is not recorded in the cancel audit event.** `AdminCancelJourney` publishes `CancelledPayload{CancelledBy: "admin"}` without the admin's user ID. The JWT middleware extracts the caller's subject (`driverID`) but the admin handler never passes it to the service. No durable audit log table exists in the journey schema. | The spec requires force-cancel to be "logged with the admin's identity." At present, there is no way to determine which admin cancelled a journey after the fact. This is a compliance gap, not just a hardening issue. | P1 | Ajinkya Taranekar (Journey Service) |
+| F-11 | Enforcement role - RBAC gap | Journey Service + IAM Service | **`enforcement` role is referenced in middleware but cannot be issued.** The journey router applies `middleware.EnforcementOnly` to the `GET /api/v1/enforcement/verify` route. The IAM spec defines only two roles: `driver` and `admin`. The IAM registration and login endpoints have no mechanism to issue a JWT with `role: enforcement`. | The enforcement verify endpoint is effectively inaccessible without an enforcement-role JWT. Admins cannot use their JWT on this route; drivers cannot either. The `EnforcementPage.tsx` calls `enforcementVerify()` from a logged-in driver session, which will hit a 403 if the middleware strictly checks for the enforcement role. | P1 | Ajinkya Taranekar (Journey Service), Deepika Nag (IAM Service) |
 | F-12 | Inter-service resilience | Journey Service | **No circuit breakers or retry policies on Map Service and Capacity Service calls.** Both `map_client.go` and `capacity_client.go` use a plain `http.Client` with a flat timeout (`5s` for Map, inferred for Capacity). A single slow response holds the goroutine for the full timeout. No exponential backoff, no circuit breaker half-open state, no fallback. | Under Map Service degradation, every concurrent booking request holds a thread for 5 s before returning 502. A traffic spike during a brief Map Service hiccup will exhaust the Journey Service goroutine pool. Without circuit breaking, the Journey Service will continue hammering an already-degraded Map Service rather than fast-failing. | P1 | Ajinkya Taranekar (Journey Service) |
-| F-13 | Booking flow — node-ID/coordinate round-trip ambiguity | Frontend + Journey Service + Map Service | **The frontend sends human-readable labels (not node IDs) as `origin`/`destination`, then Journey Service resolves them to nodes via nearest-neighbour coordinate lookup.** `BookJourneyPage.tsx` stores `node.label` in `form.origin` and passes `originNode.lat/lng` as `originCoords`. Journey Service calls `ComputeRoute(origin_coords, dest_coords)`. The Map Client fetches all nodes and finds the nearest by Euclidean lat/lng distance. For nodes that are geographically close, this can silently resolve to the wrong node if coordinates were rounded or if the user did not select a node (e.g., because the `getMapNodes()` fetch failed and the dropdowns were empty). | If `getMapNodes()` fails on page load, both dropdowns are empty. The user cannot select a node. `form.originNode` is undefined. `originCoords` is `undefined`. Journey Service receives `{lat: 0, lng: 0}` which resolves to the nearest node to the origin — always the same node regardless of user intent. Validation (`origin.lat == 0 && origin.lng == 0`) catches this, but the error message says "origin coordinates required" — confusing to a user who selected "City Centre". | P1 | Xiaoxuan Duan (Map Service + Frontend), Ajinkya Taranekar (Journey Service) |
-| F-14 | Notification service — PostgreSQL repos wired but FCM layer absent | Notification Service | **PostgreSQL `notification_repo.go` and `token_repo.go` are correctly instantiated in `main.go`, but the notification handler has no FCM dispatch layer between record insertion and ACK.** The `NotificationHandler` and the `Consumer` both hold only a `NotificationRepository` reference. There is no `FCMClient` or `PushDispatcher` interface or concrete type anywhere in the service. | Notifications are persisted correctly (F-02 fix aside), but drivers can only discover them by polling the list endpoint. The entire push channel is missing. The spec requires exponential-backoff retry on failed FCM sends, stale token deactivation on `UNREGISTERED` FCM response, and a `delivery_status` state machine. None of this exists. | P1 | Ziwei Zhao (Notification Service) |
-| F-15 | Capacity Service — event consumer group start offset | Capacity Service | **Both capacity and notification consumers create their consumer group with `"$"` (read only new messages).** If the service restarts after events have already been published, it will not replay events that occurred during the downtime. Any `journey.cancelled`, `journey.completed`, or `journey.expired` event published while the Capacity Service was down will be permanently missed. Slots from those journeys are never released. | This compounds F-03: even when Redis remains available, a brief Capacity Service restart during peak booking time means all events fired during that window are silently discarded. Segment occupancy drifts above reality permanently. | P1 | Jai Nagle (Capacity Service), Ziwei Zhao (Notification Service) |
-| F-16 | Map Service — no JWT auth on any endpoint | Map Service | **`GET /api/v1/map/traffic` is specified as requiring an admin JWT.** The Map Service router applies no auth middleware to any route. All map endpoints are publicly accessible. In the current implementation this means traffic data (once implemented) would be publicly readable. More immediately, there is no JWKS fetch and no JWT middleware wired in the map router at all. | Any unauthenticated caller can enumerate all road nodes and compute routes. This is lower risk for a university prototype, but if `/api/v1/map/traffic` is ever added without auth it exposes all real-time occupancy data publicly. | P2 | Xiaoxuan Duan (Map Service) |
-| F-17 | Hardcoded dev secret in docker-compose | Journey Service | **`VCS_SERVICES_JWT_SECRET: dev-secret`** is committed in plaintext in `docker-compose.yml`. This secret is used by the journey service JWT validation configuration. | The dev secret leaks into source control. Anyone with repo access can forge JWTs if the service ever falls back to HMAC validation rather than RSA. In the current implementation the journey service appears to use JWKS (RSA), so this value may be inert — but its presence is misleading and dangerous if a fallback path exists. | P2 | Ajinkya Taranekar (Journey Service) |
-| F-18 | Capacity Service — `"$"` start on consumer group means no replay | Capacity Service | See F-15 above — duplicated for clarity in service grouping. | | P1 | Jai Nagle (Capacity Service) |
+| F-13 | Booking flow - node-ID/coordinate round-trip ambiguity | Frontend + Journey Service + Map Service | **The frontend sends human-readable labels (not node IDs) as `origin`/`destination`, then Journey Service resolves them to nodes via nearest-neighbour coordinate lookup.** `BookJourneyPage.tsx` stores `node.label` in `form.origin` and passes `originNode.lat/lng` as `originCoords`. Journey Service calls `ComputeRoute(origin_coords, dest_coords)`. The Map Client fetches all nodes and finds the nearest by Euclidean lat/lng distance. For nodes that are geographically close, this can silently resolve to the wrong node if coordinates were rounded or if the user did not select a node (e.g., because the `getMapNodes()` fetch failed and the dropdowns were empty). | If `getMapNodes()` fails on page load, both dropdowns are empty. The user cannot select a node. `form.originNode` is undefined. `originCoords` is `undefined`. Journey Service receives `{lat: 0, lng: 0}` which resolves to the nearest node to the origin - always the same node regardless of user intent. Validation (`origin.lat == 0 && origin.lng == 0`) catches this, but the error message says "origin coordinates required" - confusing to a user who selected "City Centre". | P1 | Xiaoxuan Duan (Map Service + Frontend), Ajinkya Taranekar (Journey Service) |
+| F-14 | Notification service - PostgreSQL repos wired but FCM layer absent | Notification Service | **PostgreSQL `notification_repo.go` and `token_repo.go` are correctly instantiated in `main.go`, but the notification handler has no FCM dispatch layer between record insertion and ACK.** The `NotificationHandler` and the `Consumer` both hold only a `NotificationRepository` reference. There is no `FCMClient` or `PushDispatcher` interface or concrete type anywhere in the service. | Notifications are persisted correctly (F-02 fix aside), but drivers can only discover them by polling the list endpoint. The entire push channel is missing. The spec requires exponential-backoff retry on failed FCM sends, stale token deactivation on `UNREGISTERED` FCM response, and a `delivery_status` state machine. None of this exists. | P1 | Ziwei Zhao (Notification Service) |
+| F-15 | Capacity Service - event consumer group start offset | Capacity Service | **Both capacity and notification consumers create their consumer group with `"$"` (read only new messages).** If the service restarts after events have already been published, it will not replay events that occurred during the downtime. Any `journey.cancelled`, `journey.completed`, or `journey.expired` event published while the Capacity Service was down will be permanently missed. Slots from those journeys are never released. | This compounds F-03: even when Redis remains available, a brief Capacity Service restart during peak booking time means all events fired during that window are silently discarded. Segment occupancy drifts above reality permanently. | P1 | Jai Nagle (Capacity Service), Ziwei Zhao (Notification Service) |
+| F-16 | Map Service - no JWT auth on any endpoint | Map Service | **`GET /api/v1/map/traffic` is specified as requiring an admin JWT.** The Map Service router applies no auth middleware to any route. All map endpoints are publicly accessible. In the current implementation this means traffic data (once implemented) would be publicly readable. More immediately, there is no JWKS fetch and no JWT middleware wired in the map router at all. | Any unauthenticated caller can enumerate all road nodes and compute routes. This is lower risk for a university prototype, but if `/api/v1/map/traffic` is ever added without auth it exposes all real-time occupancy data publicly. | P2 | Xiaoxuan Duan (Map Service) |
+| F-17 | Hardcoded dev secret in docker-compose | Journey Service | **`VCS_SERVICES_JWT_SECRET: dev-secret`** is committed in plaintext in `docker-compose.yml`. This secret is used by the journey service JWT validation configuration. | The dev secret leaks into source control. Anyone with repo access can forge JWTs if the service ever falls back to HMAC validation rather than RSA. In the current implementation the journey service appears to use JWKS (RSA), so this value may be inert - but its presence is misleading and dangerous if a fallback path exists. | P2 | Ajinkya Taranekar (Journey Service) |
+| F-18 | Capacity Service - `"$"` start on consumer group means no replay | Capacity Service | See F-15 above - duplicated for clarity in service grouping. | | P1 | Jai Nagle (Capacity Service) |
 | F-19 | Admin cancel event missing per-admin actor ID | Journey Service | The `AdminCancelJourney` handler extracts the admin user ID via `middleware.GetDriverID(r.Context())` but passes only `"admin"` string literal as `CancelledBy` to the service, not the actual user ID. | No post-hoc audit of which admin cancelled which journey is possible. | P1 | Ajinkya Taranekar (Journey Service) |
 | F-20 | Segment capacity seed covers bidirectional roads under one ID | Capacity Service | The seed file `002_seed_segments.sql` inserts one row per physical road (e.g. `seg_city_north`). Map Service models some roads with separate forward and reverse IDs (`seg_m1_n` / `seg_m1_s`, `seg_n4` / `seg_m4`). Even after fixing F-01, any road that gets separate directional segment IDs in Map Service will have no corresponding capacity row for the reverse direction, producing `unknown_segment` for reverse-direction bookings. | Bookings in the "wrong" direction on bidirectional roads will always fail. | P1 | Jai Nagle (Capacity Service) |
 
@@ -53,7 +53,7 @@
 
 **Risks and Assumptions:**
 - Changing segment IDs will break any existing reservations in Capacity Service (acceptable in dev; wipe and re-seed).
-- The capacity seed comment already claims alignment — the mismatch was introduced by a later edit to the map handler. Confirm by diffing git history.  
+- The capacity seed comment already claims alignment - the mismatch was introduced by a later edit to the map handler. Confirm by diffing git history.  
 
 **Assigned To:** Xiaoxuan Duan (Map Service) + Jai Nagle (Capacity Service seed sign-off)
 
@@ -67,12 +67,12 @@
   2. Call Capacity Service `GET /api/v1/capacity/segments/occupancy` using a new internal HTTP client (add `CAPACITY_BASE_URL=http://capacity-service:8081` to map-service docker-compose env).
   3. Join occupancy data with the in-memory node/segment graph by `segment_id`.
   4. Return the merged response matching the spec's `GET /api/v1/map/traffic` contract (including `level`, `occupancy_pct`, `vehicles`, `capacity`, `trend`, `from_node`, `to_node`).
-- Register route: `r.mux.HandleFunc("/api/v1/map/traffic", r.mapHandler.GetTrafficMap).Methods("GET")` — behind admin auth middleware.
+- Register route: `r.mux.HandleFunc("/api/v1/map/traffic", r.mapHandler.GetTrafficMap).Methods("GET")` - behind admin auth middleware.
 - Add `CAPACITY_BASE_URL` and `JWKS_URL` environment variables to `map-service` block in `docker-compose.yml`.
 - Implement `GET /api/v1/map/segments` returning all hardcoded segments and their metadata (no auth required per spec).  
 
 **Risks and Assumptions:**
-- If Capacity Service is unavailable, the spec says return `502` rather than guessed occupancy — implement accordingly.
+- If Capacity Service is unavailable, the spec says return `502` rather than guessed occupancy - implement accordingly.
 - The traffic endpoint introduces a synchronous dependency from Map Service to Capacity Service on every admin map load; accept this for the prototype.  
 
 **Assigned To:** Xiaoxuan Duan
@@ -89,7 +89,7 @@
 - Implement `GET /health` to return `"graph": "loaded"` only after DB load succeeds.  
 
 **Risks and Assumptions:**
-- Map Service currently connects to CockroachDB as a `map_svc` user — ensure the DB user/schema is created in init scripts.  
+- Map Service currently connects to CockroachDB as a `map_svc` user - ensure the DB user/schema is created in init scripts.  
 
 **Assigned To:** Xiaoxuan Duan
 
@@ -150,7 +150,7 @@
 ### Phase 3: Handle Consumer Group Start Offset for Restart Resilience
 **Goal:** Capacity slots are not leaked when Notification Service restarts.  
 **Actions:**
-- Change consumer group creation from `"$"` (new messages only) to `"0"` (replay from beginning) only if the group does not already exist. Current "already exists" guard is correct — the issue is the initial `"$"` offset.
+- Change consumer group creation from `"$"` (new messages only) to `"0"` (replay from beginning) only if the group does not already exist. Current "already exists" guard is correct - the issue is the initial `"$"` offset.
 - For Notification Service specifically, consider `"0"` at first creation (replays all unprocessed events). Idempotency is already handled via `event_id` dedup in the DB.
 - Note: Capacity Service has the same issue (F-15); Capacity Service owner must apply the same fix independently.  
 
@@ -177,7 +177,7 @@
 - Add an `admin_actions` table to the journey schema migration (`journey_id`, `action`, `admin_id`, `timestamp`) and insert a row on force-cancel.  
 
 **Risks and Assumptions:**
-- The middleware already extracts `sub` claim as `driverID` — the same extraction works for admins (the claim name is the same, role differs).  
+- The middleware already extracts `sub` claim as `driverID` - the same extraction works for admins (the claim name is the same, role differs).  
 
 **Assigned To:** Ajinkya Taranekar
 
@@ -193,7 +193,7 @@
 - The relay must handle Redis unavailability gracefully: log, sleep with backoff, and retry on the next tick.  
 
 **Risks and Assumptions:**
-- CockroachDB supports multi-statement transactions that span tables — verified against the current schema patterns.
+- CockroachDB supports multi-statement transactions that span tables - verified against the current schema patterns.
 - This introduces at-least-once delivery (duplicates possible if relay crashes after XAdd but before DELETE). Capacity consumer already has idempotency keys; Notification consumer must add event_id dedup (already has it).  
 
 **Assigned To:** Ajinkya Taranekar
@@ -222,7 +222,7 @@
 - On open circuit, return `502` with `"map service circuit open"` or `"capacity service circuit open"`.  
 
 **Risks and Assumptions:**
-- Circuit breakers must not share state between concurrent requests — use one breaker instance per client, created at startup.  
+- Circuit breakers must not share state between concurrent requests - use one breaker instance per client, created at startup.  
 
 **Assigned To:** Ajinkya Taranekar
 
@@ -256,7 +256,7 @@
 - Write an integration smoke test: call `GET /api/v1/map/route?origin_node_id=city&destination_node_id=airport`, take every `segment_id` in the response, call `GET /api/v1/capacity/segments/{id}/availability` for each. Verify no 404s.  
 
 **Risks and Assumptions:**
-- Bidirectional roads with a single segment ID (per Phase 1 of Map Service) need only one capacity row — confirm the seed covers both directions under one ID.  
+- Bidirectional roads with a single segment ID (per Phase 1 of Map Service) need only one capacity row - confirm the seed covers both directions under one ID.  
 
 **Assigned To:** Jai Nagle
 
@@ -273,7 +273,7 @@
 - Add a `useEffect` that calls `GET /api/v1/map/traffic` (add a `getTrafficData()` function to `mapApi.ts` including the `Authorization` header from `authHeaders()`).
 - Map the API response fields (`level`, `occupancy_pct`, `vehicles`, `capacity`, `trend`, `from_node`, `to_node`) to the component's existing display logic.
 - Handle loading and error states. If the API call fails, show an error banner rather than stale mock data.
-- The SVG map currently positions nodes via hardcoded `x`/`y` from `mockData.ts`; the API's `nodes` array returns these as well — use them.  
+- The SVG map currently positions nodes via hardcoded `x`/`y` from `mockData.ts`; the API's `nodes` array returns these as well - use them.  
 
 **Risks and Assumptions:**
 - Depends on Map Service Phase 2 (traffic endpoint). Can develop against a local mock server before Map Service is ready.  
@@ -347,7 +347,7 @@
 
 ## Section 3: Cross-Cutting Concerns
 
-### XC-01: No Outbox Pattern — Event Reliability Across All Producers
+### XC-01: No Outbox Pattern - Event Reliability Across All Producers
 
 **Services affected:** Journey Service (primary producer), Capacity Service (consumer of slot-release events), Notification Service (consumer of notification events)
 
@@ -355,13 +355,13 @@
 
 **Why this is catastrophic here:** The event stream is the only mechanism by which Capacity Service releases reserved slots (for cancelled/completed/expired journeys). If release events are dropped, segments permanently accumulate occupancy above reality. This cannot be detected or corrected without a manual DB audit.
 
-**Unified fix:** Implement a transactional outbox table in the Journey Service PostgreSQL schema. All event writes become part of the DB transaction. A dedicated relay goroutine polls the outbox and publishes to Redis. On successful XAdd, delete the outbox row. This converts at-most-once delivery to at-least-once. All consumers (Capacity and Notification) must be idempotent — Capacity Service already uses `reservation_id` idempotency; Notification Service already deduplicates on `event_id`.
+**Unified fix:** Implement a transactional outbox table in the Journey Service PostgreSQL schema. All event writes become part of the DB transaction. A dedicated relay goroutine polls the outbox and publishes to Redis. On successful XAdd, delete the outbox row. This converts at-most-once delivery to at-least-once. All consumers (Capacity and Notification) must be idempotent - Capacity Service already uses `reservation_id` idempotency; Notification Service already deduplicates on `event_id`.
 
 **Owner of coordination:** Ajinkya Taranekar (Journey Service), with Jai Nagle and Ziwei Zhao reviewing consumer idempotency handling.
 
 ---
 
-### XC-02: Segment ID Namespace — Shared Contract Between Map and Capacity
+### XC-02: Segment ID Namespace - Shared Contract Between Map and Capacity
 
 **Services affected:** Map Service, Capacity Service, Journey Service
 
@@ -377,7 +377,7 @@
 
 ---
 
-### XC-03: FCM Infrastructure — Cross-Service Configuration Gap
+### XC-03: FCM Infrastructure - Cross-Service Configuration Gap
 
 **Services affected:** Notification Service (server-side push), Frontend (client-side token registration)
 
@@ -394,7 +394,7 @@
 
 ---
 
-### XC-04: Consumer Group Offset — Silent Event Loss on Restart
+### XC-04: Consumer Group Offset - Silent Event Loss on Restart
 
 **Services affected:** Capacity Service, Notification Service
 
@@ -402,7 +402,7 @@
 
 **Unified fix:**
 - Both services should use `"0"` as the initial offset when creating the consumer group (only affects the very first `XGROUP CREATE`; the "BUSYGROUP" guard prevents re-creation on subsequent starts, so historical events are not replayed after the first successful run).
-- Both services already implement pending message reclaim (`XPENDING` / `XCLAIM` loops) — this covers the case where a consumer crashes mid-processing after claiming a message. The offset fix covers the case where the whole service is down when events are produced.
+- Both services already implement pending message reclaim (`XPENDING` / `XCLAIM` loops) - this covers the case where a consumer crashes mid-processing after claiming a message. The offset fix covers the case where the whole service is down when events are produced.
 
 **Owner of coordination:** Jai Nagle (Capacity) + Ziwei Zhao (Notification)
 
@@ -443,11 +443,11 @@
 
 **API call:** `POST /api/v1/auth/register` → IAM Service ✅ Implemented.
 
-**Finding U-01 — Only one vehicle registered per driver; no multi-vehicle support** (P1) — *Assignee: Deepika Nag (IAM Service)*  
+**Finding U-01 - Only one vehicle registered per driver; no multi-vehicle support** (P1) - *Assignee: Deepika Nag (IAM Service)*  
 The IAM model (`auth.users`) stores a single `vehicle_type` VARCHAR and a single `license_info` JSONB object. There is no `vehicles` table, no `user_vehicles` relation, and no endpoint to register additional vehicles. The spec implies drivers have "a primary vehicle" and the question of a secondary vehicle with a valid licence is unaddressed by the current data model. There is no backend path to add a second vehicle.  
-**What breaks at runtime:** A driver who switches between a car and an HGV cannot register both. When booking, they must manually select the vehicle type from the booking picker — there is no pre-population from their registered vehicle.
+**What breaks at runtime:** A driver who switches between a car and an HGV cannot register both. When booking, they must manually select the vehicle type from the booking picker - there is no pre-population from their registered vehicle.
 
-**Finding U-02 — Licence number is stored but never validated** (P2) — *Assignee: Deepika Nag (IAM Service)*  
+**Finding U-02 - Licence number is stored but never validated** (P2) - *Assignee: Deepika Nag (IAM Service)*  
 Registration accepts any string as `license_number`. IAM stores it in `license_info` JSONB. There is no format validation (length, pattern, jurisdiction check) in the handler or service. The frontend validates only that the field is non-empty.  
 **What breaks at runtime:** Invalid licence numbers pass registration silently. The booking flow cannot enforce that the vehicle type matches the licence class.
 
@@ -457,41 +457,41 @@ Registration accepts any string as `license_number`. IAM stores it in `license_i
 
 **API call:** `POST /api/v1/auth/login` → IAM Service ✅ Implemented.
 
-**Finding U-03 — User profile data not fetched after login; vehicle type not populated in context** (P1) — *Assignee: Deepika Nag (IAM Service + Frontend)*  
+**Finding U-03 - User profile data not fetched after login; vehicle type not populated in context** (P1) - *Assignee: Deepika Nag (IAM Service + Frontend)*  
 After login, `AppContext` stores `tokens.user` in state. The `User` interface includes `vehicle_type`, and this is correctly stored. However, `BookJourneyPage` never reads `user.vehicle_type` to pre-select the vehicle type in the booking picker. The booking picker always starts blank, forcing the driver to re-select their vehicle on every booking even though it is already known.  
-**What breaks at runtime:** The driver sees no pre-selection. If they forget to pick a vehicle type, form validation catches it. But the UX expectation — "I registered a car, so just show me car pre-selected" — is not met.
+**What breaks at runtime:** The driver sees no pre-selection. If they forget to pick a vehicle type, form validation catches it. But the UX expectation - "I registered a car, so just show me car pre-selected" - is not met.
 
 ---
 
 ### 4.3 Book Journey Page (`/driver/book`)
 
-**Finding U-04 — Origin/destination selection via node dropdown, but coordinate round-trip introduces silent resolution errors** (P1) — *Assignee: Xiaoxuan Duan (Map Service + Frontend), Ajinkya Taranekar (Journey Service)*  
+**Finding U-04 - Origin/destination selection via node dropdown, but coordinate round-trip introduces silent resolution errors** (P1) - *Assignee: Xiaoxuan Duan (Map Service + Frontend), Ajinkya Taranekar (Journey Service)*  
 The booking page calls `GET /api/v1/map/nodes` on mount and populates two `<select>` dropdowns. The selected node's `lat/lng` is stored, and when the form is submitted, coordinates are sent to Journey Service via `createJourney({originCoords: {lat, lng}, destCoords: {lat, lng}})`. Journey Service then calls `ComputeRoute(lat, lng → lat, lng)` on Map Client, which re-fetches all nodes from Map Service and finds the nearest node by Euclidean distance.
 
 This is a **double resolution**: user selects node A (frontend knows exact `node_id`) → converts to `{lat, lng}` → Map Client converts back to nearest node ID. If two nodes share similar coordinates or if the fetch in `MapClient.getNodes()` returns a slightly different node set than what the frontend showed, the resolved node can silently differ.
 
 **Direct fix:** The frontend already knows the `node_id`. Journey Service should accept `origin_node_id` / `destination_node_id` directly (matching the `GET /api/v1/map/route` interface) instead of coordinates. The coordinate path was designed for a case where users pin a location on a real map; for a dropdown-driven picker of predefined nodes, it is unnecessary indirection.
 
-**Finding U-05 — No route preview before submission** (P2) — *Assignee: Xiaoxuan Duan (Map Service + Frontend)*  
+**Finding U-05 - No route preview before submission** (P2) - *Assignee: Xiaoxuan Duan (Map Service + Frontend)*  
 `BookJourneyPage` has a step-2 "Review & submit" screen, but it shows only origin, destination, departure time, and vehicle type. It never calls `GET /api/v1/map/route` to show the driver which road segments their booking will traverse, or what the estimated journey time is. `mapApi.ts` exports a `getRoute()` function that could power this, but it is never invoked.  
 **What breaks at runtime:** The driver submits blind. They discover the route only after approval (in `JourneyDetailPage`), where segments are shown with hardcoded occupancy `50` and level `"medium"` regardless of actual values (see U-08).
 
-**Finding U-06 — Booking failure falls back to fake mock, hiding real errors from users** (P0 UX) — *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
-`bookJourney()` in `AppContext` wraps `api.createJourney()` in a try/catch. On **any** exception — network error, 400, 409 conflict, 422 time constraint, 500 — it calls `bookJourneyMock()`, which randomly approves or rejects the booking with a 30% rejection rate. The user sees a plausible-looking result (correct approval/rejection UI) but it is entirely fabricated.  
+**Finding U-06 - Booking failure falls back to fake mock, hiding real errors from users** (P0 UX) - *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
+`bookJourney()` in `AppContext` wraps `api.createJourney()` in a try/catch. On **any** exception - network error, 400, 409 conflict, 422 time constraint, 500 - it calls `bookJourneyMock()`, which randomly approves or rejects the booking with a 30% rejection rate. The user sees a plausible-looking result (correct approval/rejection UI) but it is entirely fabricated.  
 **What breaks at runtime:** The backend may be completely unreachable, returning HTTP 502, or rejecting the booking for a valid business reason (duplicate journey, departure too soon). The driver sees a fake "approved" 70% of the time and believes the booking succeeded. Their real booking history in the database is empty. If the issue is a conflict or capacity rejection, the real reason is hidden behind the mock's vague "capacity full on one or more segments."
 
-**Finding U-07 — Admin force-cancel calls the wrong backend endpoint** (P0) — *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
-`AdminJourneyDetailPage.handleForceCancel()` calls `updateJourneyStatus(journey.id, 'cancelled', 'Admin')`. `AppContext.updateJourneyStatus` routes `'cancelled'` to `api.cancelJourney(id)` which calls `PUT /api/v1/journeys/{id}/cancel` — the **driver** cancel endpoint. The admin cancel endpoint is `PUT /api/v1/admin/journeys/{id}/cancel`.
+**Finding U-07 - Admin force-cancel calls the wrong backend endpoint** (P0) - *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
+`AdminJourneyDetailPage.handleForceCancel()` calls `updateJourneyStatus(journey.id, 'cancelled', 'Admin')`. `AppContext.updateJourneyStatus` routes `'cancelled'` to `api.cancelJourney(id)` which calls `PUT /api/v1/journeys/{id}/cancel` - the **driver** cancel endpoint. The admin cancel endpoint is `PUT /api/v1/admin/journeys/{id}/cancel`.
 
-The driver cancel enforces a 30-minute departure constraint: `apperrors.Forbidden("cannot cancel within 30 minutes of departure")`. An admin trying to force-cancel an ACTIVE journey or an approved journey close to departure will get a 403, the error is caught by `updateJourneyStatus`'s catch block, which falls through to a local state mutation with no backend call — so the journey appears cancelled in the UI but remains ACTIVE in the database.
+The driver cancel enforces a 30-minute departure constraint: `apperrors.Forbidden("cannot cancel within 30 minutes of departure")`. An admin trying to force-cancel an ACTIVE journey or an approved journey close to departure will get a 403, the error is caught by `updateJourneyStatus`'s catch block, which falls through to a local state mutation with no backend call - so the journey appears cancelled in the UI but remains ACTIVE in the database.
 
-The admin cancel endpoint (`PUT /api/v1/admin/journeys/{id}/cancel`) has no time constraint and is implemented correctly in the backend, but is **never called** by the frontend. `journeyApi.ts` has `adminCancelJourney(id)` which calls the correct path — but `AppContext` and `AdminJourneyDetailPage` never use it.
+The admin cancel endpoint (`PUT /api/v1/admin/journeys/{id}/cancel`) has no time constraint and is implemented correctly in the backend, but is **never called** by the frontend. `journeyApi.ts` has `adminCancelJourney(id)` which calls the correct path - but `AppContext` and `AdminJourneyDetailPage` never use it.
 
 ---
 
 ### 4.4 Journey Detail Page (`/driver/journeys/:id`)
 
-**Finding U-08 — Segment occupancy and level are hardcoded, not from the backend** (P1) — *Assignee: Jai Nagle (Capacity Service + Frontend)*  
+**Finding U-08 - Segment occupancy and level are hardcoded, not from the backend** (P1) - *Assignee: Jai Nagle (Capacity Service + Frontend)*  
 `mapSegments()` in `journeyApi.ts`:
 ```ts
 return apiSegments.map((s) => ({
@@ -502,9 +502,9 @@ return apiSegments.map((s) => ({
 }));
 ```
 Journey Service returns segments with `segment_id` and `segment_name` from the database, but no occupancy or level field (that data lives in Capacity Service). The frontend fills in `50` and `"medium"` for every segment on every journey. The progress bars and colour indicators in the detail view are decorative only.  
-**What breaks at runtime:** A driver viewing a journey on a segment at 95% capacity sees "50% / Medium" — the opposite of reality. This makes the occupancy visualisation actively misleading.
+**What breaks at runtime:** A driver viewing a journey on a segment at 95% capacity sees "50% / Medium" - the opposite of reality. This makes the occupancy visualisation actively misleading.
 
-**Finding U-09 — Driver name is hardcoded as "Driver" in all journey API responses** (P1) — *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
+**Finding U-09 - Driver name is hardcoded as "Driver" in all journey API responses** (P1) - *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
 `mapApiJourney()` in `journeyApi.ts`:
 ```ts
 driverName: 'Driver',
@@ -512,7 +512,7 @@ driverName: 'Driver',
 The Journey Service API does not return the driver's name (it returns `driver_id`). The frontend hardcodes the string "Driver". Every journey in the admin journeys list shows "Driver" as the driver name, making driver identification impossible without a separate IAM lookup.  
 **Fix:** Journey Service should enrich the journey response with the driver's name by joining against IAM data, or the frontend should call `GET /api/v1/auth/profile` for the driver ID shown in admin view. Neither is currently implemented.
 
-**Finding U-10 — Frontend allows activation without time enforcement** (P2) — *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
+**Finding U-10 - Frontend allows activation without time enforcement** (P2) - *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
 `JourneyDetailPage` shows the "Activate" button when `journey.status === 'approved'` with no time check. The backend enforces that activation can only happen between `departure_time` and `departure_time + 30 min`. If a driver tries to activate too early, they get a 403 from the backend. On error, `updateJourneyStatus` falls through to a local state mutation, so the UI shows the journey as "Active" even though the backend rejected it.  
 **What breaks at runtime:** Driver UI shows an ACTIVE journey; backend still has it APPROVED. Any downstream action (complete, admin view) sees mismatched state between browser and server until the driver refreshes.
 
@@ -520,7 +520,7 @@ The Journey Service API does not return the driver's name (it returns `driver_id
 
 ### 4.5 Driver Settings Page (`/driver/settings`)
 
-**Finding U-11 — Profile save button is entirely fake** (P0 UX) — *Assignee: Deepika Nag (IAM Service + Frontend)*  
+**Finding U-11 - Profile save button is entirely fake** (P0 UX) - *Assignee: Deepika Nag (IAM Service + Frontend)*  
 `SettingsPage.handleSave()`:
 ```ts
 const handleSave = async () => {
@@ -532,7 +532,7 @@ const handleSave = async () => {
 There is no API call. The `PUT /api/v1/auth/profile` endpoint exists and is implemented in IAM Service, but `SettingsPage` never calls it. Name, email, and phone field changes are written to local component state and discarded on navigation. The "Saved ✓" checkmark is shown after 500ms regardless.  
 **What breaks at runtime:** The driver believes their profile has been updated. It has not. On next login (if the page is refreshed), the old values reappear.
 
-**Finding U-12 — Push notification toggle is cosmetic, does not register FCM device token** (P1) — *Assignee: Ziwei Zhao (Notification Service + Frontend)*  
+**Finding U-12 - Push notification toggle is cosmetic, does not register FCM device token** (P1) - *Assignee: Ziwei Zhao (Notification Service + Frontend)*  
 `SettingsPage` has a push notification toggle that updates `pushEnabled` local state. Toggling it on does not call `registerDeviceToken()`. There is no service worker, no FCM JS SDK initialisation, no VAPID key. The toggle's only effect is the visual on/off state, which resets to `false` on every page load (state is not persisted).  
 **What breaks at runtime:** Enabling push in settings does nothing. Drivers will never receive push notifications regardless of what the toggle shows.
 
@@ -541,17 +541,17 @@ There is no API call. The `PUT /api/v1/auth/profile` endpoint exists and is impl
 ### 4.6 Driver Notifications Page (`/driver/notifications`)
 
 **API call on load:** `notifApi.listNotifications()` → `GET /api/v1/notifications` ✅ Called correctly from `AppContext` on mount.  
-**Fallback on error:** `setNotifications(mockNotifications)` — same silent mock fallback pattern.
+**Fallback on error:** `setNotifications(mockNotifications)` - same silent mock fallback pattern.
 
-**Finding U-13 — Notifications rendered correctly but sourced from Redis-dropped events** (P0) — *Assignee: Ziwei Zhao (Notification Service — resolves when F-02 is fixed)*  
-Due to F-02 (stream key mismatch), no notification records are written to PostgreSQL when journey events occur. The `GET /api/v1/notifications` endpoint returns an empty list for every driver. `AppContext` receives an empty array, and the notifications page shows "All caught up" — even for a driver whose journey was just rejected for capacity reasons.  
+**Finding U-13 - Notifications rendered correctly but sourced from Redis-dropped events** (P0) - *Assignee: Ziwei Zhao (Notification Service - resolves when F-02 is fixed)*  
+Due to F-02 (stream key mismatch), no notification records are written to PostgreSQL when journey events occur. The `GET /api/v1/notifications` endpoint returns an empty list for every driver. `AppContext` receives an empty array, and the notifications page shows "All caught up" - even for a driver whose journey was just rejected for capacity reasons.  
 This finding documents the user-visible symptom of F-02. Fix F-02 first; this symptom resolves automatically.
 
 ---
 
 ### 4.7 Admin Dashboard (`/admin`)
 
-**Finding U-14 — Admin KPI cards display hardcoded mock analytics** (P1) — *Assignee: Ajinkya Taranekar (Journey Service backend endpoint + Frontend)*  
+**Finding U-14 - Admin KPI cards display hardcoded mock analytics** (P1) - *Assignee: Ajinkya Taranekar (Journey Service backend endpoint + Frontend)*  
 `AdminDashboardPage` imports `analyticsData` from `mockData.ts` and reads `analyticsData.kpis` for total bookings, approval rate, active journeys, and rejection rate. These are fixed numbers (`totalBookings: 247, approvalRate: 88.3, activeJourneys: 14, rejectionRate: 11.7`). They do not change and have no relationship to real booking data.  
 **What breaks at runtime:** Admin believes 88.3% of bookings are being approved. If the booking flow is completely broken (which it is, due to F-01), the actual approval rate is 0%. The dashboard shows the opposite.
 
@@ -559,14 +559,14 @@ This finding documents the user-visible symptom of F-02. Fix F-02 first; this sy
 
 ### 4.8 Admin Traffic Map (`/admin/map`)
 
-**Finding U-15 — No external map library is used; the "map" is a hand-drawn SVG with fake data** (P0) — *Assignee: Xiaoxuan Duan (Map Service + Frontend — see Section 6.12 for TomTom Maps SDK integration)*  
+**Finding U-15 - No external map library is used; the "map" is a hand-drawn SVG with fake data** (P0) - *Assignee: Xiaoxuan Duan (Map Service + Frontend - see Section 6.12 for TomTom Maps SDK integration)*  
 Checking `package.json` dependencies: no `tomtom-web-sdk`, `mapbox-gl`, `leaflet`, `@react-google-maps/api`, or any mapping library. The traffic map is a `<svg viewBox="0 0 600 460">` with `<line>` elements drawn between hardcoded pixel coordinates from `mockData.mapNodes`. Segment colours are derived from `mockData.trafficSegments`.
 
-The spec's `MAP_SERVICE_SPEC.md` explicitly says TomTom is used "only as a visualization aid and integration convenience" and is not part of the core booking path. So the spec does not mandate TomTom for the map. However, the SVG map has no geographic accuracy — segment lines are drawn between pixel positions like `{x: 300, y: 250}` for City Centre, not real coordinates. The `GET /api/v1/map/nodes` API returns real `lat`/`lng` values (Dublin coordinates) for each node but the frontend SVG never uses them.
+The spec's `MAP_SERVICE_SPEC.md` explicitly says TomTom is used "only as a visualization aid and integration convenience" and is not part of the core booking path. So the spec does not mandate TomTom for the map. However, the SVG map has no geographic accuracy - segment lines are drawn between pixel positions like `{x: 300, y: 250}` for City Centre, not real coordinates. The `GET /api/v1/map/nodes` API returns real `lat`/`lng` values (Dublin coordinates) for each node but the frontend SVG never uses them.
 
 **What breaks at runtime:** Even after fixing F-05 (connecting the traffic API), the SVG map cannot render road geometry accurately without either TomTom/Mapbox for tile rendering or a coordinate-to-pixel projection system. Segment lines will be geometrically incorrect relative to the actual road layout.
 
-**Finding U-16 — Traffic map data auto-refresh is cosmetic** (P2) — *Assignee: Xiaoxuan Duan (Frontend)*  
+**Finding U-16 - Traffic map data auto-refresh is cosmetic** (P2) - *Assignee: Xiaoxuan Duan (Frontend)*  
 The page shows "Updated HH:MM" and has a `RefreshCw` icon. The `lastRefresh` state is set once on mount with `useState(() => new Date())` and never updated. There is no `setInterval`, no polling, and no WebSocket. The timestamp shown is always the page load time.
 
 ---
@@ -574,7 +574,7 @@ The page shows "Updated HH:MM" and has a `RefreshCw` icon. The `lastRefresh` sta
 ### 4.9 Admin All Journeys (`/admin/journeys`)
 
 **API call:** `api.adminListJourneys()` → `GET /api/v1/admin/journeys` ✅ Called from AppContext on login.  
-**Finding U-17 — Region filter is frontend-only; backend has no region concept on journeys** (P2) — *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
+**Finding U-17 - Region filter is frontend-only; backend has no region concept on journeys** (P2) - *Assignee: Ajinkya Taranekar (Journey Service + Frontend)*  
 The `AllJourneysPage` has a "Region" filter dropdown. The `Journey` type has a `region: Region` field. The `mapApiJourney()` function hardcodes `region: 'Central'` for every journey returned from the backend. The backend `journey.journeys` table has no region column. Filtering by any region except "Central" will always return empty results, and filtering by "Central" returns everything.
 
 ---
@@ -582,7 +582,7 @@ The `AllJourneysPage` has a "Region" filter dropdown. The `Journey` type has a `
 ### 4.10 Admin Enforcement Verify (`/admin/enforcement`)
 
 **API call:** `enforcementVerify({segmentId, vehiclePlate, timestamp})` → `GET /api/v1/enforcement/verify` → Journey Service  
-**Finding U-18 — Enforcement verify uses driver JWT, which fails the EnforcementOnly middleware** (P1) — *Assignee: Ajinkya Taranekar (Journey Service)*  
+**Finding U-18 - Enforcement verify uses driver JWT, which fails the EnforcementOnly middleware** (P1) - *Assignee: Ajinkya Taranekar (Journey Service)*  
 `EnforcementPage.tsx` calls the enforcement verify endpoint. It is served under the admin route layout, so a logged-in admin reaches it. However, the journey service router applies `middleware.EnforcementOnly` to this route, which requires `role: enforcement` in the JWT. Admin JWTs have `role: admin`. The middleware check is:
 ```go
 middleware.EnforcementOnly
@@ -590,15 +590,15 @@ middleware.EnforcementOnly
 If `EnforcementOnly` checks for `role == "enforcement"` specifically (not `role == "admin"` as a supertype), admin users will get 403 on every enforcement verify call.  
 **What breaks at runtime:** The enforcement page always shows an error. The feature is inaccessible even to administrators. (This is the frontend-visible consequence of the server-side F-11 finding.)
 
-**Finding U-19 — Vehicle plate field is optional but is not used server-side** (P2) — *Assignee: Ajinkya Taranekar (Journey Service)*  
-The form has a "Vehicle plate" field which is sent as `vehicle_plate` query param. The backend `EnforcementVerify` service method only checks `segmentID` and `timestamp` — it queries for any active journey covering that segment at that time, regardless of the vehicle. The `vehicle_plate` param is accepted by the handler but not passed to the service or repository query.  
+**Finding U-19 - Vehicle plate field is optional but is not used server-side** (P2) - *Assignee: Ajinkya Taranekar (Journey Service)*  
+The form has a "Vehicle plate" field which is sent as `vehicle_plate` query param. The backend `EnforcementVerify` service method only checks `segmentID` and `timestamp` - it queries for any active journey covering that segment at that time, regardless of the vehicle. The `vehicle_plate` param is accepted by the handler but not passed to the service or repository query.  
 **What breaks at runtime:** An enforcement officer looking up plate "ABC-123" on a segment will be told "authorized" even if the active journey on that segment belongs to plate "XYZ-999". The plate field is decorative.
 
 ---
 
 ### 4.11 Admin Notifications (`/admin/notifications`)
 
-**Finding U-20 — Admin notifications page re-uses the driver notifications page verbatim** (P2) — *Assignee: Ziwei Zhao (Notification Service + Frontend)*  
+**Finding U-20 - Admin notifications page re-uses the driver notifications page verbatim** (P2) - *Assignee: Ziwei Zhao (Notification Service + Frontend)*  
 `AdminNotificationsPage.tsx` is a single-line re-export:
 ```ts
 export { default } from '../driver/NotificationsPage';
@@ -659,7 +659,7 @@ The following frontend bugs are directly caused by a backend owner not updating 
 
 ---
 
-## Section 6: TomTom Integration — Real Search, Real Routing, Real Segments
+## Section 6: TomTom Integration - Real Search, Real Routing, Real Segments
 
 > This section supersedes Map Service Phases 1 and 3 and XC-02 from earlier sections. Read this as the definitive architecture for how the system gets road data.
 
@@ -673,22 +673,22 @@ The system currently has three compounding failures around location and routing:
 2. **No real routing.** The route from City A to City B is computed by Dijkstra on a fake in-process graph of made-up edges. The M50, M7, and M8 do not exist in the system.
 3. **No real segments.** Capacity is reserved against segment IDs like `seg_city_north` that correspond to nothing on an actual map. These are fictional labels that were never aligned with any external source.
 
-Replacing all three with TomTom APIs unblocks the system at the root. Everything downstream — capacity reservation, journey approval, traffic map, enforcement verify — works correctly once Map Service returns real segment IDs derived from real roads.
+Replacing all three with TomTom APIs unblocks the system at the root. Everything downstream - capacity reservation, journey approval, traffic map, enforcement verify - works correctly once Map Service returns real segment IDs derived from real roads.
 
 ---
 
 ### 6.2 TomTom APIs Selected
 
-**API 1 — Fuzzy Search (place autocomplete)**
+**API 1 - Fuzzy Search (place autocomplete)**
 ```
 Endpoint: GET https://api.tomtom.com/search/2/search/{query}.json
 Free tier: 2,500 requests/day, no credit card required
 Signup:    developer.tomtom.com → create account → copy API key
 ```
 
-Used by: the frontend `BookJourneyPage` search box. The backend does not call this — the browser calls it directly.
+Used by: the frontend `BookJourneyPage` search box. The backend does not call this - the browser calls it directly.
 
-**API 2 — Routing (route + segment extraction)**
+**API 2 - Routing (route + segment extraction)**
 ```
 Endpoint: GET https://api.tomtom.com/routing/1/calculateRoute/{origin}:{dest}/json
           ?key=API_KEY
@@ -704,7 +704,7 @@ Both APIs use the same API key.
 
 ---
 
-### 6.3 Segment ID Derivation — The Stable Key Contract
+### 6.3 Segment ID Derivation - The Stable Key Contract
 
 When TomTom returns a route, the `guidance.instructions` array contains road numbers like `["M50"]`, `["M7"]`, `["M8"]`. Adjacent instructions on the same road are merged into one segment. The segment ID is derived deterministically from the road reference:
 
@@ -726,7 +726,7 @@ This derivation is deterministic: Dublin → Cork will always produce `["IE-M50"
 
 ---
 
-### 6.4 Route Database Cache — Architecture
+### 6.4 Route Database Cache - Architecture
 
 The key insight: a Dublin → Cork route via the M7/M8 corridor does not change day-to-day. The road geometry, the segment sequence, and the traversal times are stable. Computing this route from TomTom once and caching it permanently in PostgreSQL means:
 
@@ -810,7 +810,7 @@ GET /api/v1/map/route?origin_place_id=<tomtom_id>&dest_place_id=<tomtom_id>
       - Return the newly computed segments
 ```
 
-All of step 3 happens inside a single PostgreSQL transaction. If TomTom is unavailable, no partial data is written — the error propagates to Journey Service as 502.
+All of step 3 happens inside a single PostgreSQL transaction. If TomTom is unavailable, no partial data is written - the error propagates to Journey Service as 502.
 
 ---
 
@@ -1077,7 +1077,7 @@ func extractSegments(instructions []struct {
     for _, instr := range instructions {
         roadRef := primaryRoadRef(instr.RoadNumbers)
         if roadRef == "" {
-            // Unnamed connector road — absorb into current segment if any
+            // Unnamed connector road - absorb into current segment if any
             if current != nil {
                 current.TraversalMin += instr.TravelTimeInSec / 60
             }
@@ -1088,7 +1088,7 @@ func extractSegments(instructions []struct {
         segName := roadRef + " Motorway/Road" // TomTom also returns full name in driveAlongRoadNames
 
         if current != nil && current.SegmentID == segID {
-            // Same road — extend
+            // Same road - extend
             current.TraversalMin += instr.TravelTimeInSec / 60
         } else {
             if current != nil {
@@ -1209,14 +1209,14 @@ func defaultCapacity(segmentID string) float64 {
 
 ---
 
-### 6.7 TomTom Search — Backend Proxy (API Key Never Exposed to Frontend)
+### 6.7 TomTom Search - Backend Proxy (API Key Never Exposed to Frontend)
 
 **Design principle:** The TomTom Search and Routing API keys must never appear in the frontend. All calls to `api.tomtom.com` are made server-side by Map Service. The frontend calls our own backend endpoint, which proxies to TomTom internally.
 
-#### 6.7.1 Map Service — New `GET /api/v1/map/search` Endpoint
+#### 6.7.1 Map Service - New `GET /api/v1/map/search` Endpoint
 
 ```go
-// map-service/internal/http/handlers/map_handler.go — add SearchPlaces handler
+// map-service/internal/http/handlers/map_handler.go - add SearchPlaces handler
 
 // SearchPlaces godoc
 // @Summary Search for a place by name
@@ -1250,7 +1250,7 @@ func (h *MapHandler) SearchPlaces(w http.ResponseWriter, r *http.Request) {
 ```
 
 ```go
-// map-service/internal/client/tomtom_client.go — FuzzySearch method
+// map-service/internal/client/tomtom_client.go - FuzzySearch method
 
 func (c *TomTomClient) FuzzySearch(ctx context.Context, query string, limit int) ([]PlaceResult, error) {
     url := fmt.Sprintf(
@@ -1301,13 +1301,13 @@ Register the route in `router.go`:
 r.mux.HandleFunc("/api/v1/map/search", r.mapHandler.SearchPlaces).Methods("GET")
 ```
 
-#### 6.7.2 Frontend — Calls Our Own Backend (No TomTom Key in Browser)
+#### 6.7.2 Frontend - Calls Our Own Backend (No TomTom Key in Browser)
 
 ```ts
-// frontend/src/app/services/mapApi.ts — search calls our backend, not TomTom directly
+// frontend/src/app/services/mapApi.ts - search calls our backend, not TomTom directly
 
 export interface PlaceResult {
-  placeId:     string;   // TomTom entity ID — stable, used as DB cache key
+  placeId:     string;   // TomTom entity ID - stable, used as DB cache key
   label:       string;   // "Cork City, County Cork, Ireland"
   lat:         number;
   lng:         number;
@@ -1335,7 +1335,7 @@ export async function searchPlaces(query: string): Promise<PlaceResult[]> {
 ```
 
 ```tsx
-// frontend/src/app/pages/driver/BookJourneyPage.tsx — search input component
+// frontend/src/app/pages/driver/BookJourneyPage.tsx - search input component
 
 function PlaceSearch({
   label, value, onChange, error,
@@ -1397,7 +1397,7 @@ function PlaceSearch({
 ```
 
 ```tsx
-// frontend/src/app/pages/driver/BookJourneyPage.tsx — search input component
+// frontend/src/app/pages/driver/BookJourneyPage.tsx - search input component
 
 function PlaceSearch({
   label, value, onChange, error,
@@ -1460,7 +1460,7 @@ function PlaceSearch({
 The booking form then passes `placeId` (not coordinates) to `createJourney`:
 
 ```ts
-// journeyApi.ts — updated createJourney body
+// journeyApi.ts - updated createJourney body
 body: JSON.stringify({
   origin_place_id:      params.originPlaceId,   // TomTom stable ID
   dest_place_id:        params.destPlaceId,
@@ -1476,10 +1476,10 @@ Journey Service passes `origin_place_id` + `dest_place_id` to Map Service's `GET
 ### 6.8 New Environment Variables Required
 
 ```bash
-# Map Service — backend only (Search API + Routing API key, never exposed to browser)
+# Map Service - backend only (Search API + Routing API key, never exposed to browser)
 TOMTOM_API_KEY=your_tomtom_api_key_here
 
-# Frontend (.env) — map tile rendering key only (restricted to your domain in TomTom dashboard)
+# Frontend (.env) - map tile rendering key only (restricted to your domain in TomTom dashboard)
 # See Section 6.12 for TomTom Maps SDK integration
 VITE_TOMTOM_MAPS_KEY=your_tomtom_maps_key_here
 ```
@@ -1492,7 +1492,7 @@ VITE_TOMTOM_MAPS_KEY=your_tomtom_maps_key_here
 Obtain free keys at `developer.tomtom.com` (2,500 free transactions/day per API).
 
 ```yaml
-# docker-compose.yml — add to map-service environment section
+# docker-compose.yml - add to map-service environment section
 TOMTOM_API_KEY: ${TOMTOM_API_KEY}
 ```
 
@@ -1512,17 +1512,17 @@ TOMTOM_API_KEY: ${TOMTOM_API_KEY}
 | 1f | Update `GET /api/v1/map/route` to accept `origin_place_id` + `dest_place_id` | Xiaoxuan Duan | Journey Service integration test returns real M-road segment IDs |
 | 1g | Update `TOMTOM_API_KEY` env var in docker-compose; add `VITE_TOMTOM_MAPS_KEY` to frontend `.env` | Xiaoxuan Duan | `docker compose up` starts without missing key error; TomTom map tiles render |
 
-**Phase 2 (unchanged): implement `/api/v1/map/traffic`** — see original Section 2.
+**Phase 2 (unchanged): implement `/api/v1/map/traffic`** - see original Section 2.
 
 **Phase 3 (new): remove hardcoded graph**
 
-Once Phase 1 is working, delete `buildHardcodedEdges()`, `hardcodedNodes`, `hardcodedEdges`, `calculateShortestRoute()` from `map_handler.go`. Delete the `GET /api/v1/map/nodes` endpoint (no longer needed — search replaces it). Update `BookJourneyPage` to use `PlaceSearch` component.
+Once Phase 1 is working, delete `buildHardcodedEdges()`, `hardcodedNodes`, `hardcodedEdges`, `calculateShortestRoute()` from `map_handler.go`. Delete the `GET /api/v1/map/nodes` endpoint (no longer needed - search replaces it). Update `BookJourneyPage` to use `PlaceSearch` component.
 
 ---
 
 ### 6.10 Impact on Capacity Service Seed
 
-The existing `002_seed_segments.sql` file in Capacity Service becomes redundant after this integration. The Capacity Service no longer needs a pre-seeded segment list — it creates segment rows dynamically via upsert when Journey Service sends a reservation for a new segment ID. The `map.segments` table (Map Service) is the authoritative segment registry. Capacity Service mirrors only the segments it has seen.
+The existing `002_seed_segments.sql` file in Capacity Service becomes redundant after this integration. The Capacity Service no longer needs a pre-seeded segment list - it creates segment rows dynamically via upsert when Journey Service sends a reservation for a new segment ID. The `map.segments` table (Map Service) is the authoritative segment registry. Capacity Service mirrors only the segments it has seen.
 
 **Action for Jai Nagle (Capacity Service):** Remove `002_seed_segments.sql`. Add upsert-on-insert logic to `ReservationService.Reserve()`:
 
@@ -1544,15 +1544,15 @@ Routes are cached permanently in PostgreSQL by default. Two conditions trigger a
 1. **Admin-forced refresh:** Add `DELETE /api/v1/admin/map/routes/{route_id}` to Map Service. Deleting the row causes the next request to re-fetch. Use this when a major road is closed permanently (e.g., the N20 is replaced by the M20 motorway).
 2. **Age-based background refresh (optional):** A background goroutine can re-fetch any route where `tomtom_fetched_at < now() - interval '90 days'` to keep traversal times accurate as roads improve. Not required for the prototype.
 
-Routes are **not** invalidated on traffic events. Traversal time estimates in the route cache reflect typical conditions. Real-time traffic slowdowns are not modelled for capacity reservation purposes — the system books a slot, not a specific travel time.
+Routes are **not** invalidated on traffic events. Traversal time estimates in the route cache reflect typical conditions. Real-time traffic slowdowns are not modelled for capacity reservation purposes - the system books a slot, not a specific travel time.
 
 ---
 
-### 6.12 TomTom Maps SDK — Frontend Map Rendering (Fixes U-15)
+### 6.12 TomTom Maps SDK - Frontend Map Rendering (Fixes U-15)
 
 **Assignee:** Xiaoxuan Duan (Frontend)
 
-Replace the hand-drawn SVG map with a real TomTom interactive map. The map tile key (`VITE_TOMTOM_MAPS_KEY`) lives only in the frontend `.env` — it fetches tiles directly from TomTom CDN. All route geometry and segment data still comes from our own backend.
+Replace the hand-drawn SVG map with a real TomTom interactive map. The map tile key (`VITE_TOMTOM_MAPS_KEY`) lives only in the frontend `.env` - it fetches tiles directly from TomTom CDN. All route geometry and segment data still comes from our own backend.
 
 #### 6.12.1 Install
 
@@ -1566,7 +1566,7 @@ Add CSS to `index.html` (or `main.tsx`):
   href="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css" />
 ```
 
-#### 6.12.2 Admin Traffic Map — `TrafficMapPage.tsx`
+#### 6.12.2 Admin Traffic Map - `TrafficMapPage.tsx`
 
 Replace the SVG with a TomTom map that draws segment overlays coloured by occupancy:
 
@@ -1671,12 +1671,12 @@ export async function getTrafficData() {
 
 The `geometry` field in the traffic response must be populated by Map Service from the `map.route_segments` geometry stored during the TomTom routing call (Section 6.5).
 
-#### 6.12.3 Driver Booking — Route Preview on Step 2
+#### 6.12.3 Driver Booking - Route Preview on Step 2
 
 After a driver selects origin + destination and moves to step 2 (Review), show a small embedded map with the route drawn:
 
 ```tsx
-// BookJourneyPage.tsx — step 2 route preview
+// BookJourneyPage.tsx - step 2 route preview
 import tt from '@tomtom-international/web-sdk-maps';
 
 function RoutePreviewMap({ routeSegments }: { routeSegments: any[] }) {
@@ -1725,15 +1725,15 @@ Call `GET /api/v1/map/route?origin_place_id=...&dest_place_id=...` when the user
 
 #### 6.12.4 Geometry in Map Service Route Response
 
-For the map overlays to work, Map Service must include `geometry` (array of `[lng, lat]` points) in both the route endpoint and the traffic endpoint responses. This geometry is extracted from TomTom's routing response (`legs[].points`) and stored in `map.route_segments.geometry` (PostGIS `LINESTRING` or JSONB array). Populate it during the TomTom `extractSegments()` call — the geometry distribution logic is already sketched in Section 6.6 (`allPoints[start:end]`).
+For the map overlays to work, Map Service must include `geometry` (array of `[lng, lat]` points) in both the route endpoint and the traffic endpoint responses. This geometry is extracted from TomTom's routing response (`legs[].points`) and stored in `map.route_segments.geometry` (PostGIS `LINESTRING` or JSONB array). Populate it during the TomTom `extractSegments()` call - the geometry distribution logic is already sketched in Section 6.6 (`allPoints[start:end]`).
 
 #### 6.12.5 Dependencies Summary
 
 | Package | Purpose | Key in browser? |
 |---------|---------|-----------------|
 | `@tomtom-international/web-sdk-maps` | Map tile rendering + overlays | `VITE_TOMTOM_MAPS_KEY` (restricted by referrer) |
-| TomTom Fuzzy Search API | Place autocomplete | NO — proxied via Map Service backend |
-| TomTom Routing API | Segment extraction | NO — called only by Map Service backend |
+| TomTom Fuzzy Search API | Place autocomplete | NO - proxied via Map Service backend |
+| TomTom Routing API | Segment extraction | NO - called only by Map Service backend |
 
 ---
 

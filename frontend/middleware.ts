@@ -1,4 +1,4 @@
-// Vercel Edge Middleware — geo-routes /api/* to the nearest regional LB.
+// Vercel Edge Middleware - geo-routes /api/* to the nearest regional LB.
 // Runs at Vercel's edge network before any response is served, completely
 // separate from the Vite frontend bundle.
 //
@@ -20,7 +20,7 @@ const APAC_COUNTRIES = new Set([
 export default async function middleware(request: Request): Promise<Response | undefined> {
   const url = new URL(request.url)
 
-  // Only intercept API calls — let everything else through to the static bundle
+  // Only intercept API calls - let everything else through to the static bundle
   if (!url.pathname.startsWith('/api')) return undefined
 
   const country = request.headers.get('x-vercel-ip-country') ?? ''
@@ -36,7 +36,7 @@ export default async function middleware(request: Request): Promise<Response | u
       body:    ['GET', 'HEAD'].includes(request.method) ? null : request.body,
     }))
   } catch {
-    // Backend unreachable — return 502 instead of crashing the middleware
+    // Backend unreachable - return 502 instead of crashing the middleware
     return new Response(JSON.stringify({ error: 'Backend unavailable', lb }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },

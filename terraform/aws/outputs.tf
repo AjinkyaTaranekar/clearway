@@ -1,5 +1,5 @@
 output "load_balancer_dns" {
-  description = "DNS name of the AWS NLB — point your DNS CNAME / Cloudflare proxy here"
+  description = "DNS name of the AWS NLB - point your DNS CNAME / Cloudflare proxy here"
   value       = aws_lb.vcs.dns_name
 }
 

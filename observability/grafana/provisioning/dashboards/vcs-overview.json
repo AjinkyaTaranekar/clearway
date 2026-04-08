@@ -1,20 +1,30 @@
 {
-  "title": "VCS — Service Overview",
+  "title": "VCS - Service Overview",
   "uid": "vcs-overview",
   "schemaVersion": 36,
   "version": 1,
   "refresh": "15s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "query": "label_values(http_requests_total, service)",
         "multi": true,
         "includeAll": true,
-        "current": { "selected": true, "text": "All", "value": "$__all" }
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -23,8 +33,16 @@
       "id": 1,
       "title": "Request Rate (req/s)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(http_requests_total{service=~\"$service\"}[1m])) by (service)",
@@ -32,15 +50,28 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } }
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
       }
     },
     {
       "id": 2,
       "title": "Error Rate (5xx)",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(http_requests_total{service=~\"$service\",status=~\"5..\"}[1m])) by (service)",
@@ -48,15 +79,29 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "reqps", "color": { "fixedColor": "red", "mode": "fixed" } }
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          }
+        }
       }
     },
     {
       "id": 3,
       "title": "P99 Latency",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=~\"$service\"}[1m])) by (le, service))",
@@ -67,56 +112,103 @@
           "legendFormat": "p50 {{service}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
     },
     {
       "id": 4,
       "title": "Container CPU Usage",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"$service\"}[1m])) by (container_label_com_docker_compose_service)",
           "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
     },
     {
       "id": 5,
       "title": "Container Memory Usage",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"$service\"}",
           "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
     },
     {
       "id": 6,
       "title": "Live Logs",
       "type": "logs",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "expr": "{service=~\"$service\"} | json | level=~\"error|warn\"",
           "legendFormat": ""
         }
       ],
-      "options": { "showLabels": true, "sortOrder": "Descending" }
+      "options": {
+        "showLabels": true,
+        "sortOrder": "Descending"
+      }
     },
     {
       "id": 7,
       "title": "HTTP Status Breakdown",
       "type": "piechart",
-      "gridPos": { "x": 0, "y": 24, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(increase(http_requests_total{service=~\"$service\"}[1h])) by (status)",
@@ -128,35 +220,69 @@
       "id": 8,
       "title": "PostgreSQL Active Connections",
       "type": "stat",
-      "gridPos": { "x": 8, "y": 24, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "pg_stat_activity_count{datname=\"trafficservice\"}",
           "legendFormat": "connections"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "thresholds": {
-        "steps": [
-          { "color": "green", "value": 0 },
-          { "color": "yellow", "value": 50 },
-          { "color": "red", "value": 80 }
-        ]
-      }}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": 9,
       "title": "Redis Memory Used",
       "type": "stat",
-      "gridPos": { "x": 16, "y": 24, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 16,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "redis_memory_used_bytes",
           "legendFormat": "used"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
     }
   ]
 }

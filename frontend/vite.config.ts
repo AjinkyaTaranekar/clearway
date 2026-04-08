@@ -27,7 +27,7 @@ export default defineConfig({
     ],
   },
 
-  // Local dev proxy — mirrors Vercel rewrites so relative /api/* calls work
+  // Local dev proxy - mirrors Vercel rewrites so relative /api/* calls work
   // without setting VITE_API_URL. Assumes nginx running on localhost:80.
   server: {
     proxy: {

@@ -160,8 +160,8 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
     ],
     createdAt: j.created_at ?? new Date().toISOString(),
     updatedAt: j.updated_at ?? new Date().toISOString(),
-    distance: '—',
-    duration: '—',
+    distance: '-',
+    duration: '-',
   };
 }
 

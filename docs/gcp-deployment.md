@@ -1,4 +1,4 @@
-# VCS — GCP Deployment Guide
+# VCS - GCP Deployment Guide
 
 > **Project:** `distributed-capacity-system`  
 > **Account:** `ajinkyataranekar26@gmail.com`  
@@ -44,10 +44,10 @@
 
 ## Credentials reference
 
-> **Never commit passwords or PAT to git.** The doc uses variable names — set them in your shell before running commands.
+> **Never commit passwords or PAT to git.** The doc uses variable names - set them in your shell before running commands.
 
 ```bash
-# Set once in your shell session — all commands below use these
+# Set once in your shell session - all commands below use these
 export ADMIN_IP="34.38.106.154"
 export GH_USER="AjinkyaTaranekar"
 export GH_PAT="<your-github-pat>"          # do not paste in the doc
@@ -57,31 +57,31 @@ export REPL_PASS="2IdbDCxBt4mHbPArRtzBu4gRep!"
 
 ---
 
-## Part 1 — One-time GCP project setup
+## Part 1 - One-time GCP project setup
 
-### Step 1 — Configure gcloud
+### Step 1 - Configure gcloud
 
 ```bash
 gcloud config set project distributed-capacity-system
 gcloud config set compute/region europe-west1
 gcloud config set compute/zone europe-west1-b
 
-# Enable Compute Engine API (not yet enabled — takes ~1 minute)
+# Enable Compute Engine API (not yet enabled - takes ~1 minute)
 gcloud services enable compute.googleapis.com
 
 gcloud config list   # verify
 ```
 
-### Step 2 — Generate SSH key
+### Step 2 - Generate SSH key
 
 ```bash
 ssh-keygen -t ed25519 -C "vcs-deploy" -f ~/.ssh/vcs_key
-# No passphrase — CI needs passwordless access
+# No passphrase - CI needs passwordless access
 # ~/.ssh/vcs_key.pub  → goes to VMs
 # ~/.ssh/vcs_key      → goes to GitHub secret SWARM_SSH_KEY (never commit)
 ```
 
-### Step 3 — Create global VPC with 3 regional subnets
+### Step 3 - Create global VPC with 3 regional subnets
 
 ```bash
 # Global custom VPC
@@ -100,10 +100,10 @@ gcloud compute networks subnets create vcs-subnet-ap \
   --network=vcs-vpc --region=asia-east1 --range=10.0.3.0/24
 ```
 
-### Step 4 — Firewall rules
+### Step 4 - Firewall rules
 
 ```bash
-# SSH — Cloud Shell IP only
+# SSH - Cloud Shell IP only
 gcloud compute firewall-rules create vcs-allow-ssh \
   --network=vcs-vpc \
   --allow=tcp:22 \
@@ -111,30 +111,30 @@ gcloud compute firewall-rules create vcs-allow-ssh \
   --target-tags=vcs-node \
   --description="SSH from Cloud Shell only"
 
-# HTTP — open (LB health probes + API traffic)
+# HTTP - open (LB health probes + API traffic)
 gcloud compute firewall-rules create vcs-allow-http \
   --network=vcs-vpc \
   --allow=tcp:80 \
   --source-ranges=0.0.0.0/0 \
   --target-tags=vcs-node
 
-# Internal — Swarm + Postgres + Redis across all 3 subnets
+# Internal - Swarm + Postgres + Redis across all 3 subnets
 gcloud compute firewall-rules create vcs-allow-internal \
   --network=vcs-vpc \
   --allow=tcp:2377,tcp:7946,udp:7946,udp:4789,tcp:5432,tcp:6379 \
   --source-ranges=10.0.1.0/24,10.0.2.0/24,10.0.3.0/24 \
   --target-tags=vcs-node \
-  --description="Swarm + Postgres + Redis — all cells"
+  --description="Swarm + Postgres + Redis - all cells"
 ```
 
 ---
 
-## Part 2 — EU cell (europe-west1, 2 VMs)
+## Part 2 - EU cell (europe-west1, 2 VMs)
 
-### Step 5 — Create EU VMs
+### Step 5 - Create EU VMs
 
 ```bash
-# EU VM 1 — will be Swarm leader
+# EU VM 1 - will be Swarm leader
 gcloud compute instances create vcs-vm-eu1 \
   --zone=europe-west1-b \
   --machine-type=e2-medium \
@@ -148,7 +148,7 @@ gcloud compute instances create vcs-vm-eu1 \
   --tags=vcs-node \
   --metadata="ssh-keys=deploy:$(cat ~/.ssh/vcs_key.pub)"
 
-# EU VM 2 — will join as second manager
+# EU VM 2 - will join as second manager
 gcloud compute instances create vcs-vm-eu2 \
   --zone=europe-west1-b \
   --machine-type=e2-medium \
@@ -176,12 +176,12 @@ gcloud compute instances add-access-config vcs-vm-eu2 \
   --address=$(gcloud compute addresses describe vcs-vm-eu2-ip \
     --region=europe-west1 --format='value(address)')
 
-# Get IPs — write down EU1 and EU2 external IPs
+# Get IPs - write down EU1 and EU2 external IPs
 gcloud compute instances list --filter="name~vcs-vm-eu" \
   --format="table(name,networkInterfaces[0].networkIP,networkInterfaces[0].accessConfigs[0].natIP)"
 ```
 
-### Step 6 — EU Load Balancer
+### Step 6 - EU Load Balancer
 
 ```bash
 EU1_EXT=$(gcloud compute addresses describe vcs-vm-eu1-ip \
@@ -212,7 +212,7 @@ gcloud compute forwarding-rules create vcs-fwd-eu \
   --ports=80
 ```
 
-### Step 7 — Install Docker on EU VMs
+### Step 7 - Install Docker on EU VMs
 
 Run on **vcs-vm-eu1** and **vcs-vm-eu2** (repeat swapping IP):
 
@@ -235,7 +235,7 @@ sudo usermod -aG docker $USER
 exit   # re-login for group change
 ```
 
-### Step 8 — Init EU Swarm
+### Step 8 - Init EU Swarm
 
 **On vcs-vm-eu1 only:**
 
@@ -264,9 +264,9 @@ docker node ls
 exit
 ```
 
-### Step 9 — Docker secrets (EU cell)
+### Step 9 - Docker secrets (EU cell)
 
-On **vcs-vm-eu1** only — Swarm distributes to eu2 automatically:
+On **vcs-vm-eu1** only - Swarm distributes to eu2 automatically:
 
 ```bash
 ssh -i ~/.ssh/vcs_key deploy@<EU1-IP>
@@ -283,7 +283,7 @@ docker secret ls
 exit
 ```
 
-### Step 10 — GHCR auth + deploy (EU cell)
+### Step 10 - GHCR auth + deploy (EU cell)
 
 ```bash
 # Auth on both EU VMs
@@ -303,7 +303,7 @@ watch docker service ls   # wait for 2/2 on all services
 exit
 ```
 
-### Step 11 — EU Postgres replication (eu1 ↔ eu2)
+### Step 11 - EU Postgres replication (eu1 ↔ eu2)
 
 **On both vcs-vm-eu1 and vcs-vm-eu2:**
 
@@ -339,7 +339,7 @@ CREATE PUBLICATION vcs_pub FOR ALL TABLES;
 SQL
 ```
 
-**On eu1** — subscribe to eu2:
+**On eu1** - subscribe to eu2:
 
 ```sql
 CREATE SUBSCRIPTION vcs_sub_eu2
@@ -348,7 +348,7 @@ CREATE SUBSCRIPTION vcs_sub_eu2
   PUBLICATION vcs_pub;
 ```
 
-**On eu2** — subscribe to eu1:
+**On eu2** - subscribe to eu1:
 
 ```sql
 CREATE SUBSCRIPTION vcs_sub_eu1
@@ -359,9 +359,9 @@ CREATE SUBSCRIPTION vcs_sub_eu1
 
 ---
 
-## Part 3 — US cell (us-east1, 1 VM)
+## Part 3 - US cell (us-east1, 1 VM)
 
-### Step 12 — Create US VM
+### Step 12 - Create US VM
 
 ```bash
 gcloud compute instances create vcs-vm-us1 \
@@ -387,7 +387,7 @@ gcloud compute instances list --filter="name~vcs-vm-us" \
   --format="table(name,networkInterfaces[0].networkIP,networkInterfaces[0].accessConfigs[0].natIP)"
 ```
 
-### Step 13 — US Load Balancer
+### Step 13 - US Load Balancer
 
 ```bash
 gcloud compute addresses create vcs-lb-us-ip --region=us-east1
@@ -414,17 +414,17 @@ gcloud compute forwarding-rules create vcs-fwd-us \
   --ports=80
 ```
 
-### Step 14 — Install Docker, Swarm, deploy (US cell)
+### Step 14 - Install Docker, Swarm, deploy (US cell)
 
 ```bash
-# Install Docker (same script as Step 7 — swap IP for US1)
+# Install Docker (same script as Step 7 - swap IP for US1)
 
 # Single-node Swarm init
 ssh -i ~/.ssh/vcs_key deploy@<US1-IP>
 docker swarm init --advertise-addr 10.0.2.11
 exit
 
-# Secrets — use same db_password and jwt_secret as EU for cross-cell JWT validation
+# Secrets - use same db_password and jwt_secret as EU for cross-cell JWT validation
 ssh -i ~/.ssh/vcs_key deploy@<US1-IP>
 echo "$DB_PASS" | docker secret create db_password -
 echo "<SAME_JWT_SECRET_AS_EU>" | docker secret create jwt_secret -
@@ -443,9 +443,9 @@ exit
 
 ---
 
-## Part 4 — APAC cell (asia-east1, 1 VM)
+## Part 4 - APAC cell (asia-east1, 1 VM)
 
-### Step 15 — Create APAC VM
+### Step 15 - Create APAC VM
 
 ```bash
 gcloud compute instances create vcs-vm-ap1 \
@@ -471,7 +471,7 @@ gcloud compute instances list --filter="name~vcs-vm-ap" \
   --format="table(name,networkInterfaces[0].networkIP,networkInterfaces[0].accessConfigs[0].natIP)"
 ```
 
-### Step 16 — APAC Load Balancer
+### Step 16 - APAC Load Balancer
 
 ```bash
 gcloud compute addresses create vcs-lb-ap-ip --region=asia-east1
@@ -498,25 +498,25 @@ gcloud compute forwarding-rules create vcs-fwd-ap \
   --ports=80
 ```
 
-### Step 17 — Install Docker, Swarm, deploy (APAC cell)
+### Step 17 - Install Docker, Swarm, deploy (APAC cell)
 
-Same as US (Step 14) — swap IP for AP1 and use `10.0.3.11` as `--advertise-addr`.
+Same as US (Step 14) - swap IP for AP1 and use `10.0.3.11` as `--advertise-addr`.
 
 ---
 
-## Part 5 — Cross-cell Postgres replication (EU → US → APAC)
+## Part 5 - Cross-cell Postgres replication (EU → US → APAC)
 
 This is a **cascade chain**: EU writes replicate to US, and US re-publishes them to APAC using `origin = any`.
 
 ```
 eu1 (primary publisher)
   └──► us1 (subscribes from eu1, publishes with origin = any)
-          └──► ap1 (subscribes from us1 with origin = any — gets EU + US rows)
+          └──► ap1 (subscribes from us1 with origin = any - gets EU + US rows)
 ```
 
-### Step 18 — Enable replication on US and APAC Postgres
+### Step 18 - Enable replication on US and APAC Postgres
 
-On **vcs-vm-us1** and **vcs-vm-ap1** — same config as Step 11 but with all 3 subnet ranges in pg_hba.conf (already included in Step 11's snippet above).
+On **vcs-vm-us1** and **vcs-vm-ap1** - same config as Step 11 but with all 3 subnet ranges in pg_hba.conf (already included in Step 11's snippet above).
 
 Create replication user + publication on both:
 
@@ -528,7 +528,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA iam TO replicator;
 CREATE PUBLICATION vcs_pub FOR ALL TABLES;
 ```
 
-### Step 19 — EU → US subscription
+### Step 19 - EU → US subscription
 
 **On vcs-vm-us1:**
 
@@ -540,7 +540,7 @@ CREATE SUBSCRIPTION vcs_sub_eu
   WITH (origin = any);   -- re-publish rows that came from EU to APAC
 ```
 
-### Step 20 — US → APAC subscription
+### Step 20 - US → APAC subscription
 
 **On vcs-vm-ap1:**
 
@@ -552,7 +552,7 @@ CREATE SUBSCRIPTION vcs_sub_us
   WITH (origin = any);   -- receive both EU-originated and US-originated rows
 ```
 
-### Step 21 — Verify cross-cell replication
+### Step 21 - Verify cross-cell replication
 
 ```bash
 # Write a row in EU
@@ -562,13 +562,13 @@ docker exec $PG psql -U postgres trafficservice \
   -c "INSERT INTO journey.journeys (id, status) VALUES ('latency-test', 'ACTIVE');"
 exit
 
-# Read from US — expect ~80–100 ms lag
+# Read from US - expect ~80–100 ms lag
 ssh -i ~/.ssh/vcs_key deploy@<US1-IP>
 docker exec $(docker ps -q -f name=vcs_db) psql -U postgres trafficservice \
   -c "SELECT id, status FROM journey.journeys WHERE id = 'latency-test';"
 exit
 
-# Read from APAC — expect ~200–250 ms lag (EU→US + US→APAC)
+# Read from APAC - expect ~200–250 ms lag (EU→US + US→APAC)
 ssh -i ~/.ssh/vcs_key deploy@<AP1-IP>
 docker exec $(docker ps -q -f name=vcs_db) psql -U postgres trafficservice \
   -c "SELECT id, status FROM journey.journeys WHERE id = 'latency-test';"
@@ -583,28 +583,28 @@ exit
 
 ---
 
-## Part 6 — VM scheduler (auto stop/start)
+## Part 6 - VM scheduler (auto stop/start)
 
-Uses GCP's built-in **Instance Schedules** (resource policies) — no Cloud Functions needed.
+Uses GCP's built-in **Instance Schedules** (resource policies) - no Cloud Functions needed.
 
-### Step 22 — Create stop/start schedules per region
+### Step 22 - Create stop/start schedules per region
 
 ```bash
-# EU schedule — stop 20:00, start 08:00 Mon-Fri, Dublin time
+# EU schedule - stop 20:00, start 08:00 Mon-Fri, Dublin time
 gcloud compute resource-policies create instance-schedule vcs-schedule-eu \
   --region=europe-west1 \
   --vm-start-schedule="0 8 * * 1-5" \
   --vm-stop-schedule="0 20 * * 1-5" \
   --timezone="Europe/Dublin"
 
-# US schedule — stop 20:00, start 08:00 Mon-Fri, New York time
+# US schedule - stop 20:00, start 08:00 Mon-Fri, New York time
 gcloud compute resource-policies create instance-schedule vcs-schedule-us \
   --region=us-east1 \
   --vm-start-schedule="0 8 * * 1-5" \
   --vm-stop-schedule="0 20 * * 1-5" \
   --timezone="America/New_York"
 
-# APAC schedule — stop 20:00, start 08:00 Mon-Fri, Singapore time
+# APAC schedule - stop 20:00, start 08:00 Mon-Fri, Singapore time
 gcloud compute resource-policies create instance-schedule vcs-schedule-ap \
   --region=asia-east1 \
   --vm-start-schedule="0 8 * * 1-5" \
@@ -612,7 +612,7 @@ gcloud compute resource-policies create instance-schedule vcs-schedule-ap \
   --timezone="Asia/Singapore"
 ```
 
-### Step 23 — Attach schedules to VMs
+### Step 23 - Attach schedules to VMs
 
 ```bash
 # EU
@@ -630,7 +630,7 @@ gcloud compute instances add-resource-policies vcs-vm-ap1 \
   --resource-policies=vcs-schedule-ap --zone=asia-east1-b
 ```
 
-Schedules are live immediately. VMs stop at 20:00 local time, start at 08:00 — roughly 12h/day off on weekdays, 48h off on weekends.
+Schedules are live immediately. VMs stop at 20:00 local time, start at 08:00 - roughly 12h/day off on weekdays, 48h off on weekends.
 
 ### Manual override
 
@@ -648,15 +648,15 @@ gcloud compute instances start vcs-vm-ap1 --zone=asia-east1-b
 
 ---
 
-## Part 7 — GitHub Actions CI/CD
+## Part 7 - GitHub Actions CI/CD
 
-### Step 24 — Collect SSH known hosts
+### Step 24 - Collect SSH known hosts
 
 ```bash
 ssh-keyscan <EU1-EXTERNAL-IP>   # copy full output
 ```
 
-### Step 25 — Add GitHub repository secrets
+### Step 25 - Add GitHub repository secrets
 
 Go to **Settings → Secrets and variables → Actions → New repository secret**:
 
@@ -670,10 +670,10 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
 
 ---
 
-## Part 8 — Verification checklist
+## Part 8 - Verification checklist
 
 ```bash
-# 1. EU Swarm — both nodes managers
+# 1. EU Swarm - both nodes managers
 ssh -i ~/.ssh/vcs_key deploy@<EU1-IP> "docker node ls"
 # vcs-vm-eu1 * Ready Active Leader
 # vcs-vm-eu2   Ready Active Reachable
@@ -728,7 +728,7 @@ gcloud compute firewall-rules create vcs-partition-test \
   --priority=900
 
 # Both cells keep serving (AP trade-off)
-# Write to EU — US and APAC go stale
+# Write to EU - US and APAC go stale
 # Heal:
 gcloud compute firewall-rules delete vcs-partition-test --quiet
 # Replication catches up automatically
@@ -737,14 +737,14 @@ gcloud compute firewall-rules delete vcs-partition-test --quiet
 ### EU Swarm failover demo
 
 ```bash
-# Stop eu1 — eu2 becomes Swarm leader within ~5 seconds
+# Stop eu1 - eu2 becomes Swarm leader within ~5 seconds
 gcloud compute instances stop vcs-vm-eu1 --zone=europe-west1-b
 
 ssh -i ~/.ssh/vcs_key deploy@<EU2-IP> "docker node ls"
 # vcs-vm-eu1   Ready  Active  Unreachable
 # vcs-vm-eu2 * Ready  Active  Leader       ← auto-elected
 
-# Services keep running from eu2 — LB stops routing to eu1 within ~20s
+# Services keep running from eu2 - LB stops routing to eu1 within ~20s
 curl http://<LB-EU-IP>/nginx-health   # still ok
 
 # Restore

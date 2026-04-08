@@ -4,7 +4,7 @@ import { enforcementVerify, EnforcementVerifyResult } from '../../services/journ
 import { format, parseISO } from 'date-fns';
 
 function formatTs(ts: string | undefined) {
-  if (!ts) return '—';
+  if (!ts) return '-';
   try { return format(parseISO(ts), 'dd MMM yyyy · HH:mm:ss'); } catch { return ts; }
 }
 
@@ -228,9 +228,9 @@ export default function EnforcementPage() {
             <Row label="Segment" value={result.segment_id} />
             {result.authorized && (
               <>
-                <Row label="Journey ID" value={result.journey_id ?? '—'} mono />
-                <Row label="Driver ID" value={result.driver_id ?? '—'} mono />
-                <Row label="Status" value={result.status ?? '—'} />
+                <Row label="Journey ID" value={result.journey_id ?? '-'} mono />
+                <Row label="Driver ID" value={result.driver_id ?? '-'} mono />
+                <Row label="Status" value={result.status ?? '-'} />
                 <Row label="Window start" value={formatTs(result.time_window_start)} />
                 <Row label="Window end" value={formatTs(result.time_window_end)} />
               </>

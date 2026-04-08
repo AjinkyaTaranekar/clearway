@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Distributed Vehicle Capacity System — Journey Service. Manages journey bookings, state transitions, and enforcement checks.",
+        "description": "Distributed Vehicle Capacity System - Journey Service. Manages journey bookings, state transitions, and enforcement checks.",
         "title": "Journey Microservice API",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {},

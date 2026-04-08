@@ -740,7 +740,7 @@ export default function BookJourneyPage() {
             <div className="flex items-start gap-3 p-3.5 rounded-lg mb-6" style={{ background: '#F0EDE7' }}>
               <Info size={15} color="#4E5953" className="flex-shrink-0 mt-0.5" />
               <p style={{ color: '#4E5953', fontSize: '0.8125rem', lineHeight: 1.55 }}>
-                You must book at least <strong style={{ color: '#1F2421' }}>1 hour before departure</strong>. Journeys are checked against live road capacity — peak hours (07:00–09:00) on busy routes may be rejected.
+                You must book at least <strong style={{ color: '#1F2421' }}>1 hour before departure</strong>. Journeys are checked against live road capacity - peak hours (07:00–09:00) on busy routes may be rejected.
               </p>
             </div>
 

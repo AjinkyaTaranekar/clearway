@@ -1,4 +1,4 @@
-# Docker Swarm production stack — VCS
+# Docker Swarm production stack - VCS
 #
 # Topology: 3 independent Swarms (EU, US, APAC) on GCP e2-medium VMs.
 # Each Swarm runs one replica of every service (mode: global or replicas: 1).
@@ -12,9 +12,9 @@
 # Update:  same command (rolling, zero-downtime)
 #
 # Required secrets (create with `docker secret create`):
-#   jwt_secret           — HS256 JWT signing secret
-#   firebase_credentials — Firebase service account JSON (for notification-service)
-#   iam_private_key      — IAM RSA private key
+#   jwt_secret           - HS256 JWT signing secret
+#   firebase_credentials - Firebase service account JSON (for notification-service)
+#   iam_private_key      - IAM RSA private key
 #
 # One-time cluster bootstrap (run on EU node after first deploy):
 #   docker exec -it <crdb_container> /cockroach/cockroach init --insecure --host=localhost:26257
@@ -54,7 +54,7 @@ services:
 
   db:
     image: cockroachdb/cockroach:v24.1.0
-    # mode: global — one CockroachDB node per Swarm VM per cell.
+    # mode: global - one CockroachDB node per Swarm VM per cell.
     # Each container fetches its own VM's external IP from GCP's metadata API
     # at startup, so --advertise-addr is always correct regardless of which
     # host the container lands on. No CRDB_ADVERTISE_IP env var needed.
@@ -471,7 +471,7 @@ services:
       - vcs-internal
 
   # CockroachDB exposes Prometheus metrics natively at http://db:8080/_status/vars
-  # No separate exporter needed — prometheus.yml scrapes it directly.
+  # No separate exporter needed - prometheus.yml scrapes it directly.
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
@@ -513,7 +513,7 @@ services:
       - target: 80
         published: 80
         protocol: tcp
-        mode: ingress       # ingress routing mesh — works with Swarm overlay healthchecks
+        mode: ingress       # ingress routing mesh - works with Swarm overlay healthchecks
     networks:
       - vcs-internal
     healthcheck:

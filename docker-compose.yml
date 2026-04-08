@@ -1,4 +1,4 @@
-# Local development — single-node, all services + dependencies
+# Local development - single-node, all services + dependencies
 # Usage: docker compose up --build
 version: "3.9"
 
@@ -305,7 +305,7 @@ services:
       - /var/lib/docker:/var/lib/docker:ro
 
   # CockroachDB exposes Prometheus metrics natively at http://db:8080/_status/vars
-  # No separate exporter needed — prometheus.yml scrapes it directly.
+  # No separate exporter needed - prometheus.yml scrapes it directly.
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0

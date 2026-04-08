@@ -1,4 +1,4 @@
-# IAM Auth Service — Implementation Status
+# IAM Auth Service - Implementation Status
 
 > **Owner:** Deepika Nag
 > **Port:** 8082
@@ -9,45 +9,45 @@
 ## What Is Done
 
 ### Core Auth Flow
-- **`POST /api/v1/auth/register`** — Validates input (name, email, password strength, vehicle type, license number), hashes password with `golang.org/x/crypto/bcrypt` at the cost factor from config (clamped to `bcrypt.MinCost`–`bcrypt.MaxCost`), creates user with `usr_` prefixed UUID, issues access + refresh token pair. Returns `409` on duplicate email (case-insensitive).
-- **`POST /api/v1/auth/login`** — Looks up user by lowercased email, verifies bcrypt hash. Timing-safe: runs `bcrypt.CompareHashAndPassword` against a real pre-computed cost-10 hash when email is not found, so response time is indistinguishable from a wrong-password path. Returns `401` for any credential failure (no distinction between missing email / wrong password).
-- **`POST /api/v1/auth/refresh`** — Validates and atomically revokes old refresh token, issues new access + refresh token pair (rotation). Returns `401` on replay (second caller gets zero rows from the `UPDATE`).
-- **`POST /api/v1/auth/logout`** — Requires `Authorization: Bearer` + `refresh_token` in body. Verifies the token belongs to the calling user before revoking. Returns `204`.
+- **`POST /api/v1/auth/register`** - Validates input (name, email, password strength, vehicle type, license number), hashes password with `golang.org/x/crypto/bcrypt` at the cost factor from config (clamped to `bcrypt.MinCost`–`bcrypt.MaxCost`), creates user with `usr_` prefixed UUID, issues access + refresh token pair. Returns `409` on duplicate email (case-insensitive).
+- **`POST /api/v1/auth/login`** - Looks up user by lowercased email, verifies bcrypt hash. Timing-safe: runs `bcrypt.CompareHashAndPassword` against a real pre-computed cost-10 hash when email is not found, so response time is indistinguishable from a wrong-password path. Returns `401` for any credential failure (no distinction between missing email / wrong password).
+- **`POST /api/v1/auth/refresh`** - Validates and atomically revokes old refresh token, issues new access + refresh token pair (rotation). Returns `401` on replay (second caller gets zero rows from the `UPDATE`).
+- **`POST /api/v1/auth/logout`** - Requires `Authorization: Bearer` + `refresh_token` in body. Verifies the token belongs to the calling user before revoking. Returns `204`.
 
 ### JWKS
-- **`GET /.well-known/jwks.json`** — Loads RSA-2048 private key from `keys/private.pem` at startup (supports both PKCS#1 and PKCS#8 PEM formats). Builds JWK response with `kty`, `use`, `alg`, `kid`, `n`, `e`. Supports serving a previous key simultaneously for zero-downtime rotation (configure `iam.previous_kid` + `iam.previous_pub_key_pem` in `config.yaml`). `Cache-Control: public, max-age=3600`.
+- **`GET /.well-known/jwks.json`** - Loads RSA-2048 private key from `keys/private.pem` at startup (supports both PKCS#1 and PKCS#8 PEM formats). Builds JWK response with `kty`, `use`, `alg`, `kid`, `n`, `e`. Supports serving a previous key simultaneously for zero-downtime rotation (configure `iam.previous_kid` + `iam.previous_pub_key_pem` in `config.yaml`). `Cache-Control: public, max-age=3600`.
 
 ### Profile
-- **`GET /api/v1/auth/profile`** — Returns full user record for the authenticated user (id, name, email, role, vehicle_type, license_info, created_at, updated_at).
-- **`PUT /api/v1/auth/profile`** — Partial update: only fields present in the request body are changed. Validates `name` length and `vehicle_type` enum. `email` and `role` cannot be changed through this endpoint.
+- **`GET /api/v1/auth/profile`** - Returns full user record for the authenticated user (id, name, email, role, vehicle_type, license_info, created_at, updated_at).
+- **`PUT /api/v1/auth/profile`** - Partial update: only fields present in the request body are changed. Validates `name` length and `vehicle_type` enum. `email` and `role` cannot be changed through this endpoint.
 
 ### Admin
-- **`GET /api/v1/admin/auth/users`** — Lists users with optional `role` filter, `page`, and `limit` (max 100, default 20). Returns `users` array + `pagination` object.
-- **`GET /api/v1/admin/auth/users/{id}`** — Get a single user by ID.
-- **`POST /api/v1/admin/auth/promote`** — Promote/demote user role. Guards against demoting the sole remaining admin (`CANNOT_DEMOTE_SOLE_ADMIN`).
-- **`POST /api/v1/admin/auth/force-logout`** — Revokes all active refresh tokens for a given user across all devices. Access JWT remains valid until its `exp` (max 1 hour — known limitation of stateless JWTs).
+- **`GET /api/v1/admin/auth/users`** - Lists users with optional `role` filter, `page`, and `limit` (max 100, default 20). Returns `users` array + `pagination` object.
+- **`GET /api/v1/admin/auth/users/{id}`** - Get a single user by ID.
+- **`POST /api/v1/admin/auth/promote`** - Promote/demote user role. Guards against demoting the sole remaining admin (`CANNOT_DEMOTE_SOLE_ADMIN`).
+- **`POST /api/v1/admin/auth/force-logout`** - Revokes all active refresh tokens for a given user across all devices. Access JWT remains valid until its `exp` (max 1 hour - known limitation of stateless JWTs).
 
 ### Health
-- **`GET /health`** — Returns `{ status, db, uptime_seconds }`. DB status comes from a live `PingContext`. Never returns 503 (degraded DB is still reported but service stays up).
-- **`GET /ready`** — Returns `503` if the DB ping fails, `200` otherwise. Used by Docker Swarm to gate traffic.
+- **`GET /health`** - Returns `{ status, db, uptime_seconds }`. DB status comes from a live `PingContext`. Never returns 503 (degraded DB is still reported but service stays up).
+- **`GET /ready`** - Returns `503` if the DB ping fails, `200` otherwise. Used by Docker Swarm to gate traffic.
 
 ### JWT Middleware
-- `internal/middleware/jwt_middleware.go` — Parses `Authorization: Bearer <token>`, validates RSA signature against the current public key, checks `iss == "traffic-iam"`. Injects `*model.Claims` into request context.
-- `RequireRole(roles...)` — Role-enforcement middleware. Returns `403` if the claim role is not in the allowed set.
+- `internal/middleware/jwt_middleware.go` - Parses `Authorization: Bearer <token>`, validates RSA signature against the current public key, checks `iss == "traffic-iam"`. Injects `*model.Claims` into request context.
+- `RequireRole(roles...)` - Role-enforcement middleware. Returns `403` if the claim role is not in the allowed set.
 
 ### Background Cleanup Job
-- `CleanupService.Start(ctx)` — Runs on a configurable ticker (default 24h). Deletes expired and revoked refresh tokens older than `token_retention_days` (default 7). Runs as a goroutine started in `main.go`; exits cleanly when the context is cancelled on shutdown.
+- `CleanupService.Start(ctx)` - Runs on a configurable ticker (default 24h). Deletes expired and revoked refresh tokens older than `token_retention_days` (default 7). Runs as a goroutine started in `main.go`; exits cleanly when the context is cancelled on shutdown.
 
 ### Database Migrations
 | File | What it creates |
 |------|-----------------|
 | `migrations/001_create_users.sql` | `auth` schema, `auth.users` table with `CHECK` constraints and indexes |
 | `migrations/002_create_refresh_tokens.sql` | `auth.refresh_tokens` table with cascade delete and indexes |
-| `migrations/003_seed_admin.sql` | Template for the initial admin account — **fill in a real bcrypt hash before running** |
+| `migrations/003_seed_admin.sql` | Template for the initial admin account - **fill in a real bcrypt hash before running** |
 
 ### Configuration
-- `pkg/config/config.go` — Full `Config` struct: server, database (master/slave), redis, iam, logging sections. Loaded from `config.yaml`, overrideable via `VCS_*` env vars.
-- `config.yaml` — Default values for local development. **Database credentials are placeholders — override via env vars in production.**
+- `pkg/config/config.go` - Full `Config` struct: server, database (master/slave), redis, iam, logging sections. Loaded from `config.yaml`, overrideable via `VCS_*` env vars.
+- `config.yaml` - Default values for local development. **Database credentials are placeholders - override via env vars in production.**
 
 ### Project Layout
 ```
@@ -84,13 +84,13 @@ iam-service/
 │   └── 003_seed_admin.sql
 ├── pkg/
 │   ├── config/config.go           (replaced skeleton)
-│   ├── errors/errors.go           (skeleton — unchanged)
-│   ├── logger/logger.go           (skeleton — unchanged)
-│   ├── postgres/connection.go     (skeleton — unchanged)
-│   ├── response/response.go       (skeleton — unchanged)
-│   └── tracing/middleware.go      (skeleton — unchanged)
+│   ├── errors/errors.go           (skeleton - unchanged)
+│   ├── logger/logger.go           (skeleton - unchanged)
+│   ├── postgres/connection.go     (skeleton - unchanged)
+│   ├── response/response.go       (skeleton - unchanged)
+│   └── tracing/middleware.go      (skeleton - unchanged)
 └── keys/
-    └── private.pem                (.gitignored — generate with openssl)
+    └── private.pem                (.gitignored - generate with openssl)
 ```
 
 ---
@@ -102,16 +102,16 @@ iam-service/
 The spec calls for an application-layer Redis-backed per-IP rate limiter on `/login` (5 failures → `429`, 60-second window). This is defence-in-depth beneath Nginx.
 
 What is missing:
-- `internal/middleware/ratelimit.go` — Redis counter middleware
+- `internal/middleware/ratelimit.go` - Redis counter middleware
 - Redis client initialisation in `main.go`
 - Wiring the rate limit middleware onto `/login` and `/register` routes
-- `pkg/redis/client.go` (or equivalent) — connection setup
+- `pkg/redis/client.go` (or equivalent) - connection setup
 
 The `redis` section already exists in `config.yaml` and `Config` struct, so the plumbing is ready. Only the implementation is missing.
 
 **To implement:**
 ```go
-// pkg/redis/client.go  — add go-redis dependency
+// pkg/redis/client.go  - add go-redis dependency
 import "github.com/redis/go-redis/v9"
 
 func NewClient(cfg config.RedisConfig) *redis.Client {
@@ -147,7 +147,7 @@ swag init -g cmd/server/main.go -o docs
 
 ### 4. `003_seed_admin.sql` Should Not Be Committed (spec §7.4)
 **Status: File is committed with a placeholder hash.**
-The spec explicitly states this file must not be committed — it should live in the deployment runbook only.
+The spec explicitly states this file must not be committed - it should live in the deployment runbook only.
 
 **Action:** The placeholder file is safe (the hash value `$2a$12$REPLACE_THIS...` will never match any real password), but it should be moved to a deployment runbook before production. The real file with the actual bcrypt hash should never enter the repository.
 
@@ -162,7 +162,7 @@ If needed later: requires SMTP/SES for email delivery and a time-limited reset t
 ---
 
 ### 6. Nginx Rate Limiting (spec §4.1, §4.2, §4.3)
-**Status: Not part of this service — handled at infrastructure layer.**
+**Status: Not part of this service - handled at infrastructure layer.**
 The spec references Nginx rate limits (10 req/IP/min for register/login, 30 req/IP/min for refresh, IP block after 5 consecutive failures). These are Nginx `limit_req_zone` rules in `nginx/nginx.conf`, not Go code. IAM has no control over this.
 
 ---
@@ -196,7 +196,7 @@ curl http://localhost:8082/.well-known/jwks.json
 
 | # | Limitation | Ref |
 |---|-----------|-----|
-| L1 | Access JWTs remain valid up to 1 hour after force-logout or admin role demotion — no per-request revocation check | E4 |
+| L1 | Access JWTs remain valid up to 1 hour after force-logout or admin role demotion - no per-request revocation check | E4 |
 | L2 | Login on a VM that hasn't yet received a just-registered user row (~100ms replication lag) will fail | E2 |
 | L3 | No self-service password reset | E10 |
 | L4 | Application-layer Redis rate limiting is not implemented (Nginx-only for now) | §8 |

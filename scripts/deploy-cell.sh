@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# deploy-cell.sh — Deploy or update the VCS stack on a single cell.
+# deploy-cell.sh - Deploy or update the VCS stack on a single cell.
 #
 # Run this from GCP Cloud Shell. It handles everything:
 #   - Copies observability config files to all VMs in the cell
 #   - Deploys the Docker stack
 #   - Waits for CockroachDB to be healthy
-#   - Initialises the cluster (idempotent — safe to re-run)
+#   - Initialises the cluster (idempotent - safe to re-run)
 #   - Creates the postgres user and trafficservice database (idempotent)
 #   - Force-restarts any services that hit max_attempts
 #
@@ -56,7 +56,7 @@ remote() {
 }
 
 # ── Step 1: Copy observability configs to all VMs ───────────────────────────
-info "Step 1 — copying observability configs to all VMs"
+info "Step 1 - copying observability configs to all VMs"
 for vm in "${ALL_VMS[@]}"; do
   info "  → $vm"
   remote "$vm" "sudo mkdir -p \
@@ -85,14 +85,14 @@ for vm in "${ALL_VMS[@]}"; do
 done
 
 # ── Step 2: Copy stack file to manager and deploy ───────────────────────────
-info "Step 2 — copying stack file and deploying on $MANAGER_VM"
+info "Step 2 - copying stack file and deploying on $MANAGER_VM"
 gcloud compute scp "$REPO_ROOT/docker-stack.yml" \
   "$MANAGER_VM":~/docker-stack.yml --project="$PROJECT" --zone="$ZONE" 2>/dev/null
 
-# Remove vcs_db if it exists — Docker Swarm cannot change a service's mode
+# Remove vcs_db if it exists - Docker Swarm cannot change a service's mode
 # (replicated → global) in-place. Since we migrated from postgres (replicated)
 # to CockroachDB (global), we must remove and recreate it.
-info "Step 2a — removing stale vcs_db service if present (postgres → CockroachDB migration)"
+info "Step 2a - removing stale vcs_db service if present (postgres → CockroachDB migration)"
 remote "$MANAGER_VM" "
   if sudo docker service inspect vcs_db >/dev/null 2>&1; then
     echo 'Removing existing vcs_db service...'
@@ -111,9 +111,9 @@ remote "$MANAGER_VM" "
 # ── Step 3: Wait for CockroachDB container to be running ────────────────────
 # We check docker ps (container level), not docker service ps (task level).
 # Task state depends on the healthcheck, but the healthcheck requires the cluster
-# to be initialized first — that happens in step 4. So we just wait for the
+# to be initialized first - that happens in step 4. So we just wait for the
 # container to exist and the HTTP port to respond (works before init).
-info "Step 3 — waiting for CockroachDB container to start (up to 3 min)"
+info "Step 3 - waiting for CockroachDB container to start (up to 3 min)"
 CRDB_READY=false
 for i in $(seq 1 36); do
   CONTAINER=$(remote "$MANAGER_VM" \
@@ -128,7 +128,7 @@ for i in $(seq 1 36); do
       break
     fi
   fi
-  warning "  attempt $i/36: container=${CONTAINER:-none} — waiting 5s"
+  warning "  attempt $i/36: container=${CONTAINER:-none} - waiting 5s"
   sleep 5
 done
 $CRDB_READY || error "CockroachDB did not start after 3 minutes. Check: gcloud compute ssh $MANAGER_VM --zone $ZONE -- 'sudo docker service logs vcs_db --tail 30'"
@@ -137,7 +137,7 @@ $CRDB_READY || error "CockroachDB did not start after 3 minutes. Check: gcloud c
 sleep 10
 
 # ── Step 4: Initialise the cluster (idempotent) ─────────────────────────────
-info "Step 4 — initialising CockroachDB cluster (idempotent)"
+info "Step 4 - initialising CockroachDB cluster (idempotent)"
 CRDB_CONTAINER=$(remote "$MANAGER_VM" \
   "sudo docker ps --filter name=vcs_db --format '{{.ID}}' | head -1")
 
@@ -145,7 +145,7 @@ INIT_OUT=$(remote "$MANAGER_VM" \
   "sudo docker exec $CRDB_CONTAINER /cockroach/cockroach init --insecure --host=localhost:26257 2>&1" || true)
 
 if echo "$INIT_OUT" | grep -q "already initialized"; then
-  info "  cluster already initialised — skipping"
+  info "  cluster already initialised - skipping"
 elif echo "$INIT_OUT" | grep -q "successfully initialized"; then
   info "  cluster successfully initialised"
 else
@@ -153,7 +153,7 @@ else
 fi
 
 # ── Step 5: Create database and postgres user (idempotent) ──────────────────
-info "Step 5 — ensuring trafficservice database and postgres user exist"
+info "Step 5 - ensuring trafficservice database and postgres user exist"
 remote "$MANAGER_VM" "
   sudo docker exec $CRDB_CONTAINER /cockroach/cockroach sql \
     --insecure --host=localhost:26257 --execute=\"
@@ -165,7 +165,7 @@ remote "$MANAGER_VM" "
 "
 
 # ── Step 6: Force-restart any services stuck at 0 replicas ──────────────────
-info "Step 6 — restarting any services that exhausted retries"
+info "Step 6 - restarting any services that exhausted retries"
 sleep 20
 STUCK=$(remote "$MANAGER_VM" \
   "sudo docker service ls --format '{{.Name}} {{.Replicas}}' 2>/dev/null \
@@ -183,7 +183,7 @@ else
 fi
 
 # ── Step 7: Final status ─────────────────────────────────────────────────────
-info "Step 7 — final service status"
+info "Step 7 - final service status"
 remote "$MANAGER_VM" \
   "sudo docker service ls --format 'table {{.Name}}\t{{.Replicas}}\t{{.Image}}' 2>/dev/null"
 

@@ -4,7 +4,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 COPY nginx.conf /etc/nginx/conf.d/vcs.conf
 
-# Frontend static files — injected by CI (copied from frontend/dist build artefact)
+# Frontend static files - injected by CI (copied from frontend/dist build artefact)
 # The html/ directory is populated by the CD pipeline before building this image.
 COPY html/ /usr/share/nginx/html/
 

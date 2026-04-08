@@ -1,5 +1,5 @@
 /**
- * PlaceSearch — debounced text input that calls the backend geocoding proxy.
+ * PlaceSearch - debounced text input that calls the backend geocoding proxy.
  * The browser never calls Nominatim/OSRM directly; all provider calls happen server-side.
  */
 

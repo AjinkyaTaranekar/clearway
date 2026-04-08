@@ -1,10 +1,10 @@
 output "load_balancer_public_ip" {
-  description = "Public IP of the GCP Network Load Balancer — point your DNS / Cloudflare proxy here"
+  description = "Public IP of the GCP Network Load Balancer - point your DNS / Cloudflare proxy here"
   value       = google_compute_address.lb.address
 }
 
 output "vm_external_ips" {
-  description = "Per-VM external IPs for SSH (ephemeral — reassigned on stop/start)"
+  description = "Per-VM external IPs for SSH (ephemeral - reassigned on stop/start)"
   value = {
     for i, vm in google_compute_instance.vm :
     "vm${i + 1}" => vm.network_interface[0].access_config[0].nat_ip

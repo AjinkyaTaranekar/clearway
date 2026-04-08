@@ -414,10 +414,10 @@ export default function LoginPage() {
                       License preview
                     </div>
                     <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
-                      Region: {licenseRegion.trim() || '—'}
+                      Region: {licenseRegion.trim() || '-'}
                     </div>
                     <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
-                      Number: {licenseNumber.trim() || '—'}
+                      Number: {licenseNumber.trim() || '-'}
                     </div>
                   </div>
                 )}

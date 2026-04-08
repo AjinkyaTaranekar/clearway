@@ -46,12 +46,12 @@
 ```
 
 **Key points:**
-- All 3 VMs are in the **same region** (Ireland/EU) — one *cell*. Cross-region is a future extension.
-- All 3 VMs are **Swarm managers**. Raft quorum = 2/3, so the cluster survives losing any single node — a new leader is elected automatically within ~5 seconds.
+- All 3 VMs are in the **same region** (Ireland/EU) - one *cell*. Cross-region is a future extension.
+- All 3 VMs are **Swarm managers**. Raft quorum = 2/3, so the cluster survives losing any single node - a new leader is elected automatically within ~5 seconds.
 - The frontend React SPA is served by **Cloudflare Pages** (free). The browser downloads the app from the nearest Cloudflare edge, then makes API calls to `api.yourdomain.com` which resolves to the cloud load balancer.
 - Each VM runs every service (`mode: global` in docker-stack.yml).
-- PostgreSQL replication is **logical** (all-to-all). Each VM reads/writes its local PostgreSQL — no cross-VM DB calls at runtime.
-- Redis is local per VM — no cross-VM Redis sync.
+- PostgreSQL replication is **logical** (all-to-all). Each VM reads/writes its local PostgreSQL - no cross-VM DB calls at runtime.
+- Redis is local per VM - no cross-VM Redis sync.
 
 ---
 
@@ -65,7 +65,7 @@
 | **GCP** | e2-medium | 2 | 4 GB | ~$75 | `europe-west1` (Belgium) |
 | **AWS** | t3.small | 2 | 2 GB | ~$45 | `eu-west-1` (Ireland) |
 
-> **AWS t3.small has 2 GB RAM.** That's tight — upgrade to `t3.medium` (4 GB, ~$30/mo each) if services OOM.
+> **AWS t3.small has 2 GB RAM.** That's tight - upgrade to `t3.medium` (4 GB, ~$30/mo each) if services OOM.
 
 **OS:** Ubuntu 22.04 LTS on all providers (free, consistent tooling)  
 **Disk:** 30 GB SSD per VM (keeps PostgreSQL I/O fast)
@@ -164,7 +164,7 @@ az network vnet create \
 NSG="vcs-nsg"
 az network nsg create --resource-group $RG --name $NSG
 
-# SSH — your IP only
+# SSH - your IP only
 az network nsg rule create --resource-group $RG --nsg-name $NSG \
   --name AllowSSH --priority 100 \
   --source-address-prefixes YOUR_IP/32 \
@@ -263,13 +263,13 @@ gcloud compute networks subnets create vcs-subnet \
   --region=europe-west1 \
   --range=10.0.1.0/24
 
-# SSH — your IP only
+# SSH - your IP only
 gcloud compute firewall-rules create vcs-allow-ssh \
   --network=vcs-vpc --allow=tcp:22 \
   --source-ranges=YOUR_IP/32 \
   --target-tags=vcs-node
 
-# HTTP — open
+# HTTP - open
 gcloud compute firewall-rules create vcs-allow-http \
   --network=vcs-vpc --allow=tcp:80 \
   --source-ranges=0.0.0.0/0 \
@@ -353,7 +353,7 @@ aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
 IGW_ID=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text)
 aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID
 
-# Subnet (single AZ — all 3 VMs on same subnet for Swarm overlay)
+# Subnet (single AZ - all 3 VMs on same subnet for Swarm overlay)
 SUBNET_ID=$(aws ec2 create-subnet \
   --vpc-id $VPC_ID --cidr-block 10.0.1.0/24 \
   --availability-zone eu-west-1a \
@@ -372,11 +372,11 @@ SG_ID=$(aws ec2 create-security-group \
   --group-name vcs-sg --description "VCS nodes" \
   --vpc-id $VPC_ID --query 'GroupId' --output text)
 
-# SSH — your IP only
+# SSH - your IP only
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
   --protocol tcp --port 22 --cidr YOUR_IP/32
 
-# HTTP — open
+# HTTP - open
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
   --protocol tcp --port 80 --cidr 0.0.0.0/0
 
@@ -511,7 +511,7 @@ sudo usermod -aG docker $USER
 
 ## 5. Initialize Docker Swarm
 
-All 3 VMs join as **managers** — Raft quorum is 2/3, so the cluster survives
+All 3 VMs join as **managers** - Raft quorum is 2/3, so the cluster survives
 losing any single node and automatically elects a new leader within ~5 seconds.
 
 ### On VM-A only (becomes the initial leader):
@@ -526,7 +526,7 @@ cat /root/swarm-manager-token
 # e.g. SWMTKN-1-abc...xyz
 ```
 
-### On VM-B and VM-C — join as managers:
+### On VM-B and VM-C - join as managers:
 
 ```bash
 # Get the token from VM-A first:
@@ -649,7 +649,7 @@ CREATE PUBLICATION vcs_pub FOR ALL TABLES;
 ### 9.3 Create subscriptions (all-to-all)
 
 Private IPs used below: VM-A = `10.0.1.11`, VM-B = `10.0.1.12`, VM-C = `10.0.1.13`
-(adjust if your provider assigned different IPs — check with `hostname -I`).
+(adjust if your provider assigned different IPs - check with `hostname -I`).
 
 **On VM-A:**
 ```sql
@@ -699,7 +699,7 @@ Write a row on VM-A and confirm it appears on VM-B within < 100 ms.
 
 ---
 
-## 10. Cloudflare CDN — frontend + API routing
+## 10. Cloudflare CDN - frontend + API routing
 
 ### Architecture
 
@@ -731,8 +731,8 @@ wrangler pages deploy dist \
 
 ### 10.2 Configure API subdomain
 
-In **Cloudflare DNS**, add an A record (Azure/GCP — use the LB public IP)
-or a CNAME record (AWS — use the NLB DNS name):
+In **Cloudflare DNS**, add an A record (Azure/GCP - use the LB public IP)
+or a CNAME record (AWS - use the NLB DNS name):
 
 | Provider | Record type | Name | Value |
 |----------|-------------|------|-------|
@@ -740,7 +740,7 @@ or a CNAME record (AWS — use the NLB DNS name):
 | GCP | A | `api` | `<LB public IP>` |
 | AWS | CNAME | `api` | `<NLB DNS name>` |
 
-Set **Proxied = ON** (orange cloud) — hides VM IPs, enables free HTTPS on `api.vcs-app.com`.
+Set **Proxied = ON** (orange cloud) - hides VM IPs, enables free HTTPS on `api.vcs-app.com`.
 
 ### 10.3 Update frontend API base URL
 
@@ -762,7 +762,7 @@ add_header Access-Control-Allow-Headers "Authorization, Content-Type, Idempotenc
 
 ## 11. Cost summary
 
-### Azure (northeurope — Dublin)
+### Azure (northeurope - Dublin)
 
 | Resource | SKU | Monthly cost |
 |----------|-----|-------------|
@@ -775,7 +775,7 @@ add_header Access-Control-Allow-Headers "Authorization, Content-Type, Idempotenc
 
 > Stop VMs overnight to save ~60% compute cost: `az vm deallocate --name vcs-vm-A ...`
 
-### GCP (europe-west1 — Belgium)
+### GCP (europe-west1 - Belgium)
 
 | Resource | SKU | Monthly cost |
 |----------|-----|-------------|
@@ -786,9 +786,9 @@ add_header Access-Control-Allow-Headers "Authorization, Content-Type, Idempotenc
 | Egress ~10 GB | EU | ~$1 |
 | **Total** | | **~$119/mo** |
 
-> Preemptible VMs (70% discount) not suitable — Swarm managers must be stable.
+> Preemptible VMs (70% discount) not suitable - Swarm managers must be stable.
 
-### AWS (eu-west-1 — Ireland)
+### AWS (eu-west-1 - Ireland)
 
 | Resource | SKU | Monthly cost |
 |----------|-----|-------------|
@@ -840,7 +840,7 @@ curl -X POST https://api.vcs-app.com/api/v1/journeys \
 
 ---
 
-## 13. Full request flow — end to end
+## 13. Full request flow - end to end
 
 ```
 1. Driver opens https://vcs-app.com on their phone

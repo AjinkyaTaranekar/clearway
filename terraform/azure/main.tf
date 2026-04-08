@@ -1,5 +1,5 @@
 ###############################################################################
-# Azure — Distributed Vehicle Capacity System
+# Azure - Distributed Vehicle Capacity System
 # 3 × Standard_B2s VMs, VNet, NSG, Load Balancer, Public IPs
 ###############################################################################
 
@@ -53,7 +53,7 @@ resource "azurerm_network_security_group" "vcs" {
   resource_group_name = azurerm_resource_group.vcs.name
   tags                = var.tags
 
-  # SSH — restrict to your management IP in production
+  # SSH - restrict to your management IP in production
   security_rule {
     name                       = "allow-ssh"
     priority                   = 100
@@ -66,7 +66,7 @@ resource "azurerm_network_security_group" "vcs" {
     destination_address_prefix = "*"
   }
 
-  # HTTP — nginx on port 80
+  # HTTP - nginx on port 80
   security_rule {
     name                       = "allow-http"
     priority                   = 110
@@ -226,7 +226,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
 }
 
 ##############################################################################
-# Load Balancer — distributes HTTP port 80 across all 3 VMs
+# Load Balancer - distributes HTTP port 80 across all 3 VMs
 ##############################################################################
 
 resource "azurerm_public_ip" "lb" {

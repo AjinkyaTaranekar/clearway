@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# collect-regional-service-logs.sh — Collect per-region logs for selected app services from GCP Swarm cells.
+# collect-regional-service-logs.sh - Collect per-region logs for selected app services from GCP Swarm cells.
 #
 # Usage:
 #   ./scripts/collect-regional-service-logs.sh [--output-dir <dir>] [--tail <lines>] [--include-eu2]
@@ -135,7 +135,7 @@ for entry in "${REGIONS[@]}"; do
     {
       echo
       echo "## Failed regions"
-      echo "- ${region} (${vm}/${zone}) — could not list services"
+      echo "- ${region} (${vm}/${zone}) - could not list services"
     } >> "$SUMMARY_FILE"
     continue
   fi
