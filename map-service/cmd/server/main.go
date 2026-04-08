@@ -65,15 +65,36 @@ func main() {
 
 	log.Info().Msg("Database connections established")
 
+	if err := postgres.RunMigrations(dbPools.Master, "migrations"); err != nil {
+		log.Fatal().Err(err).Msg("failed to run database migrations")
+	}
+	log.Info().Msg("database migrations applied")
+
+	graphStore := handlers.NewGraphStore(log)
+	if err := graphStore.LoadFromDB(context.Background(), dbPools.Slave); err != nil {
+		graphStore.UseFallback(err)
+	}
+
+	var jwksValidator *httpHandler.JWKSValidator
+	if cfg.Services.JWKSURL != "" {
+		jwksValidator = httpHandler.NewJWKSValidator(cfg.Services.JWKSURL)
+		log.Info().Str("jwks_url", cfg.Services.JWKSURL).Msg("JWKS validator configured")
+	}
+
 	// Initialize HTTP handlers
-	healthHandler := handlers.NewHealthHandler()
-	mapHandler := handlers.NewMapHandler()
+	healthHandler := handlers.NewHealthHandler(graphStore)
+	mapHandler := handlers.NewMapHandler(
+		graphStore,
+		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL),
+		log,
+	)
 
 	// Setup router
 	router := httpHandler.NewRouter(
 		healthHandler,
 		mapHandler,
 		log,
+		jwksValidator,
 	)
 	mux := router.Setup()
 
