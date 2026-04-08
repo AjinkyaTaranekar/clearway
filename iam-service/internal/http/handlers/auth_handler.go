@@ -45,6 +45,18 @@ type authResponse struct {
 	} `json:"user"`
 }
 
+// Register godoc
+// @Summary Register a new user
+// @Description Creates a new account and returns access and refresh tokens.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body registerRequest true "Registration payload"
+// @Success 201 {object} authResponse
+// @Failure 400 {object} map[string]interface{}
+// @Failure 409 {object} response.Response
+// @Failure 500 {object} response.Response
+// @Router /api/v1/auth/register [post]
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())
@@ -127,6 +139,17 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, buildAuthResp(result), traceID)
 }
 
+// Login godoc
+// @Summary Authenticate a user
+// @Description Validates credentials and returns access and refresh tokens.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body object true "Login payload with email and password"
+// @Success 200 {object} authResponse
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Router /api/v1/auth/login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())
@@ -174,6 +197,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, buildAuthResp(result), traceID)
 }
 
+// Refresh godoc
+// @Summary Refresh JWT pair
+// @Description Exchanges a valid refresh token for a new access and refresh token pair.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body object true "Refresh payload with refresh_token"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Router /api/v1/auth/refresh [post]
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())
@@ -215,6 +249,18 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{"access_token": result.AccessToken, "refresh_token": result.RefreshToken}, traceID)
 }
 
+// Logout godoc
+// @Summary Logout user
+// @Description Revokes a refresh token for the authenticated user.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "Logout payload with refresh_token"
+// @Success 204
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Router /api/v1/auth/logout [post]
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())

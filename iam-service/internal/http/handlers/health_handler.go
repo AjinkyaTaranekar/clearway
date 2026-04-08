@@ -29,6 +29,13 @@ type healthResponse struct {
 	UptimeSeconds int64  `json:"uptime_seconds"`
 }
 
+// Health godoc
+// @Summary Health check
+// @Description Returns service health status and database connectivity.
+// @Tags Health
+// @Produce json
+// @Success 200 {object} healthResponse
+// @Router /health [get]
 // Health handles GET /health. Always returns 200 — degraded DB is reported
 // in the body but does not take the service down (existing JWTs still work).
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +69,14 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	}, traceID)
 }
 
+// Readiness godoc
+// @Summary Readiness check
+// @Description Returns ready when both database and RSA signing key are available.
+// @Tags Health
+// @Produce json
+// @Success 200 {object} healthResponse
+// @Failure 503 {object} map[string]string
+// @Router /ready [get]
 // Readiness handles GET /ready. Returns 503 if either the DB ping fails or
 // the RSA signing key has not been loaded — both are required before the
 // service can handle any meaningful request.

@@ -12,6 +12,32 @@ A microservices-based system for managing vehicle journey bookings across road s
 
 ---
 
+## Swagger Base URL Per Region
+
+Each Go service now supports runtime Swagger base URL override via:
+
+```bash
+VCS_SWAGGER_PUBLIC_BASE_URL
+```
+
+Set this to the public app URL of the region so Swagger "Try it out" calls point at the correct regional gateway.
+
+| Region | Value |
+|--------|-------|
+| EU | `http://35.187.121.12` |
+| US | `http://34.138.242.217` |
+| APAC | `http://34.80.180.64` |
+
+For Docker Swarm deploys, `docker-stack.yml` reads this via `SWAGGER_PUBLIC_BASE_URL`:
+
+```bash
+SWAGGER_PUBLIC_BASE_URL=http://35.187.121.12 docker stack deploy -c docker-stack.yml vcs
+```
+
+For local Docker Compose, it defaults to `http://localhost`.
+
+---
+
 ## Prerequisites
 
 | Tool | Version |

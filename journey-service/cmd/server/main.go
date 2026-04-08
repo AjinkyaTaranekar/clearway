@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
+	docs "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/docs"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/client"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/event"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/handler"
@@ -46,6 +49,10 @@ func main() {
 		Level:  cfg.Logging.Level,
 		Format: cfg.Logging.Format,
 	})
+	swaggerBaseURL := os.Getenv("VCS_SWAGGER_PUBLIC_BASE_URL")
+	if err := configureSwaggerFromEnv(swaggerBaseURL); err != nil {
+		log.Warn().Err(err).Str("value", swaggerBaseURL).Msg("invalid swagger public base url; using request host")
+	}
 	log.Info().Msg("starting vcs-journey service")
 
 	// PostgreSQL
@@ -205,4 +212,32 @@ func main() {
 		log.Fatal().Err(err).Msg("server forced to shutdown")
 	}
 	log.Info().Msg("server exited")
+}
+
+func configureSwaggerFromEnv(rawBaseURL string) error {
+	rawBaseURL = strings.TrimSpace(rawBaseURL)
+	if rawBaseURL == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawBaseURL)
+	if err != nil {
+		return fmt.Errorf("parse swagger base url: %w", err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("swagger base url missing host")
+	}
+
+	docs.SwaggerInfo.Host = parsed.Host
+	if parsed.Scheme != "" {
+		docs.SwaggerInfo.Schemes = []string{parsed.Scheme}
+	}
+
+	basePath := strings.TrimRight(parsed.Path, "/")
+	if basePath == "/" {
+		basePath = ""
+	}
+	docs.SwaggerInfo.BasePath = basePath
+
+	return nil
 }

@@ -32,6 +32,7 @@ func NewAdminHandler(
 // @Summary List recent notifications across all drivers (admin only)
 // @Tags Admin
 // @Produce json
+// @Security BearerAuth
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Results per page" default(50)
 // @Param type query string false "Filter by notification type"

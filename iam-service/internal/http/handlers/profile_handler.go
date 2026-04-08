@@ -19,6 +19,16 @@ func NewProfileHandler(profile *service.ProfileService) *ProfileHandler {
 	return &ProfileHandler{profile: profile}
 }
 
+// GetProfile godoc
+// @Summary Get current user profile
+// @Description Returns the authenticated user's profile information.
+// @Tags Profile
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} model.User
+// @Failure 401 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /api/v1/auth/profile [get]
 func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())
@@ -60,6 +70,19 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, user, traceID)
 }
 
+// UpdateProfile godoc
+// @Summary Update current user profile
+// @Description Updates one or more editable profile fields for the authenticated user.
+// @Tags Profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "Profile update payload"
+// @Success 200 {object} model.User
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /api/v1/auth/profile [put]
 func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())

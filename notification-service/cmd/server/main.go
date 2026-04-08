@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
+	docs "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/docs"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/event"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/fcm"
 	httpHandler "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/http"
@@ -26,6 +29,10 @@ import (
 // @termsOfService http://swagger.io/terms/
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer" followed by a space and the JWT token.
 func main() {
 	// Load configuration
 	configPath := "config.yaml"
@@ -40,6 +47,10 @@ func main() {
 		Level:  cfg.Logging.Level,
 		Format: cfg.Logging.Format,
 	})
+	swaggerBaseURL := os.Getenv("VCS_SWAGGER_PUBLIC_BASE_URL")
+	if err := configureSwaggerFromEnv(swaggerBaseURL); err != nil {
+		log.Warn().Err(err).Str("value", swaggerBaseURL).Msg("invalid swagger public base url; using request host")
+	}
 	log.Info().Msg("starting vcs-notification service")
 	baseCtx := logger.WithContext(context.Background(), log)
 
@@ -182,4 +193,32 @@ func main() {
 	}
 
 	log.Info().Msg("server exited")
+}
+
+func configureSwaggerFromEnv(rawBaseURL string) error {
+	rawBaseURL = strings.TrimSpace(rawBaseURL)
+	if rawBaseURL == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawBaseURL)
+	if err != nil {
+		return fmt.Errorf("parse swagger base url: %w", err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("swagger base url missing host")
+	}
+
+	docs.SwaggerInfo.Host = parsed.Host
+	if parsed.Scheme != "" {
+		docs.SwaggerInfo.Schemes = []string{parsed.Scheme}
+	}
+
+	basePath := strings.TrimRight(parsed.Path, "/")
+	if basePath == "/" {
+		basePath = ""
+	}
+	docs.SwaggerInfo.BasePath = basePath
+
+	return nil
 }

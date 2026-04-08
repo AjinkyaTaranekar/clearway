@@ -168,6 +168,7 @@ services:
       VCS_IAM_PRIVATE_KEY_PATH: /run/secrets/iam_private_key
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
+      VCS_SWAGGER_PUBLIC_BASE_URL: ${SWAGGER_PUBLIC_BASE_URL:-http://localhost}
     secrets:
       - source: jwt_secret
         target: /run/secrets/jwt_secret
@@ -220,6 +221,7 @@ services:
       VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       VCS_SERVICES_NOMINATIM_BASE_URL: ${NOMINATIM_BASE_URL:-https://nominatim.openstreetmap.org}
       VCS_SERVICES_OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      VCS_SWAGGER_PUBLIC_BASE_URL: ${SWAGGER_PUBLIC_BASE_URL:-http://localhost}
     networks:
       - vcs-internal
     healthcheck:
@@ -260,6 +262,7 @@ services:
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
+      VCS_SWAGGER_PUBLIC_BASE_URL: ${SWAGGER_PUBLIC_BASE_URL:-http://localhost}
     networks:
       - vcs-internal
     healthcheck:
@@ -306,6 +309,7 @@ services:
       VCS_SERVICES_IAM_URL: http://iam-service:8082
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
+      VCS_SWAGGER_PUBLIC_BASE_URL: ${SWAGGER_PUBLIC_BASE_URL:-http://localhost}
     secrets:
       - source: jwt_secret
         target: /run/secrets/jwt_secret
@@ -353,6 +357,7 @@ services:
       VM_ID: "1"
       FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_credentials
+      VCS_SWAGGER_PUBLIC_BASE_URL: ${SWAGGER_PUBLIC_BASE_URL:-http://localhost}
     secrets:
       - source: firebase_credentials
         target: /run/secrets/firebase_credentials

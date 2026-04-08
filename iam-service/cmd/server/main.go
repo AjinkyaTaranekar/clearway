@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	docs "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/docs"
 	httpHandler "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/http"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/http/handlers"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/internal/repository"
@@ -18,6 +21,16 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/iam-service/pkg/postgres"
 )
 
+// @title IAM Microservice API
+// @version 1.0
+// @description Distributed Vehicle Capacity System — IAM Service. Handles authentication, user profiles, and JWKS.
+// @termsOfService http://swagger.io/terms/
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer" followed by a space and the JWT token.
 func main() {
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
@@ -26,6 +39,10 @@ func main() {
 	}
 
 	log := logger.New(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format})
+	swaggerBaseURL := os.Getenv("VCS_SWAGGER_PUBLIC_BASE_URL")
+	if err := configureSwaggerFromEnv(swaggerBaseURL); err != nil {
+		log.Warn().Err(err).Str("value", swaggerBaseURL).Msg("invalid swagger public base url; using request host")
+	}
 	log.Info().Msg("starting vcs-iam service")
 
 	// --- Database ---
@@ -126,4 +143,32 @@ func main() {
 		log.Fatal().Err(err).Msg("forced shutdown")
 	}
 	log.Info().Msg("server stopped")
+}
+
+func configureSwaggerFromEnv(rawBaseURL string) error {
+	rawBaseURL = strings.TrimSpace(rawBaseURL)
+	if rawBaseURL == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawBaseURL)
+	if err != nil {
+		return fmt.Errorf("parse swagger base url: %w", err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("swagger base url missing host")
+	}
+
+	docs.SwaggerInfo.Host = parsed.Host
+	if parsed.Scheme != "" {
+		docs.SwaggerInfo.Schemes = []string{parsed.Scheme}
+	}
+
+	basePath := strings.TrimRight(parsed.Path, "/")
+	if basePath == "/" {
+		basePath = ""
+	}
+	docs.SwaggerInfo.BasePath = basePath
+
+	return nil
 }

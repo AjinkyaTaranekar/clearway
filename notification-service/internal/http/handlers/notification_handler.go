@@ -41,6 +41,7 @@ func NewNotificationHandler(
 // @Tags Notifications
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Results per page" default(20)
 // @Param read query bool false "Filter by read status"
@@ -127,6 +128,7 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Summary Mark a single notification as read
 // @Tags Notifications
 // @Produce json
+// @Security BearerAuth
 // @Param id path string true "Notification ID"
 // @Success 200 {object} model.MarkReadResponse
 // @Failure 401 {object} response.Response
@@ -206,6 +208,7 @@ func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 // @Summary Mark all notifications as read
 // @Tags Notifications
 // @Produce json
+// @Security BearerAuth
 // @Success 200 {object} model.MarkAllReadResponse
 // @Failure 401 {object} response.Response
 // @Router /api/v1/notifications/read-all [put]
@@ -254,6 +257,7 @@ func (h *NotificationHandler) MarkAllRead(w http.ResponseWriter, r *http.Request
 // @Tags Notifications
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param body body model.RegisterTokenRequest true "Device token"
 // @Success 200 {object} model.RegisterTokenResponse
 // @Failure 400 {object} response.Response

@@ -391,7 +391,10 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 // @Tags Map
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Success 200 {object} TrafficResponse
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
 // @Router /api/v1/map/traffic [get]
 func (h *MapHandler) GetTraffic(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())

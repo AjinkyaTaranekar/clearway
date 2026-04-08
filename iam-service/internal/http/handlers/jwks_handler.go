@@ -15,6 +15,14 @@ func NewJWKSHandler(jwks *service.JWKSService) *JWKSHandler {
 	return &JWKSHandler{jwks: jwks}
 }
 
+// ServeJWKS godoc
+// @Summary Serve JWKS
+// @Description Returns the JSON Web Key Set used to validate IAM-issued JWTs.
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /.well-known/jwks.json [get]
 func (h *JWKSHandler) ServeJWKS(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())

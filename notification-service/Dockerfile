@@ -6,6 +6,9 @@ FROM golang:1.24-alpine AS builder
 # Install build dependencies
 RUN apk add --no-cache git make
 
+# Install swag for Swagger doc generation
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
 # Set working directory
 WORKDIR /app
 
@@ -13,9 +16,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 COPY . .
 
-# Resolve any missing go.sum entries (e.g. GCS packages not yet in go.sum),
-# then download all declared dependencies
-RUN go mod tidy && go mod download
+# Generate Swagger docs, resolve any missing go.sum entries, download deps
+RUN swag init -g cmd/server/main.go -o docs && \
+  go mod tidy && go mod download
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -ldflags="-w -s" -o server ./cmd/server

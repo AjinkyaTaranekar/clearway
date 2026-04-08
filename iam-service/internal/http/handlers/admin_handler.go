@@ -29,6 +29,20 @@ type userListItem struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// ListUsers godoc
+// @Summary List users
+// @Description Returns a paginated user list with optional role filter. Admin only.
+// @Tags Admin
+// @Produce json
+// @Security BearerAuth
+// @Param role query string false "Role filter: driver or admin"
+// @Param page query int false "Page number"
+// @Param limit query int false "Page size (max 100)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Router /api/v1/admin/auth/users [get]
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())
@@ -89,6 +103,18 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, map[string]interface{}{"users": items, "pagination": map[string]int{"page": page, "limit": limit, "total": total}}, traceID)
 }
 
+// GetUser godoc
+// @Summary Get user by ID
+// @Description Fetches a single user by ID. Admin only.
+// @Tags Admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Success 200 {object} userListItem
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /api/v1/admin/auth/users/{id} [get]
 // GetUser fetches a single user by ID using a direct lookup — no table scan.
 func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
@@ -118,6 +144,20 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, userListItem{ID: u.ID, Name: u.Name, Email: u.Email, Role: string(u.Role), VehicleType: string(u.VehicleType), CreatedAt: u.CreatedAt}, traceID)
 }
 
+// PromoteUser godoc
+// @Summary Update a user's role
+// @Description Promotes or demotes a user to driver/admin role. Admin only.
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "Payload with user_id and role"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /api/v1/admin/auth/promote [post]
 func (h *AdminHandler) PromoteUser(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())
@@ -176,6 +216,20 @@ func (h *AdminHandler) PromoteUser(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, map[string]interface{}{"user_id": updated.ID, "new_role": string(updated.Role), "updated_at": updated.UpdatedAt}, traceID)
 }
 
+// ForceLogout godoc
+// @Summary Force logout user
+// @Description Revokes all active refresh sessions for a user. Admin only.
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "Payload with user_id"
+// @Success 204
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /api/v1/admin/auth/force-logout [post]
 func (h *AdminHandler) ForceLogout(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	log := logWithTrace(r.Context())

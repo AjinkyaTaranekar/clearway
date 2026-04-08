@@ -55,6 +55,7 @@ services:
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
+      VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
     depends_on:
       db:
         condition: service_healthy
@@ -85,6 +86,7 @@ services:
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
+      VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
     depends_on:
       db:
         condition: service_healthy
@@ -119,6 +121,7 @@ services:
       VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       VCS_SERVICES_NOMINATIM_BASE_URL: ${NOMINATIM_BASE_URL:-https://nominatim.openstreetmap.org}
       VCS_SERVICES_OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
     depends_on:
       db:
         condition: service_healthy
@@ -156,6 +159,7 @@ services:
       VCS_SERVICES_MAP_URL: http://map-service:8084
       VCS_SERVICES_IAM_URL: http://iam-service:8082
       VCS_LOGGING_LEVEL: info
+      VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
     depends_on:
       db:
         condition: service_healthy
@@ -195,6 +199,7 @@ services:
       JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       VM_ID: "1"
       FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
     depends_on:
       db:
         condition: service_healthy
