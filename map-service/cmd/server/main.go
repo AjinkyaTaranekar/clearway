@@ -88,11 +88,14 @@ func main() {
 		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL),
 		log,
 	)
+	tomtomClient := handlers.NewTomTomClient(cfg.Services.TomTomAPIKey)
+	searchHandler := handlers.NewSearchHandler(tomtomClient, log)
 
 	// Setup router
 	router := httpHandler.NewRouter(
 		healthHandler,
 		mapHandler,
+		searchHandler,
 		log,
 		jwksValidator,
 	)

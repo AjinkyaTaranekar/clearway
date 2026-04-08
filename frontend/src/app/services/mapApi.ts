@@ -12,6 +12,14 @@ interface ApiEnvelope<T> {
   error?: ApiError;
 }
 
+export interface PlaceResult {
+  place_id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
 export interface MapNode {
   node_id: string;
   label: string;
@@ -95,4 +103,15 @@ export async function getRoute(originNodeId: string, destNodeId: string): Promis
 
 export async function getTrafficData(): Promise<TrafficData> {
   return mapFetch<TrafficData>('/api/v1/map/traffic');
+}
+
+// searchPlaces calls our backend TomTom proxy — the API key stays server-side.
+export async function searchPlaces(query: string, limit = 5): Promise<PlaceResult[]> {
+  if (!query.trim()) return [];
+  const q = new URLSearchParams({ q: query, limit: String(limit) });
+  // Search endpoint is public (no auth required for booking flow)
+  const res = await fetch(`${BASE_URL}/api/v1/map/search?${q}`);
+  const json = (await res.json()) as ApiEnvelope<{ places: PlaceResult[] }>;
+  if (!res.ok || json.success === false) return [];
+  return json.data?.places ?? [];
 }

@@ -20,6 +20,14 @@ export default defineConfig({
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
+  // Pre-bundle TomTom SDK so Vite handles its CommonJS format correctly.
+  optimizeDeps: {
+    include: [
+      '@tomtom-international/web-sdk-maps',
+      '@tomtom-international/web-sdk-services',
+    ],
+  },
+
   // Local dev proxy — mirrors Vercel rewrites so relative /api/* calls work
   // without setting VITE_API_URL. Assumes nginx running on localhost:80.
   server: {

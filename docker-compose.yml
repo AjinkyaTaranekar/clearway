@@ -115,6 +115,7 @@ services:
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
+      VCS_SERVICES_TOMTOM_API_KEY: B6eLRq1HJnTAdGD8Zp9DCwLLNK057ol6
     depends_on:
       db:
         condition: service_healthy
