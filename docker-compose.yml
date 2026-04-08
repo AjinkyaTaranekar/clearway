@@ -187,6 +187,7 @@ services:
       VCS_LOGGING_LEVEL: info
       JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       VM_ID: "1"
+      FCM_SERVICE_ACCOUNT_JSON: ""
     depends_on:
       db:
         condition: service_healthy

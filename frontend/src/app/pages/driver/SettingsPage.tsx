@@ -1,7 +1,8 @@
 import { AlertCircle, Bell, Check, ChevronRight, HelpCircle, LogOut, Shield } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import { disablePushNotifications, enablePushNotifications, isPushEnabled } from '../../services/pushNotifications';
 
 export default function SettingsPage() {
   const { user, logout, updateProfile } = useApp();
@@ -11,9 +12,15 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
   const [name, setName] = useState(user?.name || '');
   const [vehicleType, setVehicleType] = useState(user?.vehicle_type || '');
   const [phone, setPhone] = useState(user?.phone || '');
+
+  useEffect(() => {
+    setPushEnabled(isPushEnabled());
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -37,6 +44,26 @@ export default function SettingsPage() {
       setSaveError(err.message ?? 'Failed to save profile. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePushToggle = async () => {
+    setPushBusy(true);
+    setPushError('');
+
+    try {
+      if (pushEnabled) {
+        disablePushNotifications();
+        setPushEnabled(false);
+        return;
+      }
+
+      await enablePushNotifications();
+      setPushEnabled(true);
+    } catch (err: any) {
+      setPushError(err.message ?? 'Failed to enable push notifications.');
+    } finally {
+      setPushBusy(false);
     }
   };
 
@@ -195,9 +222,10 @@ export default function SettingsPage() {
               </div>
             </div>
             <button
-              onClick={() => setPushEnabled(!pushEnabled)}
+              onClick={handlePushToggle}
+              disabled={pushBusy}
               className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
-              style={{ background: pushEnabled ? '#2F6B55' : '#D9D2C7' }}
+              style={{ background: pushEnabled ? '#2F6B55' : '#D9D2C7', opacity: pushBusy ? 0.7 : 1, cursor: pushBusy ? 'not-allowed' : 'pointer' }}
               role="switch"
               aria-checked={pushEnabled}
             >
@@ -229,6 +257,16 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {pushError && (
+          <div
+            className="mt-4 p-3 rounded-lg text-sm flex items-center gap-2"
+            style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }}
+          >
+            <AlertCircle size={15} />
+            {pushError}
+          </div>
+        )}
 
         {!pushEnabled && (
           <div
