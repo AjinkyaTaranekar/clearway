@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const migrationNamespace = "capacity-service"
+
 // RunMigrations applies pending *.sql files in lexical order.
 func RunMigrations(db *sql.DB, migrationsDir string) error {
 	_, err := db.Exec(`
@@ -38,10 +40,12 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 	sort.Strings(files)
 
 	for _, filename := range files {
+		migrationKey := migrationNamespace + "/" + filename
+
 		var alreadyApplied int
 		if err := db.QueryRow(
 			`SELECT COUNT(*) FROM public.schema_migrations WHERE filename = $1`,
-			filename,
+			migrationKey,
 		).Scan(&alreadyApplied); err != nil {
 			return fmt.Errorf("migrations: check %s: %w", filename, err)
 		}
@@ -60,7 +64,7 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 
 		if _, err := db.Exec(
 			`INSERT INTO public.schema_migrations (filename) VALUES ($1)`,
-			filename,
+			migrationKey,
 		); err != nil {
 			return fmt.Errorf("migrations: record %s: %w", filename, err)
 		}
