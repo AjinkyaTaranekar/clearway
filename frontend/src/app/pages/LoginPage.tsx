@@ -5,6 +5,18 @@ import { useApp } from '../context/AppContext';
 
 type Mode = 'login' | 'register';
 const VEHICLE_TYPES = ['car', 'van', 'truck', 'motorcycle'] as const;
+const DEMO_CREDENTIALS = {
+  driver: {
+    label: 'Driver demo',
+    email: 'ajinkyataranekar26@gmail.com',
+    password: 'test1234',
+  },
+  admin: {
+    label: 'Admin demo',
+    email: 'admin@local.vcs',
+    password: 'admin123',
+  },
+} as const;
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -51,6 +63,13 @@ export default function LoginPage() {
 
   const onSwitch = (m: Mode) => {
     setMode(m);
+    setErrors({});
+  };
+
+  const applyDemoCredentials = (demo: (typeof DEMO_CREDENTIALS)[keyof typeof DEMO_CREDENTIALS]) => {
+    setMode('login');
+    setEmail(demo.email);
+    setPassword(demo.password);
     setErrors({});
   };
 
@@ -145,6 +164,33 @@ export default function LoginPage() {
 
           {mode === 'login' ? (
             <form onSubmit={handleLogin} noValidate>
+              <div
+                className="mb-4 p-3 rounded-lg"
+                style={{ background: '#F0EDE7', border: '1px dashed var(--border)' }}
+              >
+                <div style={{ color: '#1F2421', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.625rem' }}>
+                  Quick demo access
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.values(DEMO_CREDENTIALS).map((demo) => (
+                    <button
+                      key={demo.label}
+                      type="button"
+                      onClick={() => applyDemoCredentials(demo)}
+                      className="w-full py-2 rounded-lg text-sm transition-all duration-150"
+                      style={{
+                        border: '1px solid var(--border)',
+                        background: 'white',
+                        color: '#1F2421',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {demo.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <div>
                   <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
