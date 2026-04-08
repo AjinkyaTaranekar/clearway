@@ -1,5 +1,5 @@
 {
-  "name": "@figma/my-make-file",
+  "name": "@tcd/clearway",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -47,6 +47,7 @@
     "cmdk": "1.1.1",
     "date-fns": "3.6.0",
     "embla-carousel-react": "8.6.0",
+    "firebase": "^12.11.0",
     "input-otp": "1.4.2",
     "lodash-es": "^4.18.1",
     "lucide-react": "0.487.0",

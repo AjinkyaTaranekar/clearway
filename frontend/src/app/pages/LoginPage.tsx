@@ -30,6 +30,7 @@ export default function LoginPage() {
 
   const [name, setName] = useState('');
   const [vehicleType, setVehicleType] = useState<string>('car');
+  const [licenseRegion, setLicenseRegion] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -58,6 +59,7 @@ export default function LoginPage() {
     else if (!/[a-zA-Z]/.test(password) || !/\d/.test(password))
       e.password = 'Min 8 characters, at least 1 letter and 1 digit.';
     if (!licenseNumber.trim()) e.licenseNumber = 'License number is required.';
+    if (!licenseRegion.trim()) e.licenseRegion = 'License region is required.';
     return e;
   };
 
@@ -72,6 +74,7 @@ export default function LoginPage() {
     setMode('login');
     setEmail(demo.email);
     setPassword(demo.password);
+    setLicenseRegion('');
     setErrors({});
 
     setLoading(true);
@@ -119,9 +122,17 @@ export default function LoginPage() {
     const errs = validateRegister();
     if (Object.keys(errs).length) return setErrors(errs);
     setErrors({});
+
     setLoading(true);
     try {
-      const role = await register({ name, email, password, vehicleType, licenseNumber });
+      const role = await register({
+        name,
+        email,
+        password,
+        vehicleType,
+        licenseNumber,
+        licenseRegion,
+      });
       navigate(role === 'admin' ? '/admin' : '/driver');
     } catch (err: any) {
       setErrors({ form: err.message ?? 'Registration failed. Please try again.' });
@@ -361,6 +372,25 @@ export default function LoginPage() {
 
                 <div>
                   <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
+                    License region
+                  </label>
+                  <input
+                    type="text"
+                    value={licenseRegion}
+                    onChange={(e) => setLicenseRegion(e.target.value)}
+                    placeholder="CA / NSW / MH"
+                    className="w-full px-3.5 py-2.5 rounded-lg outline-none transition-all"
+                    style={inputStyle('licenseRegion')}
+                    onFocus={onFocus}
+                    onBlur={onBlurField('licenseRegion')}
+                  />
+                  {errors.licenseRegion && (
+                    <p className="mt-1.5 text-sm" style={{ color: '#B42318' }}>{errors.licenseRegion}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
                     License number
                   </label>
                   <input
@@ -377,6 +407,20 @@ export default function LoginPage() {
                     <p className="mt-1.5 text-sm" style={{ color: '#B42318' }}>{errors.licenseNumber}</p>
                   )}
                 </div>
+
+                {(licenseRegion.trim() || licenseNumber.trim()) && (
+                  <div className="rounded-lg p-3" style={{ background: '#F0EDE7', border: '1px solid var(--border)' }}>
+                    <div style={{ color: '#1F2421', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '4px' }}>
+                      License preview
+                    </div>
+                    <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
+                      Region: {licenseRegion.trim() || '—'}
+                    </div>
+                    <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
+                      Number: {licenseNumber.trim() || '—'}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button

@@ -37,3 +37,29 @@ export function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, '=');
+    const json = atob(padded);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+// Returns true when the JWT is already expired or about to expire soon.
+export function isAccessTokenExpired(token: string, skewSeconds = 30): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return true;
+
+  const exp = payload.exp;
+  if (typeof exp !== 'number') return true;
+
+  const now = Math.floor(Date.now() / 1000);
+  return exp <= now + skewSeconds;
+}

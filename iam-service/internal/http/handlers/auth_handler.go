@@ -42,6 +42,12 @@ type authResponse struct {
 		Email       string `json:"email"`
 		Role        string `json:"role"`
 		VehicleType string `json:"vehicle_type"`
+		LicenseInfo struct {
+			LicenseNumber       string `json:"license_number"`
+			ExpiryDate          string `json:"expiry_date,omitempty"`
+			Class               string `json:"class,omitempty"`
+			IssuingJurisdiction string `json:"issuing_jurisdiction,omitempty"`
+		} `json:"license_info"`
 	} `json:"user"`
 }
 
@@ -322,6 +328,10 @@ func buildAuthResp(result *service.AuthResult) authResponse {
 	resp.User.Email = result.User.Email
 	resp.User.Role = string(result.User.Role)
 	resp.User.VehicleType = string(result.User.VehicleType)
+	resp.User.LicenseInfo.LicenseNumber = result.User.LicenseInfo.LicenseNumber
+	resp.User.LicenseInfo.ExpiryDate = result.User.LicenseInfo.ExpiryDate
+	resp.User.LicenseInfo.Class = result.User.LicenseInfo.Class
+	resp.User.LicenseInfo.IssuingJurisdiction = result.User.LicenseInfo.IssuingJurisdiction
 	return resp
 }
 

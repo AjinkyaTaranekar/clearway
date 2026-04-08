@@ -14,6 +14,12 @@ export interface AuthUser {
   email: string;
   role: 'driver' | 'admin';
   vehicle_type: string;
+  license_info?: {
+    license_number?: string;
+    expiry_date?: string;
+    class?: string;
+    issuing_jurisdiction?: string;
+  };
 }
 
 export interface AuthTokens {
@@ -43,8 +49,9 @@ export interface RegisterParams {
   vehicle_type: string;
   license_info: {
     license_number: string;
-    license_state?: string;
+    issuing_jurisdiction?: string;
     expiry_date?: string;
+    class?: string;
   };
 }
 

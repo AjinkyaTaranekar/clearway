@@ -1,8 +1,15 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Journey, JourneyStatus, Notification } from '../types';
-import { clearTokens, getRefreshToken, getToken, storeTokens } from '../services/auth';
-import { iamLogin, iamLogout, iamRegister, iamUpdateProfile, RegisterParams } from '../services/iamApi';
+import { clearTokens, getRefreshToken, getToken, isAccessTokenExpired, storeTokens } from '../services/auth';
+import {
+  iamLogin,
+  iamLogout,
+  iamRefresh,
+  iamRegister,
+  iamUpdateProfile,
+  RegisterParams,
+} from '../services/iamApi';
 import * as api from '../services/journeyApi';
 import * as notifApi from '../services/notificationApi';
 import { syncPushRegistrationIfEnabled } from '../services/pushNotifications';
@@ -14,6 +21,8 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  licenseNumber?: string;
+  licenseRegion?: string;
   phone?: string;
   vehicleId?: string;
   vehicle_type?: string;
@@ -43,6 +52,7 @@ export interface RegisterData {
   password: string;
   vehicleType: string;
   licenseNumber: string;
+  licenseRegion?: string;
 }
 
 interface AppContextType {
@@ -138,6 +148,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     load();
   }, [user?.id, user?.role]);
 
+  useEffect(() => {
+    if (!user) return;
+    void syncPushRegistrationIfEnabled().catch(() => undefined);
+  }, [user?.id]);
+
   // -------------------------------------------------------------------------
   // Auth
   // -------------------------------------------------------------------------
@@ -151,10 +166,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       email: tokens.user.email,
       role: tokens.user.role as UserRole,
       vehicle_type: tokens.user.vehicle_type,
+      licenseNumber: tokens.user.license_info?.license_number,
+      licenseRegion: tokens.user.license_info?.issuing_jurisdiction,
     };
     setUser(u);
     localStorage.setItem('cw_user', JSON.stringify(u));
-    void syncPushRegistrationIfEnabled().catch(() => undefined);
     return u.role;
   };
 
@@ -164,7 +180,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       email: data.email,
       password: data.password,
       vehicle_type: data.vehicleType,
-      license_info: { license_number: data.licenseNumber },
+      license_info: {
+        license_number: data.licenseNumber,
+        issuing_jurisdiction: data.licenseRegion,
+      },
     };
     const tokens = await iamRegister(params);
     storeTokens(tokens.access_token, tokens.refresh_token);
@@ -174,10 +193,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       email: tokens.user.email,
       role: tokens.user.role as UserRole,
       vehicle_type: tokens.user.vehicle_type,
+      licenseNumber: tokens.user.license_info?.license_number,
+      licenseRegion: tokens.user.license_info?.issuing_jurisdiction,
     };
     setUser(u);
     localStorage.setItem('cw_user', JSON.stringify(u));
-    void syncPushRegistrationIfEnabled().catch(() => undefined);
     return u.role;
   };
 
@@ -193,8 +213,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('cw_user');
     clearTokens();
 
-    if (accessToken && refreshToken) {
-      try { await iamLogout(accessToken, refreshToken); } catch { /* best-effort */ }
+    if (!refreshToken) return;
+
+    let logoutAccessToken = accessToken;
+    let logoutRefreshToken = refreshToken;
+
+    if (!logoutAccessToken || isAccessTokenExpired(logoutAccessToken)) {
+      try {
+        const refreshed = await iamRefresh(refreshToken);
+        logoutAccessToken = refreshed.access_token;
+        logoutRefreshToken = refreshed.refresh_token;
+      } catch {
+        return;
+      }
+    }
+
+    try {
+      await iamLogout(logoutAccessToken, logoutRefreshToken);
+    } catch {
+      // best-effort remote revoke
     }
   };
 
