@@ -2,6 +2,16 @@
 
 A microservices-based system for managing vehicle journey bookings across road segments.
 
+## Live Deployments
+
+| Region | App | API Docs | Grafana | CockroachDB UI |
+|--------|-----|----------|---------|----------------|
+| EU (eu-west1) | [35.187.121.12](http://35.187.121.12) | [/docs/iam/](http://35.187.121.12/docs/iam/) · [/docs/journey/](http://35.187.121.12/docs/journey/) · [/docs/capacity/](http://35.187.121.12/docs/capacity/) · [/docs/map/](http://35.187.121.12/docs/map/) | [35.187.121.12:3000](http://35.187.121.12:3000) | [35.187.121.12:8080](http://35.187.121.12:8080) |
+| US (us-east1) | [34.138.242.217](http://34.138.242.217) | [/docs/iam/](http://34.138.242.217/docs/iam/) · [/docs/journey/](http://34.138.242.217/docs/journey/) · [/docs/capacity/](http://34.138.242.217/docs/capacity/) · [/docs/map/](http://34.138.242.217/docs/map/) | [34.138.242.217:3000](http://34.138.242.217:3000) | [34.138.242.217:8080](http://34.138.242.217:8080) |
+| APAC (asia-east1) | [34.80.180.64](http://34.80.180.64) | [/docs/iam/](http://34.80.180.64/docs/iam/) · [/docs/journey/](http://34.80.180.64/docs/journey/) · [/docs/capacity/](http://34.80.180.64/docs/capacity/) · [/docs/map/](http://34.80.180.64/docs/map/) | [34.80.180.64:3000](http://34.80.180.64:3000) | [34.80.180.64:8080](http://34.80.180.64:8080) |
+
+---
+
 ## Prerequisites
 
 | Tool | Version |
