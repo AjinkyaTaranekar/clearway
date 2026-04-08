@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/logger"
 )
 
 const (
@@ -19,15 +21,17 @@ const (
 type TomTomClient struct {
 	apiKey  string
 	httpCli *http.Client
+	log     *logger.Logger
 }
 
 // NewTomTomClient creates a new TomTomClient.
-func NewTomTomClient(apiKey string) *TomTomClient {
+func NewTomTomClient(apiKey string, log *logger.Logger) *TomTomClient {
 	return &TomTomClient{
 		apiKey: apiKey,
 		httpCli: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		log: log,
 	}
 }
 
@@ -62,6 +66,16 @@ type tomtomSearchResponse struct {
 
 // FuzzySearch calls the TomTom Fuzzy Search endpoint and returns up to limit results.
 func (c *TomTomClient) FuzzySearch(ctx context.Context, query string, limit int) ([]PlaceResult, error) {
+	requestLog := logWithTrace(ctx)
+	if c != nil && c.log != nil {
+		requestLog = c.log
+	}
+	requestLog.Debug().
+		Str("client", "TomTomClient.FuzzySearch").
+		Str("query", query).
+		Int("limit", limit).
+		Msg("calling TomTom fuzzy search")
+
 	if c.apiKey == "" {
 		return nil, fmt.Errorf("TOMTOM_API_KEY not configured")
 	}
@@ -82,16 +96,28 @@ func (c *TomTomClient) FuzzySearch(ctx context.Context, query string, limit int)
 
 	resp, err := c.httpCli.Do(req)
 	if err != nil {
+		requestLog.Error().
+			Str("client", "TomTomClient.FuzzySearch").
+			Err(err).
+			Msg("TomTom fuzzy search request failed")
 		return nil, fmt.Errorf("tomtom search: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		requestLog.Error().
+			Str("client", "TomTomClient.FuzzySearch").
+			Int("status_code", resp.StatusCode).
+			Msg("TomTom fuzzy search returned non-200 status")
 		return nil, fmt.Errorf("tomtom search HTTP %d", resp.StatusCode)
 	}
 
 	var raw tomtomSearchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		requestLog.Error().
+			Str("client", "TomTomClient.FuzzySearch").
+			Err(err).
+			Msg("failed to decode TomTom fuzzy search response")
 		return nil, fmt.Errorf("decode tomtom search: %w", err)
 	}
 
@@ -113,6 +139,11 @@ func (c *TomTomClient) FuzzySearch(ctx context.Context, query string, limit int)
 			Lng:     r.Position.Lon,
 		})
 	}
+	requestLog.Debug().
+		Str("client", "TomTomClient.FuzzySearch").
+		Str("query", query).
+		Int("result_count", len(out)).
+		Msg("TomTom fuzzy search completed")
 	return out, nil
 }
 
@@ -124,18 +155,18 @@ type RoutePoint struct {
 
 // RouteResult holds the summary of a TomTom routing response.
 type RouteResult struct {
-	DistanceMeters   int
-	DurationSeconds  int
+	DistanceMeters  int
+	DurationSeconds int
 	// Points is the decoded polyline as [lat, lng] pairs.
-	Points           [][2]float64
+	Points [][2]float64
 }
 
 // tomtomRouteResponse mirrors the relevant parts of the TomTom routing JSON.
 type tomtomRouteResponse struct {
 	Routes []struct {
 		Summary struct {
-			LengthInMeters         int `json:"lengthInMeters"`
-			TravelTimeInSeconds    int `json:"travelTimeInSeconds"`
+			LengthInMeters      int `json:"lengthInMeters"`
+			TravelTimeInSeconds int `json:"travelTimeInSeconds"`
 		} `json:"summary"`
 		Legs []struct {
 			Points []struct {
@@ -148,6 +179,18 @@ type tomtomRouteResponse struct {
 
 // GetRoute calls the TomTom Calculate Route endpoint and returns the best route.
 func (c *TomTomClient) GetRoute(ctx context.Context, origin, dest RoutePoint) (*RouteResult, error) {
+	requestLog := logWithTrace(ctx)
+	if c != nil && c.log != nil {
+		requestLog = c.log
+	}
+	requestLog.Debug().
+		Str("client", "TomTomClient.GetRoute").
+		Float64("origin_lat", origin.Lat).
+		Float64("origin_lng", origin.Lng).
+		Float64("destination_lat", dest.Lat).
+		Float64("destination_lng", dest.Lng).
+		Msg("calling TomTom route API")
+
 	if c.apiKey == "" {
 		return nil, fmt.Errorf("TOMTOM_API_KEY not configured")
 	}
@@ -166,20 +209,33 @@ func (c *TomTomClient) GetRoute(ctx context.Context, origin, dest RoutePoint) (*
 
 	resp, err := c.httpCli.Do(req)
 	if err != nil {
+		requestLog.Error().
+			Str("client", "TomTomClient.GetRoute").
+			Err(err).
+			Msg("TomTom route request failed")
 		return nil, fmt.Errorf("tomtom route: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		requestLog.Error().
+			Str("client", "TomTomClient.GetRoute").
+			Int("status_code", resp.StatusCode).
+			Msg("TomTom route returned non-200 status")
 		return nil, fmt.Errorf("tomtom route HTTP %d", resp.StatusCode)
 	}
 
 	var raw tomtomRouteResponse
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		requestLog.Error().
+			Str("client", "TomTomClient.GetRoute").
+			Err(err).
+			Msg("failed to decode TomTom route response")
 		return nil, fmt.Errorf("decode tomtom route: %w", err)
 	}
 
 	if len(raw.Routes) == 0 {
+		requestLog.Warn().Str("client", "TomTomClient.GetRoute").Msg("TomTom route response had no routes")
 		return nil, fmt.Errorf("no routes returned")
 	}
 
@@ -193,5 +249,11 @@ func (c *TomTomClient) GetRoute(ctx context.Context, origin, dest RoutePoint) (*
 			result.Points = append(result.Points, [2]float64{pt.Latitude, pt.Longitude})
 		}
 	}
+	requestLog.Debug().
+		Str("client", "TomTomClient.GetRoute").
+		Int("distance_meters", result.DistanceMeters).
+		Int("duration_seconds", result.DurationSeconds).
+		Int("point_count", len(result.Points)).
+		Msg("TomTom route call completed")
 	return result, nil
 }

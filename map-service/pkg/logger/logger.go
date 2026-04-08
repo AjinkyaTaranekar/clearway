@@ -38,6 +38,7 @@ func New(cfg Config) *Logger {
 		Timestamp().
 		Caller().
 		Logger()
+	log.Logger = logger
 
 	return &Logger{Logger: &logger}
 }

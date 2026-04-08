@@ -23,7 +23,7 @@ const (
 	blockDuration = 5 * time.Second
 	// Pending messages older than this are reclaimed from crashed consumers.
 	pendingIdleThreshold = 60 * time.Second
-	maxDeliveryAttempts   = 3
+	maxDeliveryAttempts  = 3
 )
 
 // Consumer reads journey events from a Redis Stream and persists notifications.
@@ -195,8 +195,8 @@ func (c *Consumer) dispatchPush(ctx context.Context, n *model.Notification) {
 	}
 
 	var (
-		lastErr       string
-		highestRetry  int
+		lastErr        string
+		highestRetry   int
 		atLeastOneSent bool
 	)
 

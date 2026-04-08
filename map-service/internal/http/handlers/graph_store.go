@@ -35,21 +35,53 @@ func NewGraphStore(log *logger.Logger) *GraphStore {
 	return store
 }
 
+func (s *GraphStore) loggerFor(ctx context.Context) *logger.Logger {
+	if log := logger.FromContext(ctx); log != nil {
+		return log
+	}
+	if s.log != nil {
+		return s.log
+	}
+	return logger.Global()
+}
+
 func (s *GraphStore) LoadFromDB(ctx context.Context, db *sql.DB) error {
+	log := s.loggerFor(ctx)
+	log.Info().
+		Str("component", "GraphStore.LoadFromDB").
+		Msg("loading map graph from database")
+
 	if db == nil {
-		return fmt.Errorf("graph load: database connection is nil")
+		err := fmt.Errorf("graph load: database connection is nil")
+		log.Error().
+			Str("component", "GraphStore.LoadFromDB").
+			Err(err).
+			Msg("graph load failed")
+		return err
 	}
 
 	nodes, err := loadNodes(ctx, db)
 	if err != nil {
+		log.Error().
+			Str("component", "GraphStore.LoadFromDB").
+			Err(err).
+			Msg("graph load failed while loading nodes")
 		return err
 	}
 	segments, err := loadSegments(ctx, db)
 	if err != nil {
+		log.Error().
+			Str("component", "GraphStore.LoadFromDB").
+			Err(err).
+			Msg("graph load failed while loading segments")
 		return err
 	}
 	edges, err := buildEdgesFromSegments(nodes, segments)
 	if err != nil {
+		log.Error().
+			Str("component", "GraphStore.LoadFromDB").
+			Err(err).
+			Msg("graph load failed while building edges")
 		return err
 	}
 
@@ -66,12 +98,12 @@ func (s *GraphStore) LoadFromDB(ctx context.Context, db *sql.DB) error {
 	}
 	s.mu.Unlock()
 
-	if s.log != nil {
-		s.log.Info().
-			Int("node_count", len(nodes)).
-			Int("segment_count", len(segments)).
-			Msg("map graph loaded from database")
-	}
+	log.Info().
+		Str("component", "GraphStore.LoadFromDB").
+		Int("node_count", len(nodes)).
+		Int("segment_count", len(segments)).
+		Int("edge_count", len(edges)).
+		Msg("map graph loaded from database")
 
 	return nil
 }
@@ -105,7 +137,11 @@ func (s *GraphStore) useFallback(err error) {
 		if err != nil {
 			event = event.Err(err)
 		}
-		event.Msg("using fallback in-memory graph")
+		event.
+			Int("node_count", len(graph.Nodes)).
+			Int("segment_count", len(graph.Segments)).
+			Int("edge_count", len(graph.Edges)).
+			Msg("using fallback in-memory graph")
 	}
 }
 

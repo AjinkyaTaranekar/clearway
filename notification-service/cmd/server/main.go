@@ -41,6 +41,7 @@ func main() {
 		Format: cfg.Logging.Format,
 	})
 	log.Info().Msg("starting vcs-notification service")
+	baseCtx := logger.WithContext(context.Background(), log)
 
 	// Initialize database connections
 	dbPools, err := postgres.NewConnectionPools(
@@ -95,7 +96,7 @@ func main() {
 			Password: cfg.Redis.Password,
 			DB:       cfg.Redis.DB,
 		})
-		pingCtx, pingCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		pingCtx, pingCancel := context.WithTimeout(baseCtx, 3*time.Second)
 		if err := redisClient.Ping(pingCtx).Err(); err != nil {
 			log.Warn().Err(err).Msg("Redis ping failed — stream consumer disabled")
 			redisClient = nil
@@ -124,7 +125,7 @@ func main() {
 	mux := router.Setup()
 
 	// Start Redis Streams consumer in background (only when Redis is available)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(baseCtx)
 	defer cancel()
 
 	if redisClient != nil {
@@ -169,7 +170,7 @@ func main() {
 	cancel()
 
 	// Graceful HTTP shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {

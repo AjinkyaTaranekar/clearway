@@ -40,9 +40,18 @@ func NewSearchHandler(tomtom *TomTomClient, log *logger.Logger) *SearchHandler {
 // @Router       /api/v1/map/search [get]
 func (h *SearchHandler) SearchPlaces(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "SearchHandler.SearchPlaces").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("search places request received")
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
+		log.Warn().
+			Str("handler", "SearchHandler.SearchPlaces").
+			Msg("search validation failed: query missing")
 		response.Error(w, appErrors.BadRequest("query parameter 'q' is required"), traceID)
 		return
 	}
@@ -54,12 +63,28 @@ func (h *SearchHandler) SearchPlaces(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	log.Info().
+		Str("handler", "SearchHandler.SearchPlaces").
+		Str("query", query).
+		Int("limit", limit).
+		Msg("calling TomTom fuzzy search")
+
 	places, err := h.tomtom.FuzzySearch(r.Context(), query, limit)
 	if err != nil {
-		h.log.Error().Err(err).Str("query", query).Msg("TomTom search failed")
+		log.Error().
+			Str("handler", "SearchHandler.SearchPlaces").
+			Err(err).
+			Str("query", query).
+			Msg("TomTom search failed")
 		response.Error(w, appErrors.InternalError("place search failed", err), traceID)
 		return
 	}
+
+	log.Info().
+		Str("handler", "SearchHandler.SearchPlaces").
+		Str("query", query).
+		Int("result_count", len(places)).
+		Msg("search places request completed")
 
 	response.Success(w, map[string]interface{}{
 		"places": places,

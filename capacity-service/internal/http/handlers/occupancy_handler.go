@@ -30,16 +30,30 @@ func NewOccupancyHandler(svc *service.ReservationService, log *logger.Logger) *O
 // @Router       /api/v1/capacity/segments [get]
 func (h *OccupancyHandler) Segments(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "OccupancyHandler.Segments").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("segments listing request received")
 
 	segments, err := h.svc.GetAllSegments(r.Context())
 	if err != nil {
-		h.log.Error().Err(err).Str("trace_id", traceID).Msg("segments: service error")
+		log.Error().
+			Str("handler", "OccupancyHandler.Segments").
+			Err(err).
+			Msg("segments listing failed")
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Trace-ID", traceID)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to retrieve segments"})
 		return
 	}
+
+	log.Info().
+		Str("handler", "OccupancyHandler.Segments").
+		Int("segment_count", len(segments)).
+		Msg("segments listing request completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Trace-ID", traceID)
@@ -57,16 +71,30 @@ func (h *OccupancyHandler) Segments(w http.ResponseWriter, r *http.Request) {
 // @Router       /api/v1/capacity/segments/occupancy [get]
 func (h *OccupancyHandler) Occupancy(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "OccupancyHandler.Occupancy").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("occupancy request received")
 
 	infos, err := h.svc.GetOccupancy(r.Context())
 	if err != nil {
-		h.log.Error().Err(err).Str("trace_id", traceID).Msg("occupancy: service error")
+		log.Error().
+			Str("handler", "OccupancyHandler.Occupancy").
+			Err(err).
+			Msg("occupancy request failed")
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Trace-ID", traceID)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to retrieve occupancy data"})
 		return
 	}
+
+	log.Info().
+		Str("handler", "OccupancyHandler.Occupancy").
+		Int("segment_count", len(infos)).
+		Msg("occupancy request completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Trace-ID", traceID)

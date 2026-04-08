@@ -36,6 +36,7 @@ func main() {
 		Format: cfg.Logging.Format,
 	})
 	log.Info().Msg("starting vcs-map service")
+	baseCtx := logger.WithContext(context.Background(), log)
 
 	// Initialize database connections
 	dbPools, err := postgres.NewConnectionPools(
@@ -71,7 +72,7 @@ func main() {
 	log.Info().Msg("database migrations applied")
 
 	graphStore := handlers.NewGraphStore(log)
-	if err := graphStore.LoadFromDB(context.Background(), dbPools.Slave); err != nil {
+	if err := graphStore.LoadFromDB(baseCtx, dbPools.Slave); err != nil {
 		graphStore.UseFallback(err)
 	}
 
@@ -85,10 +86,10 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(graphStore)
 	mapHandler := handlers.NewMapHandler(
 		graphStore,
-		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL),
+		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL, log),
 		log,
 	)
-	tomtomClient := handlers.NewTomTomClient(cfg.Services.TomTomAPIKey)
+	tomtomClient := handlers.NewTomTomClient(cfg.Services.TomTomAPIKey, log)
 	searchHandler := handlers.NewSearchHandler(tomtomClient, log)
 
 	// Setup router
@@ -129,7 +130,7 @@ func main() {
 	log.Info().Msg("shutting down server...")
 
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {

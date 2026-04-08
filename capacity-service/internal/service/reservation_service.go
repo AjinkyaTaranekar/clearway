@@ -53,8 +53,27 @@ func NewReservationService(
 // Reserve atomically reserves capacity across all requested segments.
 // Returns the response body and the HTTP status code to send.
 func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequest) (interface{}, int, error) {
+	log := s.logWithTrace(ctx)
+	if req != nil {
+		log.Info().
+			Str("service", "ReservationService.Reserve").
+			Str("journey_id", req.JourneyID).
+			Str("idempotency_key", req.IdempotencyKey).
+			Str("vehicle_type", string(req.VehicleType)).
+			Int("segment_count", len(req.Reservations)).
+			Msg("starting capacity reservation flow")
+	} else {
+		log.Info().
+			Str("service", "ReservationService.Reserve").
+			Msg("starting capacity reservation flow with nil request")
+	}
+
 	// --- Input validation ---
 	if err := validateReserveRequest(req); err != nil {
+		log.Warn().
+			Str("service", "ReservationService.Reserve").
+			Err(err).
+			Msg("reserve request validation failed")
 		return nil, 400, err
 	}
 
@@ -71,9 +90,19 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 	// --- Fast-path: check idempotency cache before acquiring any locks ---
 	cached, err := s.idempRepo.GetByKey(ctx, req.IdempotencyKey)
 	if err != nil {
+		log.Error().
+			Str("service", "ReservationService.Reserve").
+			Err(err).
+			Str("idempotency_key", req.IdempotencyKey).
+			Msg("idempotency lookup failed")
 		return nil, 500, fmt.Errorf("idempotency lookup failed: %w", err)
 	}
 	if cached != nil {
+		log.Info().
+			Str("service", "ReservationService.Reserve").
+			Str("idempotency_key", req.IdempotencyKey).
+			Str("response_status", cached.ResponseStatus).
+			Msg("idempotency cache hit")
 		return s.replayFromCache(cached)
 	}
 
@@ -83,6 +112,10 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 	// commit — the second will be rolled back with a serialisation error.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
+		log.Error().
+			Str("service", "ReservationService.Reserve").
+			Err(err).
+			Msg("failed to begin serializable transaction")
 		return nil, 500, fmt.Errorf("begin tx: %w", err)
 	}
 	// Deferred rollback is a no-op after a successful Commit.
@@ -107,9 +140,19 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		&recheck.ExpiresAt,
 	)
 	if recheckErr != nil && recheckErr != sql.ErrNoRows {
+		log.Error().
+			Str("service", "ReservationService.Reserve").
+			Err(recheckErr).
+			Str("idempotency_key", req.IdempotencyKey).
+			Msg("idempotency re-check failed")
 		return nil, 500, fmt.Errorf("idempotency re-check: %w", recheckErr)
 	}
 	if recheckErr == nil {
+		log.Info().
+			Str("service", "ReservationService.Reserve").
+			Str("idempotency_key", req.IdempotencyKey).
+			Str("response_status", recheck.ResponseStatus).
+			Msg("idempotency cache found inside transaction")
 		tx.Commit()
 		return s.replayFromCache(&recheck)
 	}
@@ -133,6 +176,10 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 
 		maxCapacity, err := s.segmentRepo.LockForUpdate(ctx, tx, r.SegmentID)
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Warn().
+				Str("service", "ReservationService.Reserve").
+				Str("segment_id", r.SegmentID).
+				Msg("reserve failed: unknown segment")
 			failedSegment = &model.FailedSegment{
 				SegmentID:       r.SegmentID,
 				Reason:          "unknown_segment",
@@ -144,11 +191,21 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			break
 		}
 		if err != nil {
+			log.Error().
+				Str("service", "ReservationService.Reserve").
+				Err(err).
+				Str("segment_id", r.SegmentID).
+				Msg("failed to lock segment for update")
 			return nil, 500, fmt.Errorf("lock segment %s: %w", r.SegmentID, err)
 		}
 
 		currentlyReserved, err := s.reservRepo.SumActiveOverlapping(ctx, tx, r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd)
 		if err != nil {
+			log.Error().
+				Str("service", "ReservationService.Reserve").
+				Err(err).
+				Str("segment_id", r.SegmentID).
+				Msg("failed to calculate overlapping reservations")
 			return nil, 500, fmt.Errorf("sum overlapping %s: %w", r.SegmentID, err)
 		}
 
@@ -157,6 +214,12 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			if available < 0 {
 				available = 0
 			}
+			log.Warn().
+				Str("service", "ReservationService.Reserve").
+				Str("segment_id", r.SegmentID).
+				Float64("available_slots", available).
+				Float64("requested_slots", slotsNeeded).
+				Msg("reserve failed: segment at capacity")
 			failedSegment = &model.FailedSegment{
 				SegmentID:       r.SegmentID,
 				Reason:          "at_capacity",
@@ -172,6 +235,11 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 	// --- Capacity unavailable: rollback and record the failure ---
 	if failedSegment != nil {
 		tx.Rollback()
+		log.Warn().
+			Str("service", "ReservationService.Reserve").
+			Str("segment_id", failedSegment.SegmentID).
+			Str("reason", failedSegment.Reason).
+			Msg("reservation flow completed with capacity failure")
 
 		failResp := &model.ReserveFailResponse{
 			Status:        "failed",
@@ -183,7 +251,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		if cErr := s.idempRepo.InsertOnConflictIgnore(
 			ctx, req.IdempotencyKey, req.JourneyID, nil, "failed", bodyBytes,
 		); cErr != nil {
-			s.log.Warn().Err(cErr).Msg("failed to write failed idempotency cache entry")
+			log.Warn().Err(cErr).Msg("failed to write failed idempotency cache entry")
 		}
 		return failResp, 200, nil
 	}
@@ -201,6 +269,12 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			VehicleType:     req.VehicleType,
 			SlotsUsed:       slotsNeeded,
 		}); err != nil {
+			log.Error().
+				Str("service", "ReservationService.Reserve").
+				Err(err).
+				Str("segment_id", r.SegmentID).
+				Str("reservation_id", reservationID).
+				Msg("failed to insert reservation row")
 			return nil, 500, fmt.Errorf("insert reservation for segment %s: %w", r.SegmentID, err)
 		}
 	}
@@ -219,24 +293,50 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		// Unique violation means another VM committed the same idempotency key first
 		// (race condition during replication lag). Rollback and return the winner's entry.
 		if isUniqueViolation(err) {
+			log.Warn().
+				Str("service", "ReservationService.Reserve").
+				Err(err).
+				Str("idempotency_key", req.IdempotencyKey).
+				Msg("idempotency unique conflict; replaying winner")
 			tx.Rollback()
 			// Retry lookup — may take a moment to replicate; return internal error if still absent.
 			cached, lookupErr := s.idempRepo.GetByKey(ctx, req.IdempotencyKey)
 			if lookupErr != nil || cached == nil {
+				log.Error().
+					Str("service", "ReservationService.Reserve").
+					Err(err).
+					Str("idempotency_key", req.IdempotencyKey).
+					Msg("idempotency conflict unresolved after lookup")
 				return nil, 500, fmt.Errorf("idempotency conflict — entry not yet visible: %w", err)
 			}
 			return s.replayFromCache(cached)
 		}
+		log.Error().
+			Str("service", "ReservationService.Reserve").
+			Err(err).
+			Str("idempotency_key", req.IdempotencyKey).
+			Msg("failed to insert idempotency record in transaction")
 		return nil, 500, fmt.Errorf("insert idempotency cache: %w", err)
 	}
 
 	// --- Commit ---
 	if err := tx.Commit(); err != nil {
+		log.Error().
+			Str("service", "ReservationService.Reserve").
+			Err(err).
+			Str("reservation_id", reservationID).
+			Msg("failed to commit reservation transaction")
 		return nil, 500, fmt.Errorf("commit reservation tx: %w", err)
 	}
 
 	// --- Invalidate availability cache for affected segments ---
 	s.invalidateAvailabilityCache(ctx, reservations)
+	log.Info().
+		Str("service", "ReservationService.Reserve").
+		Str("journey_id", req.JourneyID).
+		Str("reservation_id", reservationID).
+		Int("segment_count", len(reservations)).
+		Msg("capacity reservation flow completed successfully")
 
 	return successResp, 201, nil
 }
@@ -248,6 +348,14 @@ func (s *ReservationService) CheckAvailability(
 	segmentID string,
 	windowStart, windowEnd time.Time,
 ) (*model.CheckResponse, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "ReservationService.CheckAvailability").
+		Str("segment_id", segmentID).
+		Time("window_start", windowStart).
+		Time("window_end", windowEnd).
+		Msg("checking segment availability")
+
 	cacheKey := availabilityCacheKey(segmentID, windowStart, windowEnd)
 
 	// Try Redis cache first.
@@ -255,6 +363,10 @@ func (s *ReservationService) CheckAvailability(
 		if val, err := s.redis.Get(ctx, cacheKey).Bytes(); err == nil {
 			var cached model.CheckResponse
 			if json.Unmarshal(val, &cached) == nil {
+				log.Debug().
+					Str("service", "ReservationService.CheckAvailability").
+					Str("segment_id", segmentID).
+					Msg("availability cache hit")
 				return &cached, nil
 			}
 		}
@@ -263,8 +375,17 @@ func (s *ReservationService) CheckAvailability(
 	maxCap, reserved, err := s.reservRepo.CheckAvailability(ctx, segmentID, windowStart, windowEnd)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Warn().
+				Str("service", "ReservationService.CheckAvailability").
+				Str("segment_id", segmentID).
+				Msg("availability check failed: segment not found")
 			return nil, fmt.Errorf("segment %s not found", segmentID)
 		}
+		log.Error().
+			Str("service", "ReservationService.CheckAvailability").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("availability query failed")
 		return nil, err
 	}
 
@@ -288,25 +409,40 @@ func (s *ReservationService) CheckAvailability(
 		}
 	}
 
+	log.Info().
+		Str("service", "ReservationService.CheckAvailability").
+		Str("segment_id", segmentID).
+		Float64("available_slots", resp.AvailableSlots).
+		Float64("reserved_slots", resp.ReservedSlots).
+		Float64("max_capacity", resp.MaxCapacity).
+		Bool("can_reserve", resp.CanReserve).
+		Msg("availability check completed")
+
 	return resp, nil
 }
 
 // GetOccupancy returns current occupancy info for all segments plus a trend indicator.
 func (s *ReservationService) GetOccupancy(ctx context.Context) ([]model.OccupancyInfo, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "ReservationService.GetOccupancy").Msg("building occupancy snapshot")
+
 	now := time.Now().UTC()
 	prev := now.Add(-15 * time.Minute)
 
 	segments, err := s.segmentRepo.GetAll(ctx)
 	if err != nil {
+		log.Error().Str("service", "ReservationService.GetOccupancy").Err(err).Msg("failed to load segments")
 		return nil, err
 	}
 
 	currentMap, err := s.reservRepo.SumActiveAtTime(ctx, now)
 	if err != nil {
+		log.Error().Str("service", "ReservationService.GetOccupancy").Err(err).Msg("failed to load current occupancy")
 		return nil, err
 	}
 	prevMap, err := s.reservRepo.SumActiveAtTime(ctx, prev)
 	if err != nil {
+		log.Error().Str("service", "ReservationService.GetOccupancy").Err(err).Msg("failed to load previous occupancy")
 		return nil, err
 	}
 
@@ -337,6 +473,10 @@ func (s *ReservationService) GetOccupancy(ctx context.Context) ([]model.Occupanc
 			Trend:           trend,
 		})
 	}
+	log.Info().
+		Str("service", "ReservationService.GetOccupancy").
+		Int("segment_count", len(infos)).
+		Msg("occupancy snapshot built")
 	return infos, nil
 }
 
@@ -345,18 +485,39 @@ func (s *ReservationService) GetOccupancy(ctx context.Context) ([]model.Occupanc
 // This is the canonical segment-ID source of truth consumed by Map Service on
 // startup for XC-02 alignment validation.
 func (s *ReservationService) GetAllSegments(ctx context.Context) ([]model.Segment, error) {
-	return s.segmentRepo.GetAll(ctx)
+	log := s.logWithTrace(ctx)
+	log.Info().Str("service", "ReservationService.GetAllSegments").Msg("listing all segments")
+
+	segments, err := s.segmentRepo.GetAll(ctx)
+	if err != nil {
+		log.Error().Str("service", "ReservationService.GetAllSegments").Err(err).Msg("failed to list segments")
+		return nil, err
+	}
+	log.Info().Str("service", "ReservationService.GetAllSegments").Int("segment_count", len(segments)).Msg("listed all segments")
+	return segments, nil
 }
 
 // InvalidateCacheForJourney removes availability cache entries for the segments
 // that were just released. Called by the event consumer after a release.
 func (s *ReservationService) InvalidateCacheForJourney(ctx context.Context, affected []model.SegmentReservation) {
+	log := s.logWithTrace(ctx)
+	log.Debug().
+		Str("service", "ReservationService.InvalidateCacheForJourney").
+		Int("segment_count", len(affected)).
+		Msg("invalidating availability cache for journey")
 	s.invalidateAvailabilityCache(ctx, affected)
 }
 
 // --- helpers ---
 
 func (s *ReservationService) replayFromCache(entry *model.IdempotencyCache) (interface{}, int, error) {
+	log := s.logWithTrace(context.Background())
+	log.Debug().
+		Str("service", "ReservationService.replayFromCache").
+		Str("idempotency_key", entry.IdempotencyKey).
+		Str("response_status", entry.ResponseStatus).
+		Msg("replaying cached reservation response")
+
 	if entry.ResponseStatus == "reserved" {
 		var resp model.ReserveSuccessResponse
 		if err := json.Unmarshal(entry.ResponseBody, &resp); err != nil {
@@ -372,7 +533,11 @@ func (s *ReservationService) replayFromCache(entry *model.IdempotencyCache) (int
 }
 
 func (s *ReservationService) invalidateAvailabilityCache(ctx context.Context, reservations []model.SegmentReservation) {
+	log := s.logWithTrace(ctx)
 	if s.redis == nil {
+		log.Debug().
+			Str("service", "ReservationService.invalidateAvailabilityCache").
+			Msg("cache invalidation skipped: redis disabled")
 		return
 	}
 	keys := make([]string, 0, len(reservations))
@@ -380,11 +545,19 @@ func (s *ReservationService) invalidateAvailabilityCache(ctx context.Context, re
 		keys = append(keys, availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd))
 	}
 	if len(keys) == 0 {
+		log.Debug().
+			Str("service", "ReservationService.invalidateAvailabilityCache").
+			Msg("cache invalidation skipped: no keys")
 		return
 	}
 	if err := s.redis.Del(ctx, keys...).Err(); err != nil {
-		s.log.Warn().Err(err).Strs("keys", keys).Msg("failed to invalidate availability cache")
+		log.Warn().Err(err).Strs("keys", keys).Msg("failed to invalidate availability cache")
+		return
 	}
+	log.Debug().
+		Str("service", "ReservationService.invalidateAvailabilityCache").
+		Int("key_count", len(keys)).
+		Msg("availability cache invalidated")
 }
 
 func availabilityCacheKey(segmentID string, start, end time.Time) string {

@@ -29,6 +29,14 @@ func (r *ReservationRepo) SumActiveOverlapping(
 	segmentID string,
 	windowStart, windowEnd time.Time,
 ) (float64, error) {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "ReservationRepo.SumActiveOverlapping").
+		Str("segment_id", segmentID).
+		Time("window_start", windowStart).
+		Time("window_end", windowEnd).
+		Msg("summing active overlapping reservations")
+
 	const q = `
 		SELECT COALESCE(SUM(slots_used), 0.0)
 		FROM capacity.reservations
@@ -40,13 +48,32 @@ func (r *ReservationRepo) SumActiveOverlapping(
 	var total float64
 	err := tx.QueryRowContext(ctx, q, segmentID, windowStart, windowEnd).Scan(&total)
 	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.SumActiveOverlapping").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("failed to sum active overlapping reservations")
 		return 0, fmt.Errorf("reservation_repo.SumActiveOverlapping(%s): %w", segmentID, err)
 	}
+	log.Debug().
+		Str("repository", "ReservationRepo.SumActiveOverlapping").
+		Str("segment_id", segmentID).
+		Float64("reserved_slots", total).
+		Msg("summed active overlapping reservations")
 	return total, nil
 }
 
 // Insert adds one reservation row inside an active transaction.
 func (r *ReservationRepo) Insert(ctx context.Context, tx *sql.Tx, res *model.Reservation) error {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "ReservationRepo.Insert").
+		Str("reservation_id", res.ReservationID).
+		Str("journey_id", res.JourneyID).
+		Str("segment_id", res.SegmentID).
+		Float64("slots_used", res.SlotsUsed).
+		Msg("inserting reservation row")
+
 	const q = `
 		INSERT INTO capacity.reservations
 			(reservation_id, journey_id, segment_id, time_window_start, time_window_end,
@@ -59,14 +86,31 @@ func (r *ReservationRepo) Insert(ctx context.Context, tx *sql.Tx, res *model.Res
 		string(res.VehicleType), res.SlotsUsed,
 	)
 	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.Insert").
+			Err(err).
+			Str("reservation_id", res.ReservationID).
+			Str("segment_id", res.SegmentID).
+			Msg("failed to insert reservation row")
 		return fmt.Errorf("reservation_repo.Insert: %w", err)
 	}
+	log.Debug().
+		Str("repository", "ReservationRepo.Insert").
+		Str("reservation_id", res.ReservationID).
+		Str("segment_id", res.SegmentID).
+		Msg("reservation row inserted")
 	return nil
 }
 
 // ReleaseByJourneyID marks all active reservations for a journey as released
 // and returns the affected (segmentID, windowStart, windowEnd) tuples for cache invalidation.
 func (r *ReservationRepo) ReleaseByJourneyID(ctx context.Context, journeyID string) ([]model.SegmentReservation, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "ReservationRepo.ReleaseByJourneyID").
+		Str("journey_id", journeyID).
+		Msg("releasing reservations by journey id")
+
 	const q = `
 		UPDATE capacity.reservations
 		SET    status = 'released', released_at = NOW()
@@ -75,6 +119,11 @@ func (r *ReservationRepo) ReleaseByJourneyID(ctx context.Context, journeyID stri
 
 	rows, err := r.master.QueryContext(ctx, q, journeyID)
 	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.ReleaseByJourneyID").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("failed to release reservations by journey id")
 		return nil, fmt.Errorf("reservation_repo.ReleaseByJourneyID: %w", err)
 	}
 	defer rows.Close()
@@ -83,16 +132,41 @@ func (r *ReservationRepo) ReleaseByJourneyID(ctx context.Context, journeyID stri
 	for rows.Next() {
 		var sr model.SegmentReservation
 		if err := rows.Scan(&sr.SegmentID, &sr.TimeWindowStart, &sr.TimeWindowEnd); err != nil {
+			log.Error().
+				Str("repository", "ReservationRepo.ReleaseByJourneyID").
+				Err(err).
+				Str("journey_id", journeyID).
+				Msg("failed to scan released reservation row")
 			return nil, fmt.Errorf("reservation_repo.ReleaseByJourneyID scan: %w", err)
 		}
 		affected = append(affected, sr)
 	}
-	return affected, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.ReleaseByJourneyID").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("row iteration failed for released reservations")
+		return nil, err
+	}
+
+	log.Info().
+		Str("repository", "ReservationRepo.ReleaseByJourneyID").
+		Str("journey_id", journeyID).
+		Int("released_count", len(affected)).
+		Msg("released reservations by journey id")
+	return affected, nil
 }
 
 // ReleaseOrphans releases reservations whose time_window_end is older than the given threshold
 // and returns the affected segments for cache invalidation.
 func (r *ReservationRepo) ReleaseOrphans(ctx context.Context, olderThan time.Time) ([]model.SegmentReservation, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "ReservationRepo.ReleaseOrphans").
+		Time("older_than", olderThan).
+		Msg("releasing orphan reservations")
+
 	const q = `
 		UPDATE capacity.reservations
 		SET    status = 'released', released_at = NOW()
@@ -101,6 +175,11 @@ func (r *ReservationRepo) ReleaseOrphans(ctx context.Context, olderThan time.Tim
 
 	rows, err := r.master.QueryContext(ctx, q, olderThan)
 	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.ReleaseOrphans").
+			Err(err).
+			Time("older_than", olderThan).
+			Msg("failed to release orphan reservations")
 		return nil, fmt.Errorf("reservation_repo.ReleaseOrphans: %w", err)
 	}
 	defer rows.Close()
@@ -109,16 +188,38 @@ func (r *ReservationRepo) ReleaseOrphans(ctx context.Context, olderThan time.Tim
 	for rows.Next() {
 		var sr model.SegmentReservation
 		if err := rows.Scan(&sr.SegmentID, &sr.TimeWindowStart, &sr.TimeWindowEnd); err != nil {
+			log.Error().
+				Str("repository", "ReservationRepo.ReleaseOrphans").
+				Err(err).
+				Msg("failed to scan orphan release row")
 			return nil, fmt.Errorf("reservation_repo.ReleaseOrphans scan: %w", err)
 		}
 		affected = append(affected, sr)
 	}
-	return affected, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.ReleaseOrphans").
+			Err(err).
+			Msg("row iteration failed for orphan releases")
+		return nil, err
+	}
+
+	log.Info().
+		Str("repository", "ReservationRepo.ReleaseOrphans").
+		Int("released_count", len(affected)).
+		Msg("orphan reservations released")
+	return affected, nil
 }
 
 // SumActiveAtTime returns slot totals per segment at a specific point in time
 // (used by the occupancy endpoint for trend calculation).
 func (r *ReservationRepo) SumActiveAtTime(ctx context.Context, at time.Time) (map[string]float64, error) {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "ReservationRepo.SumActiveAtTime").
+		Time("at", at).
+		Msg("summing active reservations at point in time")
+
 	const q = `
 		SELECT segment_id, COALESCE(SUM(slots_used), 0.0)
 		FROM capacity.reservations
@@ -129,6 +230,11 @@ func (r *ReservationRepo) SumActiveAtTime(ctx context.Context, at time.Time) (ma
 
 	rows, err := r.slave.QueryContext(ctx, q, at)
 	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.SumActiveAtTime").
+			Err(err).
+			Time("at", at).
+			Msg("failed to query active reservations at time")
 		return nil, fmt.Errorf("reservation_repo.SumActiveAtTime: %w", err)
 	}
 	defer rows.Close()
@@ -138,11 +244,27 @@ func (r *ReservationRepo) SumActiveAtTime(ctx context.Context, at time.Time) (ma
 		var segID string
 		var total float64
 		if err := rows.Scan(&segID, &total); err != nil {
+			log.Error().
+				Str("repository", "ReservationRepo.SumActiveAtTime").
+				Err(err).
+				Msg("failed to scan active reservation aggregate row")
 			return nil, fmt.Errorf("reservation_repo.SumActiveAtTime scan: %w", err)
 		}
 		result[segID] = total
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.SumActiveAtTime").
+			Err(err).
+			Msg("row iteration failed for active reservations at time")
+		return nil, err
+	}
+
+	log.Debug().
+		Str("repository", "ReservationRepo.SumActiveAtTime").
+		Int("segment_count", len(result)).
+		Msg("summed active reservations at point in time")
+	return result, nil
 }
 
 // CheckAvailability returns max_capacity and currently reserved slots for a single
@@ -152,6 +274,14 @@ func (r *ReservationRepo) CheckAvailability(
 	segmentID string,
 	windowStart, windowEnd time.Time,
 ) (maxCapacity, reservedSlots float64, err error) {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "ReservationRepo.CheckAvailability").
+		Str("segment_id", segmentID).
+		Time("window_start", windowStart).
+		Time("window_end", windowEnd).
+		Msg("checking availability aggregates")
+
 	const q = `
 		SELECT s.max_capacity, COALESCE(SUM(res.slots_used), 0.0) AS reserved_slots
 		FROM capacity.segments s
@@ -166,7 +296,18 @@ func (r *ReservationRepo) CheckAvailability(
 	err = r.slave.QueryRowContext(ctx, q, segmentID, windowStart, windowEnd).
 		Scan(&maxCapacity, &reservedSlots)
 	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.CheckAvailability").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("failed to check availability aggregates")
 		return 0, 0, fmt.Errorf("reservation_repo.CheckAvailability(%s): %w", segmentID, err)
 	}
+	log.Debug().
+		Str("repository", "ReservationRepo.CheckAvailability").
+		Str("segment_id", segmentID).
+		Float64("max_capacity", maxCapacity).
+		Float64("reserved_slots", reservedSlots).
+		Msg("checked availability aggregates")
 	return maxCapacity, reservedSlots, nil
 }

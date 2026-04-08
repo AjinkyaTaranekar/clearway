@@ -43,8 +43,19 @@ func NewAdminHandler(
 // @Router /api/v1/admin/notifications [get]
 func (h *AdminHandler) ListAll(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "AdminHandler.ListAll").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("admin list notifications request received")
+
 	role := GetUserRole(r.Context())
 	if role != "admin" {
+		log.Warn().
+			Str("handler", "AdminHandler.ListAll").
+			Str("role", role).
+			Msg("admin list notifications denied: non-admin role")
 		response.Error(w, errors.Forbidden("Admin access required"), traceID)
 		return
 	}
@@ -63,9 +74,21 @@ func (h *AdminHandler) ListAll(w http.ResponseWriter, r *http.Request) {
 		filter.Page = 1
 	}
 
+	log.Info().
+		Str("handler", "AdminHandler.ListAll").
+		Str("driver_id_filter", filter.DriverID).
+		Str("type_filter", filter.TypeFilter).
+		Str("delivery_status_filter", filter.DeliveryStatus).
+		Int("page", filter.Page).
+		Int("limit", filter.Limit).
+		Msg("invoking admin notification list")
+
 	notifications, total, err := h.notifRepo.ListAll(r.Context(), filter)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("failed to list admin notifications")
+		log.Error().
+			Str("handler", "AdminHandler.ListAll").
+			Err(err).
+			Msg("failed to list admin notifications")
 		response.Error(w, errors.InternalError("Failed to list notifications", err), traceID)
 		return
 	}
@@ -80,5 +103,10 @@ func (h *AdminHandler) ListAll(w http.ResponseWriter, r *http.Request) {
 		Page:          filter.Page,
 		Limit:         filter.Limit,
 	}
+	log.Info().
+		Str("handler", "AdminHandler.ListAll").
+		Int("result_count", len(notifications)).
+		Int("total", total).
+		Msg("admin list notifications request completed")
 	response.Success(w, resp, traceID)
 }

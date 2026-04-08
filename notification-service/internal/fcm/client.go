@@ -105,7 +105,7 @@ func NewClientFromEnv() (*Client, error) {
 	}
 
 	return &Client{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient:     &http.Client{Timeout: 10 * time.Second},
 		serviceAccount: account,
 		privateKey:     key,
 		endpoint:       endpoint,

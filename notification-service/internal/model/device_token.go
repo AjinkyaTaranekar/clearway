@@ -11,16 +11,16 @@ const (
 
 // DeviceToken represents a registered FCM device token.
 type DeviceToken struct {
-	ID                  string     `json:"device_token_id"`
-	DriverID            string     `json:"driver_id"`
-	FCMToken            string     `json:"fcm_token"`
-	Platform            string     `json:"platform"`
-	IsActive            bool       `json:"is_active"`
-	LastSeenAt          time.Time  `json:"last_seen_at"`
-	InvalidatedAt       *time.Time `json:"invalidated_at,omitempty"`
-	InvalidationReason  string     `json:"invalidation_reason,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	ID                 string     `json:"device_token_id"`
+	DriverID           string     `json:"driver_id"`
+	FCMToken           string     `json:"fcm_token"`
+	Platform           string     `json:"platform"`
+	IsActive           bool       `json:"is_active"`
+	LastSeenAt         time.Time  `json:"last_seen_at"`
+	InvalidatedAt      *time.Time `json:"invalidated_at,omitempty"`
+	InvalidationReason string     `json:"invalidation_reason,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // RegisterTokenRequest is the body of POST /api/v1/notifications/device-token.

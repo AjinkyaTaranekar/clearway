@@ -172,7 +172,18 @@ var hardcodedNodePositions = map[string]TrafficNode{
 // @Router /api/v1/map/nodes [get]
 func (h *MapHandler) GetNodes(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "MapHandler.GetNodes").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("get nodes request received")
+
 	graph := h.graph.Snapshot()
+	log.Info().
+		Str("handler", "MapHandler.GetNodes").
+		Int("node_count", len(graph.Nodes)).
+		Msg("get nodes request completed")
 
 	response.Success(w, NodesResponse{
 		Nodes: graph.Nodes,
@@ -189,7 +200,18 @@ func (h *MapHandler) GetNodes(w http.ResponseWriter, r *http.Request) {
 // @Router /api/v1/map/segments [get]
 func (h *MapHandler) GetSegments(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "MapHandler.GetSegments").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("get segments request received")
+
 	graph := h.graph.Snapshot()
+	log.Info().
+		Str("handler", "MapHandler.GetSegments").
+		Int("segment_count", len(graph.Segments)).
+		Msg("get segments request completed")
 
 	response.Success(w, SegmentsResponse{
 		Segments: graph.Segments,
@@ -208,26 +230,63 @@ func (h *MapHandler) GetSegments(w http.ResponseWriter, r *http.Request) {
 // @Router /api/v1/map/route [get]
 func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "MapHandler.GetRoute").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("get route request received")
+
 	graph := h.graph.Snapshot()
 
 	originNodeID := r.URL.Query().Get("origin_node_id")
 	destinationNodeID := r.URL.Query().Get("destination_node_id")
 
 	if originNodeID == "" || destinationNodeID == "" {
+		log.Warn().
+			Str("handler", "MapHandler.GetRoute").
+			Str("origin_node_id", originNodeID).
+			Str("destination_node_id", destinationNodeID).
+			Msg("route request validation failed: missing node ids")
 		response.Error(w, appErrors.BadRequest("origin_node_id and destination_node_id are required"), traceID)
 		return
 	}
 
 	if originNodeID == destinationNodeID {
+		log.Warn().
+			Str("handler", "MapHandler.GetRoute").
+			Str("origin_node_id", originNodeID).
+			Str("destination_node_id", destinationNodeID).
+			Msg("route request validation failed: identical nodes")
 		response.Error(w, appErrors.BadRequest("origin and destination cannot be the same"), traceID)
 		return
 	}
 
+	log.Info().
+		Str("handler", "MapHandler.GetRoute").
+		Str("origin_node_id", originNodeID).
+		Str("destination_node_id", destinationNodeID).
+		Msg("building route")
+
 	route, err := buildRoute(graph, originNodeID, destinationNodeID)
 	if err != nil {
+		log.Error().
+			Str("handler", "MapHandler.GetRoute").
+			Err(err).
+			Str("origin_node_id", originNodeID).
+			Str("destination_node_id", destinationNodeID).
+			Msg("route build failed")
 		response.Error(w, err, traceID)
 		return
 	}
+
+	log.Info().
+		Str("handler", "MapHandler.GetRoute").
+		Str("origin_node_id", originNodeID).
+		Str("destination_node_id", destinationNodeID).
+		Int("segment_count", len(route.Segments)).
+		Int("total_traversal_minutes", route.TotalTraversalTimeMinutes).
+		Msg("get route request completed")
 
 	response.Success(w, route, traceID)
 }
@@ -243,36 +302,82 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 // @Router /api/v1/routes/compute [post]
 func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "MapHandler.ComputeRoute").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("compute route request received")
+
 	graph := h.graph.Snapshot()
 
 	var req ComputeRouteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Warn().
+			Str("handler", "MapHandler.ComputeRoute").
+			Err(err).
+			Msg("compute route request validation failed: invalid body")
 		response.Error(w, appErrors.BadRequest("invalid request body"), traceID)
 		return
 	}
 
 	origin, ok := findNearestNode(graph.Nodes, req.Origin.Lat, req.Origin.Lng)
 	if !ok {
+		log.Warn().
+			Str("handler", "MapHandler.ComputeRoute").
+			Float64("origin_lat", req.Origin.Lat).
+			Float64("origin_lng", req.Origin.Lng).
+			Msg("compute route failed: origin node not found")
 		response.Error(w, appErrors.NotFound("origin node not found"), traceID)
 		return
 	}
 
 	destination, ok := findNearestNode(graph.Nodes, req.Destination.Lat, req.Destination.Lng)
 	if !ok {
+		log.Warn().
+			Str("handler", "MapHandler.ComputeRoute").
+			Float64("destination_lat", req.Destination.Lat).
+			Float64("destination_lng", req.Destination.Lng).
+			Msg("compute route failed: destination node not found")
 		response.Error(w, appErrors.NotFound("destination node not found"), traceID)
 		return
 	}
 
 	if origin.NodeID == destination.NodeID {
+		log.Warn().
+			Str("handler", "MapHandler.ComputeRoute").
+			Str("resolved_origin_node_id", origin.NodeID).
+			Str("resolved_destination_node_id", destination.NodeID).
+			Msg("compute route validation failed: identical resolved nodes")
 		response.Error(w, appErrors.BadRequest("origin and destination resolve to the same node"), traceID)
 		return
 	}
 
+	log.Info().
+		Str("handler", "MapHandler.ComputeRoute").
+		Str("origin_node_id", origin.NodeID).
+		Str("destination_node_id", destination.NodeID).
+		Msg("building computed route")
+
 	computeRoute, err := buildComputeRoute(graph, origin.NodeID, destination.NodeID)
 	if err != nil {
+		log.Error().
+			Str("handler", "MapHandler.ComputeRoute").
+			Err(err).
+			Str("origin_node_id", origin.NodeID).
+			Str("destination_node_id", destination.NodeID).
+			Msg("compute route build failed")
 		response.Error(w, err, traceID)
 		return
 	}
+
+	log.Info().
+		Str("handler", "MapHandler.ComputeRoute").
+		Str("route_id", computeRoute.RouteID).
+		Int("segment_count", len(computeRoute.Segments)).
+		Float64("total_distance_km", computeRoute.TotalDistanceKm).
+		Int("total_duration_minutes", computeRoute.TotalDurationMinutes).
+		Msg("compute route request completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Trace-ID", traceID)
@@ -290,16 +395,32 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 // @Router /api/v1/map/traffic [get]
 func (h *MapHandler) GetTraffic(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "MapHandler.GetTraffic").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("get traffic request received")
+
 	graph := h.graph.Snapshot()
+	log.Debug().
+		Str("handler", "MapHandler.GetTraffic").
+		Int("segment_count", len(graph.Segments)).
+		Msg("loaded graph snapshot for traffic request")
 
 	occupancyRows, err := h.capacityClient.GetOccupancy(r.Context())
 	if err != nil {
-		if h.log != nil {
-			h.log.Error().Err(err).Str("trace_id", traceID).Msg("traffic occupancy lookup failed")
-		}
+		log.Error().
+			Str("handler", "MapHandler.GetTraffic").
+			Err(err).
+			Msg("traffic occupancy lookup failed")
 		response.Error(w, appErrors.ExternalAPIError("failed to retrieve capacity occupancy", err), traceID)
 		return
 	}
+	log.Info().
+		Str("handler", "MapHandler.GetTraffic").
+		Int("occupancy_row_count", len(occupancyRows)).
+		Msg("received occupancy rows from capacity service")
 
 	occupancyBySegment := make(map[string]capacityOccupancy, len(occupancyRows))
 	for _, occupancy := range occupancyRows {
@@ -311,9 +432,11 @@ func (h *MapHandler) GetTraffic(w http.ResponseWriter, r *http.Request) {
 		occupancy, ok := occupancyBySegment[segment.SegmentID]
 		if !ok {
 			err := fmt.Errorf("missing occupancy for segment %s", segment.SegmentID)
-			if h.log != nil {
-				h.log.Error().Err(err).Str("trace_id", traceID).Msg("traffic join failed")
-			}
+			log.Error().
+				Str("handler", "MapHandler.GetTraffic").
+				Err(err).
+				Str("segment_id", segment.SegmentID).
+				Msg("traffic join failed")
 			response.Error(w, appErrors.ExternalAPIError("incomplete occupancy data from capacity service", err), traceID)
 			return
 		}
@@ -339,6 +462,10 @@ func (h *MapHandler) GetTraffic(w http.ResponseWriter, r *http.Request) {
 		Segments: trafficSegments,
 		Nodes:    buildTrafficNodes(graph.Nodes),
 	}, traceID)
+	log.Info().
+		Str("handler", "MapHandler.GetTraffic").
+		Int("segment_count", len(trafficSegments)).
+		Msg("get traffic request completed")
 }
 
 func findNode(nodes []Node, nodeID string) (Node, bool) {

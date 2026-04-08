@@ -40,6 +40,7 @@ func main() {
 		Format: cfg.Logging.Format,
 	})
 	log.Info().Msg("starting vcs-capacity service")
+	baseCtx := logger.WithContext(context.Background(), log)
 
 	// Initialize database connections
 	dbPools, err := postgres.NewConnectionPools(
@@ -128,7 +129,7 @@ func main() {
 	)
 
 	// Background context for long-running goroutines
-	bgCtx, bgCancel := context.WithCancel(context.Background())
+	bgCtx, bgCancel := context.WithCancel(baseCtx)
 	defer bgCancel()
 
 	// Start background cleanup jobs
@@ -176,7 +177,7 @@ func main() {
 	log.Info().Msg("shutting down server...")
 	bgCancel()
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {

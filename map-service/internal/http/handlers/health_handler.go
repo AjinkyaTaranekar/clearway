@@ -39,6 +39,13 @@ type HealthResponse struct {
 // @Router /health [get]
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Debug().
+		Str("handler", "HealthHandler.Health").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("health check request received")
+
 	graphStatus := h.graph.Status()
 
 	healthResp := HealthResponse{
@@ -49,6 +56,11 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 		GraphSource: graphStatus.Source,
 		GraphError:  graphStatus.LastError,
 	}
+	log.Debug().
+		Str("handler", "HealthHandler.Health").
+		Bool("graph_loaded", healthResp.GraphLoaded).
+		Str("graph_source", healthResp.GraphSource).
+		Msg("health check response ready")
 
 	response.Success(w, healthResp, traceID)
 }
@@ -63,6 +75,13 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 // @Router /ready [get]
 func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Debug().
+		Str("handler", "HealthHandler.Readiness").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("readiness check request received")
+
 	graphStatus := h.graph.Status()
 
 	healthResp := HealthResponse{
@@ -75,12 +94,26 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !graphStatus.Available {
+		log.Warn().
+			Str("handler", "HealthHandler.Readiness").
+			Str("graph_source", graphStatus.Source).
+			Str("graph_error", graphStatus.LastError).
+			Msg("readiness failed: graph unavailable")
 		response.Error(w, appErrors.InternalError("graph unavailable", nil), traceID)
 		return
 	}
 	if !graphStatus.LoadedFromDB {
 		healthResp.Status = "ready_with_fallback"
+		log.Warn().
+			Str("handler", "HealthHandler.Readiness").
+			Str("graph_source", graphStatus.Source).
+			Msg("readiness using fallback graph")
 	}
+
+	log.Debug().
+		Str("handler", "HealthHandler.Readiness").
+		Str("status", healthResp.Status).
+		Msg("readiness check response ready")
 
 	response.Success(w, healthResp, traceID)
 }
