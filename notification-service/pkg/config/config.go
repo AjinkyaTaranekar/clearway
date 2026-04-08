@@ -13,6 +13,7 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
+	Services ServicesConfig `mapstructure:"services"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
 
@@ -52,6 +53,11 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+// ServicesConfig holds downstream service configuration.
+type ServicesConfig struct {
+	JWKSURL string `mapstructure:"jwks_url"`
+}
+
 // Load loads configuration from file and environment variables
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
@@ -76,6 +82,7 @@ func Load(configPath string) (*Config, error) {
 		"database.master.password", "database.master.dbname",
 		"database.slave.host", "database.slave.port", "database.slave.user",
 		"database.slave.password", "database.slave.dbname",
+		"services.jwks_url",
 	} {
 		_ = v.BindEnv(key)
 	}

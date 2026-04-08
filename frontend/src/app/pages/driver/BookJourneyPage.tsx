@@ -1006,11 +1006,6 @@ export default function BookJourneyPage() {
                   </div>
                 )}
 
-                <div className="mt-2 p-2.5 rounded-lg" style={{ background: '#FFF4E0', border: '1px solid #F1D7A5' }}>
-                  <p style={{ color: '#7A4500', fontSize: '0.75rem', lineHeight: 1.5 }}>
-                    Slot capacity is live. On submit, the system reserves each segment in this order using cascading windows (departure + travel time per segment). If another driver reserves first, your slot can become full (ghost reservation).
-                  </p>
-                </div>
 
                 {ghostNotice && (
                   <p className="mt-2 text-sm flex items-center gap-1" style={{ color: '#B42318' }}>

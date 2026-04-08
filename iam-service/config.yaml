@@ -30,7 +30,7 @@ iam:
   signing_kid: "key-dev-001"
   previous_kid: ""
   previous_pub_key_pem: ""
-  access_token_ttl: 1h
+  access_token_ttl: 24h
   refresh_token_ttl: 168h
   bcrypt_cost: 12
   token_retention_days: 7

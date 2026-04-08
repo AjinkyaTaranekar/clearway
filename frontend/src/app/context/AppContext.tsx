@@ -81,6 +81,10 @@ function mapApiNotification(n: notifApi.ApiNotification): Notification {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     try {
+      if (!getToken()) {
+        localStorage.removeItem('cw_user');
+        return null;
+      }
       const stored = localStorage.getItem('cw_user');
       return stored ? JSON.parse(stored) : null;
     } catch {
@@ -94,6 +98,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [lastBookingResult, setLastBookingResult] = useState<BookingResult | null>(null);
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (getToken()) return;
+
+    setUser(null);
+    setJourneys([]);
+    setAdminJourneys([]);
+    setNotifications([]);
+    setLastBookingResult(null);
+    localStorage.removeItem('cw_user');
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -299,7 +315,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!getToken(),
         login,
         register,
         logout,

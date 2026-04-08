@@ -7,12 +7,12 @@ type Mode = 'login' | 'register';
 const VEHICLE_TYPES = ['car', 'van', 'truck', 'motorcycle'] as const;
 const DEMO_CREDENTIALS = {
   driver: {
-    label: 'Driver demo',
+    label: 'Sign in as driver',
     email: 'ajinkyataranekar26@gmail.com',
     password: 'test1234',
   },
   admin: {
-    label: 'Admin demo',
+    label: 'Sign in as admin',
     email: 'admin@local.vcs',
     password: 'admin123',
   },
@@ -66,11 +66,23 @@ export default function LoginPage() {
     setErrors({});
   };
 
-  const applyDemoCredentials = (demo: (typeof DEMO_CREDENTIALS)[keyof typeof DEMO_CREDENTIALS]) => {
+  const handleDemoLogin = async (demo: (typeof DEMO_CREDENTIALS)[keyof typeof DEMO_CREDENTIALS]) => {
+    if (loading) return;
+
     setMode('login');
     setEmail(demo.email);
     setPassword(demo.password);
     setErrors({});
+
+    setLoading(true);
+    try {
+      const role = await login(demo.email, demo.password);
+      navigate(role === 'admin' ? '/admin' : '/driver');
+    } catch (err: any) {
+      setErrors({ form: err.message ?? 'Login failed. Please check your credentials.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onFocus = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -176,13 +188,15 @@ export default function LoginPage() {
                     <button
                       key={demo.label}
                       type="button"
-                      onClick={() => applyDemoCredentials(demo)}
+                      onClick={() => handleDemoLogin(demo)}
+                      disabled={loading}
                       className="w-full py-2 rounded-lg text-sm transition-all duration-150"
                       style={{
                         border: '1px solid var(--border)',
-                        background: 'white',
-                        color: '#1F2421',
+                        background: loading ? '#F0EDE7' : 'white',
+                        color: loading ? '#4E5953' : '#1F2421',
                         fontWeight: 500,
+                        cursor: loading ? 'not-allowed' : 'pointer',
                       }}
                     >
                       {demo.label}

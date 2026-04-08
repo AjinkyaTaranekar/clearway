@@ -164,9 +164,15 @@ func main() {
 	}
 
 	var jwksValidator *httpHandler.JWKSValidator
-	if cfg.Services.JWKSURL != "" {
-		jwksValidator = httpHandler.NewJWKSValidator(cfg.Services.JWKSURL)
-		log.Info().Str("jwks_url", cfg.Services.JWKSURL).Msg("JWKS validator configured")
+	jwksURL := strings.TrimSpace(cfg.Services.JWKSURL)
+	if jwksURL == "" {
+		jwksURL = strings.TrimSpace(os.Getenv("JWKS_URL"))
+	}
+	if jwksURL != "" {
+		jwksValidator = httpHandler.NewJWKSValidator(jwksURL)
+		log.Info().Str("jwks_url", jwksURL).Msg("JWKS validator configured")
+	} else {
+		log.Warn().Msg("JWKS URL not configured; IAM-protected capacity endpoints will fail authorization")
 	}
 
 	// Initialize HTTP handlers

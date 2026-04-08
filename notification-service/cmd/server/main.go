@@ -123,8 +123,17 @@ func main() {
 		pingCancel()
 	}
 
-	// JWKS URL for JWT validation (empty = parse claims only, no signature check)
-	jwksURL := os.Getenv("JWKS_URL") // e.g. http://iam-service:8082/.well-known/jwks.json
+	// JWKS URL for JWT validation (empty = parse claims only, no signature check).
+	// Prefer the shared VCS services config key, but keep legacy JWKS_URL for compatibility.
+	jwksURL := strings.TrimSpace(cfg.Services.JWKSURL)
+	if jwksURL == "" {
+		jwksURL = strings.TrimSpace(os.Getenv("JWKS_URL"))
+	}
+	if jwksURL == "" {
+		log.Warn().Msg("JWKS URL not configured; notification auth middleware will parse claims without signature verification")
+	} else {
+		log.Info().Str("jwks_url", jwksURL).Msg("JWKS validator configured")
+	}
 
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler()

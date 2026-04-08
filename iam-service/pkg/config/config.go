@@ -85,7 +85,7 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 	if cfg.IAM.AccessTokenTTL == 0 {
-		cfg.IAM.AccessTokenTTL = time.Hour
+		cfg.IAM.AccessTokenTTL = 24 * time.Hour
 	}
 	if cfg.IAM.RefreshTokenTTL == 0 {
 		cfg.IAM.RefreshTokenTTL = 7 * 24 * time.Hour

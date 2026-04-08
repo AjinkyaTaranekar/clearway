@@ -95,6 +95,7 @@ func Load(configPath string) (*Config, error) {
 		"database.master.password", "database.master.dbname",
 		"database.slave.host", "database.slave.port", "database.slave.user",
 		"database.slave.password", "database.slave.dbname",
+		"services.capacity_url", "services.map_url", "services.iam_url", "services.jwt_secret",
 	} {
 		_ = v.BindEnv(key)
 	}
