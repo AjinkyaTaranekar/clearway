@@ -15,6 +15,12 @@ type OutboxFetcher interface {
 	MarkOutboxPublished(ctx context.Context, ids []int64) error
 }
 
+// StreamWriter abstracts the Redis XADD operation so relayBatch can be tested
+// without a real Redis server. *redis.Client satisfies this interface.
+type StreamWriter interface {
+	XAdd(ctx context.Context, args *redis.XAddArgs) *redis.StringCmd
+}
+
 // OutboxEvent is an event row from journey.outbox that has not yet been relayed.
 type OutboxEvent struct {
 	ID        int64
@@ -52,7 +58,7 @@ func RunOutboxRelay(ctx context.Context, fetcher OutboxFetcher, rdb *redis.Clien
 	}
 }
 
-func relayBatch(ctx context.Context, fetcher OutboxFetcher, rdb *redis.Client, log *zerolog.Logger) {
+func relayBatch(ctx context.Context, fetcher OutboxFetcher, rdb StreamWriter, log *zerolog.Logger) {
 	events, err := fetcher.FetchUnpublishedOutbox(ctx, 100)
 	if err != nil {
 		log.Error().Err(err).Msg("outbox relay: failed to fetch unpublished events")
