@@ -1,0 +1,6 @@
+vcs_map-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Running|Running about an hour ago|
+vcs_map-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Shutdown|Shutdown about an hour ago|
+vcs_map-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Shutdown|Shutdown about an hour ago|
+vcs_map-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Shutdown|Shutdown 3 hours ago|
+vcs_map-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Shutdown|Shutdown 3 hours ago|
+vcs_map-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Shutdown|Shutdown 9 hours ago|

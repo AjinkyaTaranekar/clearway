@@ -1,0 +1,2 @@
+vcs_iam-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Failed about an hour ago|"task: non-zero exit (1)"
+vcs_iam-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Failed about an hour ago|"task: non-zero exit (1)"
