@@ -939,7 +939,7 @@ func (r *JourneyRepository) AdminAnalytics(ctx context.Context, windowHours int)
 			COUNT(*) FILTER (WHERE status = 'CANCELLED')         AS cancelled,
 			COUNT(*) FILTER (WHERE status = 'EXPIRED')           AS expired
 		FROM journey.journeys
-		WHERE created_at >= NOW() - ($1 * INTERVAL '1 hour')`,
+		WHERE created_at >= NOW() - (($1::INT) * INTERVAL '1 hour')`,
 		windowHours,
 	).Scan(&c.Total, &c.Approved, &c.Rejected, &c.Active, &c.Completed, &c.Cancelled, &c.Expired)
 	if err != nil {
