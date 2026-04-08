@@ -1,0 +1,6 @@
+vcs_capacity-service
+vcs_iam-service
+vcs_journey-service
+vcs_map-service
+vcs_nginx
+vcs_notification-service
