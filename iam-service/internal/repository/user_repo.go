@@ -342,7 +342,7 @@ func (r *UserRepo) UpdateRole(ctx context.Context, userID string, role model.Rol
 }
 
 // CountByRole returns the number of users with the given role.
-// Runs on the slave pool — safe for admin analytics where ~100 ms lag is acceptable.
+// Runs on the slave pool - safe for admin analytics where ~100 ms lag is acceptable.
 func (r *UserRepo) CountByRole(ctx context.Context, role model.Role) (int, error) {
 	log := logWithTrace(ctx)
 	log.Debug().
@@ -370,7 +370,7 @@ func (r *UserRepo) CountByRole(ctx context.Context, role model.Role) (int, error
 }
 
 // List returns a paginated, optionally role-filtered list of users.
-// Runs on the slave pool — admin listings are not latency-critical.
+// Runs on the slave pool - admin listings are not latency-critical.
 func (r *UserRepo) List(ctx context.Context, roleFilter string, page, limit int) ([]*model.User, int, error) {
 	log := logWithTrace(ctx)
 	log.Info().

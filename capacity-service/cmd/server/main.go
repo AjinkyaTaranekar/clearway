@@ -87,7 +87,7 @@ func main() {
 	}
 	log.Info().Str("dir", migrationsDir).Msg("database migrations applied")
 
-	// Initialize Redis (optional — service degrades gracefully without it)
+	// Initialize Redis (optional - service degrades gracefully without it)
 	var redisClient *redis.Client
 	if cfg.Redis.Host != "" {
 		redisClient = redis.NewClient(&redis.Options{
@@ -97,7 +97,7 @@ func main() {
 		pingCtx, pingCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer pingCancel()
 		if err := redisClient.Ping(pingCtx).Err(); err != nil {
-			log.Warn().Err(err).Msg("Redis ping failed — caching and stream consumer disabled")
+			log.Warn().Err(err).Msg("Redis ping failed - caching and stream consumer disabled")
 			redisClient = nil
 		} else {
 			log.Info().Str("host", cfg.Redis.Host).Msg("Redis connected")

@@ -120,7 +120,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 	// --- Begin serialisable transaction ---
 	// LevelSerializable prevents phantom reads: two concurrent transactions
 	// that both read the same capacity sum (both below the limit) cannot both
-	// commit — the second will be rolled back with a serialisation error.
+	// commit - the second will be rolled back with a serialisation error.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		log.Error().
@@ -341,7 +341,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 				Str("idempotency_key", req.IdempotencyKey).
 				Msg("idempotency unique conflict; replaying winner")
 			tx.Rollback()
-			// Retry lookup — may take a moment to replicate; return internal error if still absent.
+			// Retry lookup - may take a moment to replicate; return internal error if still absent.
 			cached, lookupErr := s.idempRepo.GetByKey(ctx, req.IdempotencyKey)
 			if lookupErr != nil || cached == nil {
 				log.Error().
@@ -349,7 +349,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 					Err(err).
 					Str("idempotency_key", req.IdempotencyKey).
 					Msg("idempotency conflict unresolved after lookup")
-				return nil, 500, fmt.Errorf("idempotency conflict — entry not yet visible: %w", err)
+				return nil, 500, fmt.Errorf("idempotency conflict - entry not yet visible: %w", err)
 			}
 			return s.replayFromCache(cached)
 		}

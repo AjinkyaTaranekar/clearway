@@ -14,7 +14,7 @@ import (
 func newAuthHandler() *AuthHandler { return NewAuthHandler(nil) }
 
 // ---------------------------------------------------------------------------
-// Register — input validation
+// Register - input validation
 // ---------------------------------------------------------------------------
 
 func TestRegister_InvalidJSON(t *testing.T) {
@@ -51,7 +51,7 @@ func TestRegister_ValidationErrors_LowercaseFieldNames(t *testing.T) {
 	}
 
 	// Decode the response and verify that validation-error detail objects use
-	// lowercase JSON keys ("field", "message") — not the old Go-default
+	// lowercase JSON keys ("field", "message") - not the old Go-default
 	// capitalised form ("Field", "Message").
 	var resp map[string]interface{}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -110,7 +110,7 @@ func TestRegister_MissingLicenseNumber(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Login — input validation
+// Login - input validation
 // ---------------------------------------------------------------------------
 
 func TestLogin_EmptyCredentials(t *testing.T) {
@@ -140,7 +140,7 @@ func TestLogin_InvalidJSON(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Refresh — input validation
+// Refresh - input validation
 // ---------------------------------------------------------------------------
 
 func TestRefresh_MissingToken(t *testing.T) {
@@ -170,7 +170,7 @@ func TestRefresh_InvalidJSON(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// validPassword — unit tests for the inline helper
+// validPassword - unit tests for the inline helper
 // ---------------------------------------------------------------------------
 
 func TestValidPassword(t *testing.T) {

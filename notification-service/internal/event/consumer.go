@@ -58,7 +58,7 @@ func NewConsumer(
 // Start begins consuming the journey.events stream. It blocks until ctx is cancelled.
 func (c *Consumer) Start(ctx context.Context) {
 	if err := c.ensureConsumerGroup(ctx); err != nil {
-		c.log.Error().Err(err).Msg("event consumer: failed to create consumer group — stream processing disabled")
+		c.log.Error().Err(err).Msg("event consumer: failed to create consumer group - stream processing disabled")
 		return
 	}
 
@@ -157,7 +157,7 @@ func (c *Consumer) process(ctx context.Context, msg redis.XMessage) {
 	}
 
 	if err := c.notifRepo.Insert(ctx, n); err != nil {
-		// Duplicate event_id — already processed, safe to ACK
+		// Duplicate event_id - already processed, safe to ACK
 		c.log.Info().Str("event_id", env.EventID).Msg("event consumer: duplicate event, skipping")
 		c.ack(ctx, msg.ID)
 		return

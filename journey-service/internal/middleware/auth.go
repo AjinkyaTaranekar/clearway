@@ -122,7 +122,7 @@ func (v *JWKSValidator) getKey(kid string) (*rsa.PublicKey, error) {
 		return key, nil
 	}
 
-	// Cache miss or TTL expired — refresh from IAM service.
+	// Cache miss or TTL expired - refresh from IAM service.
 	refreshErr := v.fetchKeys()
 
 	v.mu.RLock()

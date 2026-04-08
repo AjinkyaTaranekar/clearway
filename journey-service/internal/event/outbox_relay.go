@@ -39,7 +39,7 @@ type OutboxEvent struct {
 // relay any rows where published = FALSE.
 func RunOutboxRelay(ctx context.Context, fetcher OutboxFetcher, rdb *redis.Client, log *zerolog.Logger) {
 	if rdb == nil {
-		log.Warn().Msg("outbox relay: Redis nil — relay disabled (events will not be published)")
+		log.Warn().Msg("outbox relay: Redis nil - relay disabled (events will not be published)")
 		return
 	}
 
@@ -79,7 +79,7 @@ func relayBatch(ctx context.Context, fetcher OutboxFetcher, rdb StreamWriter, lo
 				Err(err).
 				Str("event_id", ev.EventID).
 				Str("event_type", ev.EventType).
-				Msg("outbox relay: XAdd failed — will retry next tick")
+				Msg("outbox relay: XAdd failed - will retry next tick")
 			// Stop processing this batch; the remaining events will be retried.
 			break
 		}

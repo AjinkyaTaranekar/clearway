@@ -115,7 +115,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 // @Failure 403 {object} response.Response
 // @Failure 404 {object} response.Response
 // @Router /api/v1/admin/auth/users/{id} [get]
-// GetUser fetches a single user by ID using a direct lookup — no table scan.
+// GetUser fetches a single user by ID using a direct lookup - no table scan.
 func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
 	userID := mux.Vars(r)["id"]

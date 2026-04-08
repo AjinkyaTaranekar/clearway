@@ -2,7 +2,7 @@ package service
 
 // Distributed architecture edge-case tests for the reservation service.
 //
-// These tests are pure unit tests — no database or Redis required.
+// These tests are pure unit tests - no database or Redis required.
 // They exercise the computation logic that underpins distributed conflict
 // detection and capacity management, mapped to the CS7NS6 checklist:
 //
@@ -26,7 +26,7 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 — Deadlock Prevention via Sorted Segment Lock Order
+// SECTION 1 - Deadlock Prevention via Sorted Segment Lock Order
 //
 // The Reserve() method acquires SELECT FOR UPDATE locks in alphabetical
 // segment_id order.  Without this deterministic ordering, two concurrent
@@ -69,7 +69,7 @@ func TestDeadlockPrevention_TwoDriversSameSegments(t *testing.T) {
 	for i := range routeA {
 		if routeA[i].SegmentID != routeB[i].SegmentID {
 			t.Errorf(
-				"lock order mismatch at position %d: Driver A=%q Driver B=%q — ABBA deadlock possible",
+				"lock order mismatch at position %d: Driver A=%q Driver B=%q - ABBA deadlock possible",
 				i, routeA[i].SegmentID, routeB[i].SegmentID,
 			)
 		}
@@ -159,7 +159,7 @@ func TestDeadlockPrevention_ConcurrentSortProducesSameOrder(t *testing.T) {
 		for j := range results[0] {
 			if results[i][j] != results[0][j] {
 				t.Fatalf(
-					"goroutine %d position %d = %q, want %q — concurrent sort produced non-deterministic order",
+					"goroutine %d position %d = %q, want %q - concurrent sort produced non-deterministic order",
 					i, j, results[i][j], results[0][j],
 				)
 			}
@@ -168,7 +168,7 @@ func TestDeadlockPrevention_ConcurrentSortProducesSameOrder(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 2 — Capacity Arithmetic
+// SECTION 2 - Capacity Arithmetic
 //
 // Vehicle slot weights: motorcycle=0.5, car=1.0, van=1.5, truck=3.0
 // The Reserve() core loop: available = maxCapacity - currentlyReserved
@@ -232,10 +232,10 @@ func TestCapacityArithmetic_TwoConcurrentTrucks_OnlyOneFits(t *testing.T) {
 	truckSlots := model.VehicleTypeTruck.SlotsNeeded() // 3.0
 	available := maxCap - existingLoad                 // 2.5
 
-	// Neither truck fits — both should be rejected.
+	// Neither truck fits - both should be rejected.
 	if available >= truckSlots {
 		t.Errorf(
-			"expected truck (%.1f slots) to NOT fit in %.1f remaining — capacity over-commit possible",
+			"expected truck (%.1f slots) to NOT fit in %.1f remaining - capacity over-commit possible",
 			truckSlots, available,
 		)
 	}
@@ -244,7 +244,7 @@ func TestCapacityArithmetic_TwoConcurrentTrucks_OnlyOneFits(t *testing.T) {
 	motoSlots := model.VehicleTypeMotorcycle.SlotsNeeded() // 0.5
 	if available < motoSlots {
 		t.Errorf(
-			"expected motorcycle (%.1f slots) to fit in %.1f remaining — unexpected rejection",
+			"expected motorcycle (%.1f slots) to fit in %.1f remaining - unexpected rejection",
 			motoSlots, available,
 		)
 	}
@@ -259,7 +259,7 @@ func TestCapacityArithmetic_MotorcyclesFillBeforeVan(t *testing.T) {
 	moto := model.VehicleTypeMotorcycle.SlotsNeeded() // 0.5
 	van := model.VehicleTypeVan.SlotsNeeded()         // 1.5
 
-	reserved := moto * 3 // 1.5 — three motorcycles
+	reserved := moto * 3 // 1.5 - three motorcycles
 	available := maxCap - reserved
 
 	if available >= moto {
@@ -301,7 +301,7 @@ func TestCapacityArithmetic_AllVehicleTypesRoundtrip(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 3 — Double-Booking Prevention / Idempotency
+// SECTION 3 - Double-Booking Prevention / Idempotency
 //
 // Checklist: "Double spending possible?" (expected answer: NO)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ func TestIdempotency_UniqueIDGeneration_1000Concurrent(t *testing.T) {
 
 	for id, count := range seen {
 		if count > 1 {
-			t.Errorf("ID collision: %q generated %d times — double-booking ID risk", id, count)
+			t.Errorf("ID collision: %q generated %d times - double-booking ID risk", id, count)
 		}
 	}
 	if len(seen) != n {
@@ -349,7 +349,7 @@ func TestIdempotency_CacheKey_SameInputSameKey(t *testing.T) {
 	k2 := availabilityCacheKey(seg, start, end, priorityLevelNormal)
 
 	if k1 != k2 {
-		t.Errorf("same inputs produced different cache keys: %q vs %q — idempotency broken", k1, k2)
+		t.Errorf("same inputs produced different cache keys: %q vs %q - idempotency broken", k1, k2)
 	}
 }
 
@@ -365,7 +365,7 @@ func TestIdempotency_CacheKey_DifferentSlots_DifferentKey(t *testing.T) {
 	k2 := availabilityCacheKey(seg, slot2Start, slot2Start.Add(30*time.Minute), priorityLevelNormal)
 
 	if k1 == k2 {
-		t.Error("different time slots produced the same cache key — booking-slot confusion possible")
+		t.Error("different time slots produced the same cache key - booking-slot confusion possible")
 	}
 }
 
@@ -379,7 +379,7 @@ func TestIdempotency_CacheKey_DifferentSegments_DifferentKey(t *testing.T) {
 	k2 := availabilityCacheKey("seg_north_airport", start, end, priorityLevelNormal)
 
 	if k1 == k2 {
-		t.Error("different segments produced the same cache key — cross-segment availability pollution")
+		t.Error("different segments produced the same cache key - cross-segment availability pollution")
 	}
 }
 
@@ -397,13 +397,13 @@ func TestIdempotency_isUniqueViolation_NonPQError(t *testing.T) {
 	}
 	for _, c := range cases {
 		if isUniqueViolation(c.err) {
-			t.Errorf("isUniqueViolation(%q) = true, want false — non-pq error misclassified", c.name)
+			t.Errorf("isUniqueViolation(%q) = true, want false - non-pq error misclassified", c.name)
 		}
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4 — Geographic Sharding: Segment-Region Isolation
+// SECTION 4 - Geographic Sharding: Segment-Region Isolation
 //
 // Each segment is owned by exactly one region (VM).  Cross-region capacity
 // data must not bleed between VMs.
@@ -438,7 +438,7 @@ func TestSharding_AllSegmentIDsAreGloballyUnique(t *testing.T) {
 	}
 	for id, count := range seen {
 		if count > 1 {
-			t.Errorf("segment ID collision: %q appears %d times — cross-region data corruption risk", id, count)
+			t.Errorf("segment ID collision: %q appears %d times - cross-region data corruption risk", id, count)
 		}
 	}
 }
@@ -479,7 +479,7 @@ func TestSharding_EachSegmentBelongsToOneRegion(t *testing.T) {
 // TestSharding_CrossRegionRoutes_SegmentSetsAreDisjoint confirms that two
 // logically separate geographic routes share NO segment IDs.  Disjoint
 // segment sets mean concurrent bookings on those routes can NEVER conflict
-// at the database level — no shared lock, no serialization overhead.
+// at the database level - no shared lock, no serialization overhead.
 func TestSharding_CrossRegionRoutes_SegmentSetsAreDisjoint(t *testing.T) {
 	routes := map[string][]string{
 		"north-route": {"seg_city_north", "seg_north_airport"},
@@ -499,7 +499,7 @@ func TestSharding_CrossRegionRoutes_SegmentSetsAreDisjoint(t *testing.T) {
 			}
 			for _, id := range routes[b] {
 				if setA[id] {
-					t.Errorf("routes %q and %q share segment %q — concurrent bookings WILL contend", a, b, id)
+					t.Errorf("routes %q and %q share segment %q - concurrent bookings WILL contend", a, b, id)
 				}
 			}
 		}
@@ -507,7 +507,7 @@ func TestSharding_CrossRegionRoutes_SegmentSetsAreDisjoint(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5 — Time Window Overlap Logic
+// SECTION 5 - Time Window Overlap Logic
 //
 // The SumActiveOverlapping SQL uses:
 //   time_window_start < $3  (new booking's end)
@@ -581,7 +581,7 @@ func TestTimeWindowOverlap_AllCases(t *testing.T) {
 			exStart: 28800, exEnd: 32400, newStart: 79200, newEnd: 82800,
 			wantOverlap: false,
 		},
-		// Same-minute slots adjacent — must NOT be treated as conflicting
+		// Same-minute slots adjacent - must NOT be treated as conflicting
 		{
 			name:    "adjacent 30-min slots (08:00-08:30 and 08:30-09:00)",
 			exStart: 0, exEnd: 1800, newStart: 1800, newEnd: 3600,
@@ -609,7 +609,7 @@ func TestTimeWindowOverlap_AllCases(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 6 — Input Validation Edge Cases
+// SECTION 6 - Input Validation Edge Cases
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestValidation_CrossRegionJourney_ThreeSegments verifies that a multi-hop
@@ -666,12 +666,12 @@ func TestValidation_MissingIdempotencyKey_Rejected(t *testing.T) {
 		},
 	}
 	if err := validateReserveRequest(req); err == nil {
-		t.Error("expected error for missing idempotency_key — double-booking protection bypass risk")
+		t.Error("expected error for missing idempotency_key - double-booking protection bypass risk")
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 7 — Integration Test Stubs
+// SECTION 7 - Integration Test Stubs
 //
 // These stubs document scenarios that MUST be verified against a live
 // CockroachDB + Redis.  They skip automatically in normal test runs.
@@ -704,7 +704,7 @@ func TestIntegration_SameIdempotencyKey_RetryReturnsSameReservationID(t *testing
 	}
 	t.Log("SCENARIO: Driver books journey, network drops before response")
 	t.Log("Driver retries with same Idempotency-Key")
-	t.Log("Expected: HTTP 201 with identical reservation_id — no second DB write")
+	t.Log("Expected: HTTP 201 with identical reservation_id - no second DB write")
 	t.Log("Verified by: idempotency_cache table with UNIQUE(idempotency_key)")
 	t.Skip("run without -short and with CRDB in docker-compose")
 }
@@ -717,7 +717,7 @@ func TestIntegration_DriverAlreadyHasActiveJourney_SecondBookingRejected(t *test
 	}
 	t.Log("SCENARIO: Driver D1 has an APPROVED journey jrn_001")
 	t.Log("Driver D1 immediately submits a second booking")
-	t.Log("Expected: HTTP 409 Conflict — 'driver already has an active or approved journey'")
+	t.Log("Expected: HTTP 409 Conflict - 'driver already has an active or approved journey'")
 	t.Log("Verified by: HasActiveJourney query in journey service")
 	t.Skip("run without -short and with CRDB in docker-compose")
 }
@@ -729,7 +729,7 @@ func TestIntegration_RedisDown_OutboxDeliversOnRecovery(t *testing.T) {
 		t.Skip("integration: requires live CockroachDB + Redis")
 	}
 	t.Log("SCENARIO: Stop Redis container, create 5 bookings (committed to CRDB outbox)")
-	t.Log("Restart Redis — outbox relay should deliver all 5 events within 2 seconds")
+	t.Log("Restart Redis - outbox relay should deliver all 5 events within 2 seconds")
 	t.Log("Verified by: outbox_relay polls every 1s, marks published only after XAdd succeeds")
 	t.Skip("run without -short and with docker-compose stack")
 }

@@ -38,7 +38,7 @@ func NewPublisher(client *redis.Client, log *zerolog.Logger) *Publisher {
 }
 
 // Publish publishes an event to the journey.events stream.
-// Silently ignores errors — events are best-effort, not on the critical path.
+// Silently ignores errors - events are best-effort, not on the critical path.
 func (p *Publisher) Publish(ctx context.Context, eventType string, payload interface{}) {
 	if p.client == nil {
 		return

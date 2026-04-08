@@ -50,7 +50,7 @@ func NewConsumer(
 // Start begins consuming the journey.events stream. It returns when ctx is cancelled.
 func (c *Consumer) Start(ctx context.Context) {
 	if err := c.ensureConsumerGroup(ctx); err != nil {
-		c.log.Error().Err(err).Msg("event consumer: failed to create consumer group — stream processing disabled")
+		c.log.Error().Err(err).Msg("event consumer: failed to create consumer group - stream processing disabled")
 		return
 	}
 
@@ -74,7 +74,7 @@ func (c *Consumer) Start(ctx context.Context) {
 func (c *Consumer) ensureConsumerGroup(ctx context.Context) error {
 	// "0" means replay from the beginning of the stream on first group creation.
 	// If the service restarts, the BUSYGROUP guard below prevents re-creation, so
-	// already-ACKed messages are not replayed — only genuinely unprocessed events
+	// already-ACKed messages are not replayed - only genuinely unprocessed events
 	// that arrived while the service was down are consumed. This fixes F-15/F-18:
 	// using "$" (new messages only) caused slot-release events published during a
 	// Capacity Service restart to be permanently lost, leaking reserved capacity.
@@ -97,7 +97,7 @@ func (c *Consumer) poll(ctx context.Context) {
 		if err == redis.Nil {
 			return // no new messages, try again
 		}
-		// Context cancelled — normal shutdown.
+		// Context cancelled - normal shutdown.
 		if ctx.Err() != nil {
 			return
 		}
@@ -129,14 +129,14 @@ func (c *Consumer) processWithRetry(ctx context.Context, msg redis.XMessage) {
 			backoff *= 2
 			continue
 		}
-		// Success — acknowledge the message.
+		// Success - acknowledge the message.
 		if err := c.redis.XAck(ctx, streamName, consumerGroup, msg.ID).Err(); err != nil {
 			c.log.Warn().Err(err).Str("message_id", msg.ID).Msg("event consumer: XACK failed")
 		}
 		return
 	}
 
-	// All retries exhausted — acknowledge to prevent infinite redelivery and log the failure.
+	// All retries exhausted - acknowledge to prevent infinite redelivery and log the failure.
 	c.log.Error().
 		Err(lastErr).
 		Str("message_id", msg.ID).
@@ -175,7 +175,7 @@ func (c *Consumer) processMessage(ctx context.Context, msg redis.XMessage) error
 	case "journey.cancelled", "journey.completed", "journey.expired":
 		// fall through to release logic
 	default:
-		// Not a release event — acknowledge silently.
+		// Not a release event - acknowledge silently.
 		return nil
 	}
 

@@ -2,7 +2,7 @@ package service
 
 // Journey service edge-case tests.
 //
-// Tests are pure unit tests — no DB, HTTP, or Redis required.
+// Tests are pure unit tests - no DB, HTTP, or Redis required.
 // They cover the pure-function and computation layer of the booking flow.
 //
 // CS7NS6 checklist coverage:
@@ -23,13 +23,13 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 — Time Window Cascade for Cross-Region Routes
+// SECTION 1 - Time Window Cascade for Cross-Region Routes
 //
 // ComputeTimeWindows builds per-segment time windows from departure time.
 // For a cross-region route the windows must chain without gaps or overlaps:
 //   seg1 ends exactly when seg2 starts, etc.
 //
-// Checklist: "Immediate access to earned points □" — window precision prevents
+// Checklist: "Immediate access to earned points □" - window precision prevents
 // two drivers from holding the same slot on the same segment simultaneously.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ func TestTimeWindows_RegionAnnotationPreserved(t *testing.T) {
 	expectedRegions := []string{"central", "north", "west"}
 	for i, want := range expectedRegions {
 		if segs[i].Region != want {
-			t.Errorf("seg[%d] region = %q, want %q — capacity VM routing broken", i, segs[i].Region, want)
+			t.Errorf("seg[%d] region = %q, want %q - capacity VM routing broken", i, segs[i].Region, want)
 		}
 	}
 }
@@ -87,7 +87,7 @@ func TestTimeWindows_RegionAnnotationPreserved(t *testing.T) {
 // TestTimeWindows_TwoDrivers_SameDeparture_SameRoute verifies that two drivers
 // departing at the same time on the same route produce IDENTICAL time windows.
 // Both requests will then contend on the SAME capacity slots in the capacity
-// service — exactly one must win (enforced by serializable transaction).
+// service - exactly one must win (enforced by serializable transaction).
 func TestTimeWindows_TwoDrivers_SameDeparture_SameRoute(t *testing.T) {
 	dep := time.Date(2026, 4, 15, 9, 0, 0, 0, time.UTC)
 	route := []client.MapSegment{
@@ -105,7 +105,7 @@ func TestTimeWindows_TwoDrivers_SameDeparture_SameRoute(t *testing.T) {
 		if !segsA[i].TimeWindowStart.Equal(segsB[i].TimeWindowStart) ||
 			!segsA[i].TimeWindowEnd.Equal(segsB[i].TimeWindowEnd) {
 			t.Errorf(
-				"seg[%d]: driver A window [%v,%v) ≠ driver B window [%v,%v) — should contend on same slot",
+				"seg[%d]: driver A window [%v,%v) ≠ driver B window [%v,%v) - should contend on same slot",
 				i,
 				segsA[i].TimeWindowStart, segsA[i].TimeWindowEnd,
 				segsB[i].TimeWindowStart, segsB[i].TimeWindowEnd,
@@ -116,7 +116,7 @@ func TestTimeWindows_TwoDrivers_SameDeparture_SameRoute(t *testing.T) {
 
 // TestTimeWindows_TwoDrivers_StaggeredDeparture_NonOverlapping verifies that
 // if driver B departs 35 minutes after driver A on the same 30-minute route,
-// their time windows on seg_city_north are completely non-overlapping — no
+// their time windows on seg_city_north are completely non-overlapping - no
 // capacity contention, no serialization required.
 func TestTimeWindows_TwoDrivers_StaggeredDeparture_NonOverlapping(t *testing.T) {
 	route := []client.MapSegment{
@@ -128,13 +128,13 @@ func TestTimeWindows_TwoDrivers_StaggeredDeparture_NonOverlapping(t *testing.T) 
 	segsA, _ := ComputeTimeWindows(depA, route)
 	segsB, _ := ComputeTimeWindows(depB, route)
 
-	// A: 08:00 → 08:30, B: 08:35 → 09:05 — must NOT overlap.
+	// A: 08:00 → 08:30, B: 08:35 → 09:05 - must NOT overlap.
 	aEnd := segsA[0].TimeWindowEnd
 	bStart := segsB[0].TimeWindowStart
 
 	if !bStart.After(aEnd) && !bStart.Equal(aEnd) {
 		t.Errorf(
-			"staggered departures still overlap: A ends %v, B starts %v — unexpected capacity conflict",
+			"staggered departures still overlap: A ends %v, B starts %v - unexpected capacity conflict",
 			aEnd, bStart,
 		)
 	}
@@ -143,7 +143,7 @@ func TestTimeWindows_TwoDrivers_StaggeredDeparture_NonOverlapping(t *testing.T) 
 // TestTimeWindows_PeakHour_MorningRush simulates the peak load scenario
 // (Irish Traffic Commission data: morning rush 07:30–09:30) with 5 concurrent
 // departure times spaced 5 minutes apart, each on the same route.
-// All 5 should produce overlapping windows on seg_city_north — the segment
+// All 5 should produce overlapping windows on seg_city_north - the segment
 // capacity must absorb them or reject the excess.
 func TestTimeWindows_PeakHour_MorningRush(t *testing.T) {
 	route := []client.MapSegment{
@@ -171,14 +171,14 @@ func TestTimeWindows_PeakHour_MorningRush(t *testing.T) {
 		}
 	}
 	if overlapCount == 0 {
-		t.Error("expected peak-hour windows to overlap on shared segment — capacity system should handle contention")
+		t.Error("expected peak-hour windows to overlap on shared segment - capacity system should handle contention")
 	}
 	t.Logf("peak-hour: %d overlapping window pairs on seg_city_north (capacity service must handle %d concurrent bookings)", overlapCount, len(windows))
 }
 
 // TestTimeWindows_MidnightCrossover_CrossRegion verifies that a journey
 // departing just before midnight and crossing into a new day produces correct
-// windows across all segments — TIMESTAMPTZ arithmetic must handle the
+// windows across all segments - TIMESTAMPTZ arithmetic must handle the
 // date boundary correctly.
 func TestTimeWindows_MidnightCrossover_CrossRegion(t *testing.T) {
 	dep := time.Date(2026, 4, 15, 23, 45, 0, 0, time.UTC)
@@ -204,7 +204,7 @@ func TestTimeWindows_MidnightCrossover_CrossRegion(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 2 — Vehicle Type Normalisation
+// SECTION 2 - Vehicle Type Normalisation
 //
 // The booking API accepts "HGV" as an alias for "truck".  Normalisation must
 // happen before the capacity service is called so slot weights are consistent.
@@ -268,7 +268,7 @@ func TestVehicleTypeNormalisation_InvalidTypes(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 3 — Journey Status Transition Logic
+// SECTION 3 - Journey Status Transition Logic
 //
 // Checklist: "Conflicting requests properly handled □"
 // The business rule: a driver can only have ONE active/approved journey.
@@ -318,12 +318,12 @@ func TestCancellationWindow_MinutesBeforeDeparture(t *testing.T) {
 		departure     time.Time
 		expectAllowed bool
 	}{
-		{"61 min away — allowed", now.Add(61 * time.Minute), true},
-		{"31 min away — allowed", now.Add(31 * time.Minute), true},
-		{"30 min away — rejected", now.Add(30 * time.Minute), false},
-		{"29 min away — rejected", now.Add(29 * time.Minute), false},
-		{"1 min away — rejected", now.Add(1 * time.Minute), false},
-		{"departure now — rejected", now, false},
+		{"61 min away - allowed", now.Add(61 * time.Minute), true},
+		{"31 min away - allowed", now.Add(31 * time.Minute), true},
+		{"30 min away - rejected", now.Add(30 * time.Minute), false},
+		{"29 min away - rejected", now.Add(29 * time.Minute), false},
+		{"1 min away - rejected", now.Add(1 * time.Minute), false},
+		{"departure now - rejected", now, false},
 	}
 
 	for _, tc := range cases {
@@ -362,7 +362,7 @@ func TestActivationWindow_GracePeriod(t *testing.T) {
 // activated within the grace window is treated as expired.
 func TestActivationWindow_ExpiredJourney(t *testing.T) {
 	const activationGraceMin = 30
-	// Journey departed 45 minutes ago — grace window has closed.
+	// Journey departed 45 minutes ago - grace window has closed.
 	departure := time.Now().UTC().Add(-45 * time.Minute)
 	graceEnd := departure.Add(time.Duration(activationGraceMin) * time.Minute)
 
@@ -373,7 +373,7 @@ func TestActivationWindow_ExpiredJourney(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4 — Departure Time Validation
+// SECTION 4 - Departure Time Validation
 //
 // Drivers must book at least 1 hour in advance.
 // Checklist: "Conflicting requests properly handled □"
@@ -390,13 +390,13 @@ func TestDepartureTime_TooSoon_Rejected(t *testing.T) {
 		departure     time.Time
 		expectAllowed bool
 	}{
-		{"90 min ahead — ok", now.Add(90 * time.Minute), true},
-		{"61 min ahead — ok", now.Add(61 * time.Minute), true},
-		{"60 min ahead — borderline ok", minDeparture, true},
-		{"59 min ahead — rejected", now.Add(59 * time.Minute), false},
-		{"30 min ahead — rejected", now.Add(30 * time.Minute), false},
-		{"now — rejected", now, false},
-		{"past — rejected", now.Add(-5 * time.Minute), false},
+		{"90 min ahead - ok", now.Add(90 * time.Minute), true},
+		{"61 min ahead - ok", now.Add(61 * time.Minute), true},
+		{"60 min ahead - borderline ok", minDeparture, true},
+		{"59 min ahead - rejected", now.Add(59 * time.Minute), false},
+		{"30 min ahead - rejected", now.Add(30 * time.Minute), false},
+		{"now - rejected", now, false},
+		{"past - rejected", now.Add(-5 * time.Minute), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.label, func(t *testing.T) {
@@ -409,7 +409,7 @@ func TestDepartureTime_TooSoon_Rejected(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5 — Segment Sequence Order
+// SECTION 5 - Segment Sequence Order
 //
 // ComputeTimeWindows relies on segments being in traversal order.
 // The map service returns them ordered by sequence_order already, but
@@ -463,7 +463,7 @@ func TestBuildRejectionReason_AtCapacity(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 6 — Integration Test Stubs
+// SECTION 6 - Integration Test Stubs
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestIntegration_DoubleBooking_SameDriver_SameTime tests that a driver who
@@ -478,9 +478,9 @@ func TestIntegration_DoubleBooking_SameDriver_SameTime(t *testing.T) {
 		t.Skip("integration: requires live CockroachDB")
 	}
 	t.Log("SCENARIO: Driver sends POST /journeys twice in <100ms with same idempotency key")
-	t.Log("Expected: both return 201 with identical journey_id — second is cache replay")
+	t.Log("Expected: both return 201 with identical journey_id - second is cache replay")
 	t.Log("SCENARIO: Driver sends second POST with different idempotency key")
-	t.Log("Expected: second returns 409 Conflict — 'driver already has an active journey'")
+	t.Log("Expected: second returns 409 Conflict - 'driver already has an active journey'")
 	t.Skip("run without -short with live CRDB")
 }
 

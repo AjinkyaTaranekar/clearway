@@ -215,7 +215,7 @@ func TestRoundTwo(t *testing.T) {
 func TestCapacityArithmetic_TruckFillsSegment(t *testing.T) {
 	maxCapacity := 10.0
 	truckSlots := model.VehicleTypeTruck.SlotsNeeded() // 3.0
-	// 3 trucks + 1 van (1.5) = 10.5 — should be at capacity
+	// 3 trucks + 1 van (1.5) = 10.5 - should be at capacity
 	reservedByThreeTrucks := truckSlots * 3          // 9.0
 	available := maxCapacity - reservedByThreeTrucks // 1.0
 	vanSlots := model.VehicleTypeVan.SlotsNeeded()   // 1.5

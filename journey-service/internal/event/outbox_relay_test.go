@@ -126,7 +126,7 @@ func silentLogger() *zerolog.Logger {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 — Happy Path
+// SECTION 1 - Happy Path
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestOutboxRelay_HappyPath_AllEventsPublishedAndMarked verifies the normal
@@ -177,7 +177,7 @@ func TestOutboxRelay_EmptyOutbox_NoOp(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 2 — Redis Partition / Failure Scenarios
+// SECTION 2 - Redis Partition / Failure Scenarios
 //
 // Checklist: "Communication failures tolerated □"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ func TestOutboxRelay_EmptyOutbox_NoOp(t *testing.T) {
 //
 // This maps directly to the partition recovery scenario in the design doc:
 // "During partition: regions continue operating with their local data"
-// — bookings are committed to DB, events stay in outbox until Redis heals.
+// - bookings are committed to DB, events stay in outbox until Redis heals.
 func TestOutboxRelay_RedisDown_NoEventsMarkedPublished(t *testing.T) {
 	fetcher := &mockFetcher{
 		events: []OutboxEvent{
@@ -205,7 +205,7 @@ func TestOutboxRelay_RedisDown_NoEventsMarkedPublished(t *testing.T) {
 	marked := fetcher.getMarked()
 	if len(marked) != 0 {
 		t.Errorf(
-			"Redis was down but %d events were marked published — events would be lost on restart",
+			"Redis was down but %d events were marked published - events would be lost on restart",
 			len(marked),
 		)
 	}
@@ -227,7 +227,7 @@ func TestOutboxRelay_RedisDown_EventsRetainedForRecovery(t *testing.T) {
 
 	stream := &mockStreamWriter{}
 
-	// First tick: Redis down — event stays in outbox.
+	// First tick: Redis down - event stays in outbox.
 	stream.xaddErr = errors.New("connection refused")
 	relayBatch(context.Background(), fetcher, stream, silentLogger())
 	fetchCallCount++
@@ -236,7 +236,7 @@ func TestOutboxRelay_RedisDown_EventsRetainedForRecovery(t *testing.T) {
 		t.Fatalf("tick 1 (Redis down): expected 0 marked, got %d", len(fetcher.getMarked()))
 	}
 
-	// Second tick: Redis recovered — event delivered.
+	// Second tick: Redis recovered - event delivered.
 	stream.xaddErr = nil
 	relayBatch(context.Background(), fetcher, stream, silentLogger())
 	fetchCallCount++
@@ -251,7 +251,7 @@ func TestOutboxRelay_RedisDown_EventsRetainedForRecovery(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 3 — Partial Batch Failure
+// SECTION 3 - Partial Batch Failure
 //
 // Checklist: "Consistency of data maintained across failures/recoveries □"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ func TestOutboxRelay_PartialBatch_FirstEventFails(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4 — Event Ordering Guarantee
+// SECTION 4 - Event Ordering Guarantee
 //
 // Redis Streams preserve insertion order.  The relay MUST publish events in
 // the same order they were committed to the outbox (by outbox.id ASC).
@@ -342,13 +342,13 @@ func TestOutboxRelay_EventOrderPreserved(t *testing.T) {
 	expectedPayloads := []string{`{"seq":1}`, `{"seq":2}`, `{"seq":3}`}
 	for i, want := range expectedPayloads {
 		if published[i] != want {
-			t.Errorf("stream position %d: got payload %q, want %q — event ordering violated", i, published[i], want)
+			t.Errorf("stream position %d: got payload %q, want %q - event ordering violated", i, published[i], want)
 		}
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5 — Fetch Failures
+// SECTION 5 - Fetch Failures
 //
 // If the DB is unreachable, the relay should log and return without panicking
 // or marking anything published.
@@ -370,7 +370,7 @@ func TestOutboxRelay_DBFetchFails_NoPublishAttempted(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 6 — Context Cancellation (Graceful Shutdown)
+// SECTION 6 - Context Cancellation (Graceful Shutdown)
 //
 // When the service shuts down, RunOutboxRelay must exit cleanly without
 // processing a new batch after the context is cancelled.
@@ -409,12 +409,12 @@ func TestOutboxRelay_ContextCancelled_RelayShutsDown(t *testing.T) {
 	case <-done:
 		// Good: context cancellation was observed before the first tick.
 	case <-time.After(2 * time.Second):
-		t.Error("relay did not respond to context cancellation within 2s — graceful shutdown broken")
+		t.Error("relay did not respond to context cancellation within 2s - graceful shutdown broken")
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 7 — Batch Size Boundary
+// SECTION 7 - Batch Size Boundary
 //
 // The relay fetches at most 100 events per tick (hardcoded limit).
 // Checklist: "Scalability □"
@@ -424,7 +424,7 @@ func TestOutboxRelay_ContextCancelled_RelayShutsDown(t *testing.T) {
 // is called with limit=100 and processes no more than that per batch, even if
 // the outbox table has thousands of rows.
 func TestOutboxRelay_BatchLimit_Only100ProcessedPerTick(t *testing.T) {
-	// Build 150 events — only 100 should be fetched per batch.
+	// Build 150 events - only 100 should be fetched per batch.
 	events := make([]OutboxEvent, 150)
 	for i := range events {
 		events[i] = OutboxEvent{
@@ -447,7 +447,7 @@ func TestOutboxRelay_BatchLimit_Only100ProcessedPerTick(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 8 — Cross-Region Event Fan-out
+// SECTION 8 - Cross-Region Event Fan-out
 //
 // In a 3-VM deployment, when a journey is booked on VM1 (EU), the event must
 // reach both the EU notification-service consumer AND any cross-region
@@ -466,7 +466,7 @@ func TestOutboxRelay_StreamName_MatchesConsumerStreamName(t *testing.T) {
 	const notificationConsumerStreamName = "journey.events" // from notification-service consumer.go
 	if StreamName != notificationConsumerStreamName {
 		t.Errorf(
-			"outbox relay publishes to %q but notification consumer reads from %q — events will be lost",
+			"outbox relay publishes to %q but notification consumer reads from %q - events will be lost",
 			StreamName, notificationConsumerStreamName,
 		)
 	}
@@ -495,13 +495,13 @@ func TestOutboxRelay_AllEventTypesAreKnown(t *testing.T) {
 	}
 	for _, et := range producedTypes {
 		if !knownTypes[et] {
-			t.Errorf("event type %q is produced by the relay but not registered in knownTypes — consumer will silently drop it", et)
+			t.Errorf("event type %q is produced by the relay but not registered in knownTypes - consumer will silently drop it", et)
 		}
 	}
 	// Verify none are empty strings (which would make them indistinguishable).
 	for _, et := range producedTypes {
 		if et == "" {
-			t.Error("empty event type string — consumer cannot dispatch it")
+			t.Error("empty event type string - consumer cannot dispatch it")
 		}
 	}
 }
@@ -554,6 +554,6 @@ func TestMarshalEnvelope_UniqueIDs(t *testing.T) {
 	id1, _, _ := MarshalEnvelope(EventJourneyBooked, p{1})
 	id2, _, _ := MarshalEnvelope(EventJourneyBooked, p{1})
 	if id1 == id2 {
-		t.Error("MarshalEnvelope produced duplicate event IDs — consumer dedup will fail on distinct events")
+		t.Error("MarshalEnvelope produced duplicate event IDs - consumer dedup will fail on distinct events")
 	}
 }

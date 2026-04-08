@@ -19,8 +19,8 @@ import (
 // Writes go to the master pool; reads use the slave pool (falls back to master
 // if slave is nil, e.g. when running without replication in dev).
 type JourneyRepository struct {
-	db    *sql.DB // master — writes
-	slave *sql.DB // slave  — reads (nil → fall back to master)
+	db    *sql.DB // master - writes
+	slave *sql.DB // slave  - reads (nil → fall back to master)
 }
 
 // NewJourneyRepository creates a new repository.

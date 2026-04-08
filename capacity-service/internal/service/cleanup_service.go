@@ -11,9 +11,9 @@ import (
 )
 
 // CleanupService runs periodic background jobs:
-//  1. Orphaned reservation cleanup — releases reservations whose time window ended
+//  1. Orphaned reservation cleanup - releases reservations whose time window ended
 //     more than orphanThreshold ago (catches Journey Service crashes).
-//  2. Idempotency cache cleanup — purges expired entries.
+//  2. Idempotency cache cleanup - purges expired entries.
 type CleanupService struct {
 	reservRepo      *repository.ReservationRepo
 	idempRepo       *repository.IdempotencyRepo

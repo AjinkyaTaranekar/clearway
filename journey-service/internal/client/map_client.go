@@ -78,7 +78,7 @@ type MapClient struct {
 	httpClient *http.Client
 	breaker    *gobreaker.CircuitBreaker
 
-	// nodes cache — avoids fetching /api/v1/map/nodes on every request.
+	// nodes cache - avoids fetching /api/v1/map/nodes on every request.
 	nodesMu        sync.RWMutex
 	nodes          []mapNode
 	nodesFetchedAt time.Time
@@ -224,7 +224,7 @@ func nearestNodeID(nodes []mapNode, lat, lng float64) string {
 //
 // Returns a non-nil error when the map service is unreachable or returns an
 // unexpected response. The caller (journey service) must treat this as a hard
-// failure — no silent fallback is performed here.
+// failure - no silent fallback is performed here.
 func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinates) (*RouteResponse, error) {
 	nodes, err := c.getNodes(ctx)
 	if err != nil {

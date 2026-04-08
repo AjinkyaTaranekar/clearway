@@ -25,7 +25,7 @@ import (
 // AuthService handles all authentication logic: registration, login, token
 // rotation, logout, and force-logout.
 type AuthService struct {
-	db         *sql.DB // master pool — used to open transactions
+	db         *sql.DB // master pool - used to open transactions
 	users      *repository.UserRepo
 	tokens     *repository.TokenRepo
 	jwks       *JWKSService
@@ -86,7 +86,7 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput, userAgent,
 		Str("ip", ip).
 		Msg("starting user registration flow")
 
-	// Hash the password before opening the transaction — bcrypt is CPU-heavy
+	// Hash the password before opening the transaction - bcrypt is CPU-heavy
 	// and we must not hold a DB connection while computing it.
 	hash, err := hashPassword(in.Password, s.bcryptCost)
 	if err != nil {
@@ -171,7 +171,7 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput, userAgent,
 
 // Login verifies credentials and issues a new token pair.
 // No surrounding transaction is needed: a failure after password verification
-// just means the user retries — there is no half-committed state to clean up.
+// just means the user retries - there is no half-committed state to clean up.
 func (s *AuthService) Login(ctx context.Context, email, password, userAgent, ip string) (*AuthResult, error) {
 	emailLower := strings.ToLower(email)
 	log := logWithTrace(ctx)

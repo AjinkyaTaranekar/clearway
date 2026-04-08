@@ -810,7 +810,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "",
 	Schemes:          []string{},
 	Title:            "Journey Microservice API",
-	Description:      "Distributed Vehicle Capacity System — Journey Service. Manages journey bookings, state transitions, and enforcement checks.",
+	Description:      "Distributed Vehicle Capacity System - Journey Service. Manages journey bookings, state transitions, and enforcement checks.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

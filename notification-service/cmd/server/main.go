@@ -96,16 +96,16 @@ func main() {
 	fcmClient, err = fcm.NewClientFromEnv()
 	if err != nil {
 		if err == fcm.ErrClientDisabled {
-			log.Warn().Msg("FCM credentials not configured — push delivery will be marked as skipped")
+			log.Warn().Msg("FCM credentials not configured - push delivery will be marked as skipped")
 		} else {
-			log.Warn().Err(err).Msg("Failed to initialize FCM client — push delivery will be marked as skipped")
+			log.Warn().Err(err).Msg("Failed to initialize FCM client - push delivery will be marked as skipped")
 		}
 		fcmClient = nil
 	} else {
 		log.Info().Msg("FCM client initialized")
 	}
 
-	// Initialize Redis (optional — service degrades gracefully without it)
+	// Initialize Redis (optional - service degrades gracefully without it)
 	var redisClient *redis.Client
 	if cfg.Redis.Host != "" {
 		redisClient = redis.NewClient(&redis.Options{
@@ -115,7 +115,7 @@ func main() {
 		})
 		pingCtx, pingCancel := context.WithTimeout(baseCtx, 3*time.Second)
 		if err := redisClient.Ping(pingCtx).Err(); err != nil {
-			log.Warn().Err(err).Msg("Redis ping failed — stream consumer disabled")
+			log.Warn().Err(err).Msg("Redis ping failed - stream consumer disabled")
 			redisClient = nil
 		} else {
 			log.Info().Str("host", cfg.Redis.Host).Msg("Redis connected")

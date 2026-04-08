@@ -30,7 +30,7 @@ import (
 
 // @title Journey Microservice API
 // @version 1.0
-// @description Distributed Vehicle Capacity System — Journey Service. Manages journey bookings, state transitions, and enforcement checks.
+// @description Distributed Vehicle Capacity System - Journey Service. Manages journey bookings, state transitions, and enforcement checks.
 // @termsOfService http://swagger.io/terms/
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
@@ -102,7 +102,7 @@ func main() {
 		log.Info().Str("file", mf).Msg("migration applied")
 	}
 
-	// Redis (optional — graceful if unavailable)
+	// Redis (optional - graceful if unavailable)
 	var redisClient *redis.Client
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.Redis.Host,
@@ -112,14 +112,14 @@ func main() {
 	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := rdb.Ping(pingCtx).Err(); err != nil {
-		log.Warn().Err(err).Msg("Redis unavailable — caching and event publishing disabled")
+		log.Warn().Err(err).Msg("Redis unavailable - caching and event publishing disabled")
 		rdb.Close()
 	} else {
 		redisClient = rdb
 		log.Info().Msg("Redis connected")
 	}
 
-	// JWKS validator — fetches RSA public keys from the IAM service to validate
+	// JWKS validator - fetches RSA public keys from the IAM service to validate
 	// RS256 tokens. Keys are cached for 1 hour and refreshed on cache miss.
 	iamURL := cfg.Services.IAMURL
 	if iamURL == "" {
@@ -155,7 +155,7 @@ func main() {
 	// Repositories
 	idempRepo := repository.NewIdempotencyRepository(dbPools.Master)
 
-	// Service — event publishing now handled by transactional outbox (F-03)
+	// Service - event publishing now handled by transactional outbox (F-03)
 	journeySvc := service.NewJourneyService(
 		journeyRepo, idempRepo,
 		mapClient, routeCache, capacityClient,
@@ -168,7 +168,7 @@ func main() {
 	journeyHandler := handler.NewJourneyHandler(journeySvc)
 	adminHandler := handler.NewAdminHandler(journeySvc)
 
-	// Router — JWT validation uses RS256 keys from the IAM JWKS endpoint
+	// Router - JWT validation uses RS256 keys from the IAM JWKS endpoint
 	router := httpHandler.NewRouter(healthHandler, journeyHandler, adminHandler, log, jwksValidator)
 	mux := router.Setup()
 
@@ -188,7 +188,7 @@ func main() {
 	go journeySvc.RunExpiryJob(ctx)
 	log.Info().Msg("background expiry job started")
 
-	// Outbox relay — reads journey.outbox and publishes to Redis Streams (F-03).
+	// Outbox relay - reads journey.outbox and publishes to Redis Streams (F-03).
 	// Guarantees at-least-once delivery even across process restarts.
 	go event.RunOutboxRelay(ctx, journeyRepo, redisClient, log.Logger)
 	log.Info().Msg("outbox relay started")

@@ -91,7 +91,7 @@ func isCapacityCircuitOpen(err error) bool {
 //   - HTTP 4xx/5xx on bad request or internal error
 //
 // Returns an error if the service is unreachable or returns an unexpected
-// response — no silent fallback is performed.  Masking a capacity-service
+// response - no silent fallback is performed.  Masking a capacity-service
 // failure with a fake approval defeats the core double-booking prevention
 // guarantee of the system.
 func (c *CapacityClient) Reserve(ctx context.Context, req ReserveRequest) (*ReserveResponse, error) {

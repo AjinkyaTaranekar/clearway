@@ -8,7 +8,7 @@ import (
 )
 
 // ComputeTimeWindows computes cascading time windows for each segment.
-// Uses full TIMESTAMPTZ arithmetic — works correctly across midnight.
+// Uses full TIMESTAMPTZ arithmetic - works correctly across midnight.
 func ComputeTimeWindows(departureTime time.Time, segments []client.MapSegment) ([]model.JourneySegment, time.Time) {
 	cursor := departureTime
 	result := make([]model.JourneySegment, 0, len(segments))

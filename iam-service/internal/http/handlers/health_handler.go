@@ -36,7 +36,7 @@ type healthResponse struct {
 // @Produce json
 // @Success 200 {object} healthResponse
 // @Router /health [get]
-// Health handles GET /health. Always returns 200 — degraded DB is reported
+// Health handles GET /health. Always returns 200 - degraded DB is reported
 // in the body but does not take the service down (existing JWTs still work).
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
@@ -78,7 +78,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 // @Failure 503 {object} map[string]string
 // @Router /ready [get]
 // Readiness handles GET /ready. Returns 503 if either the DB ping fails or
-// the RSA signing key has not been loaded — both are required before the
+// the RSA signing key has not been loaded - both are required before the
 // service can handle any meaningful request.
 func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())

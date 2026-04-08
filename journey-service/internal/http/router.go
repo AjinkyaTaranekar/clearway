@@ -63,7 +63,7 @@ func (r *Router) Setup() *mux.Router {
 	r.mux.HandleFunc("/health", r.healthHandler.Health).Methods("GET")
 	r.mux.HandleFunc("/ready", r.healthHandler.Readiness).Methods("GET")
 
-	// API v1 subrouter — all routes validated with RS256 tokens from IAM service
+	// API v1 subrouter - all routes validated with RS256 tokens from IAM service
 	api := r.mux.PathPrefix("/api/v1").Subrouter()
 	api.Use(middleware.JWTAuth(r.jwksValidator))
 	api.Use(middleware.IdempotencyKeyMiddleware)
@@ -76,14 +76,14 @@ func (r *Router) Setup() *mux.Router {
 	api.HandleFunc("/journeys/{id}/activate", r.journeyHandler.ActivateJourney).Methods("PUT", "OPTIONS")
 	api.HandleFunc("/journeys/{id}/complete", r.journeyHandler.CompleteJourney).Methods("PUT", "OPTIONS")
 
-	// Admin subrouter — requires admin role
+	// Admin subrouter - requires admin role
 	admin := api.PathPrefix("/admin").Subrouter()
 	admin.Use(middleware.AdminOnly)
 	admin.HandleFunc("/analytics", r.adminHandler.Analytics).Methods("GET")
 	admin.HandleFunc("/journeys", r.adminHandler.ListJourneys).Methods("GET")
 	admin.HandleFunc("/journeys/{id}/cancel", r.adminHandler.CancelJourney).Methods("PUT", "OPTIONS")
 
-	// Enforcement subrouter — requires enforcement or admin role
+	// Enforcement subrouter - requires enforcement or admin role
 	enforcement := api.PathPrefix("/enforcement").Subrouter()
 	enforcement.Use(middleware.EnforcementOnly)
 	enforcement.HandleFunc("/verify", r.adminHandler.EnforcementVerify).Methods("GET")

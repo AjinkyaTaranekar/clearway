@@ -24,7 +24,7 @@ import (
 
 // @title IAM Microservice API
 // @version 1.0
-// @description Distributed Vehicle Capacity System — IAM Service. Handles authentication, user profiles, and JWKS.
+// @description Distributed Vehicle Capacity System - IAM Service. Handles authentication, user profiles, and JWKS.
 // @termsOfService http://swagger.io/terms/
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
@@ -85,13 +85,13 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).
 			Str("path", cfg.IAM.PrivateKeyPath).
-			Msg("failed to load RSA key — run: openssl genrsa -out keys/private.pem 2048")
+			Msg("failed to load RSA key - run: openssl genrsa -out keys/private.pem 2048")
 	}
 	log.Info().Str("kid", cfg.IAM.SigningKID).Msg("RSA key loaded")
 
 	// --- Repositories ---
 	// Master: all writes and auth-path reads (avoids replication-lag failures).
-	// Slave:  admin read-only queries (list/count users) — lag-tolerant.
+	// Slave:  admin read-only queries (list/count users) - lag-tolerant.
 	userRepo := repository.NewUserRepo(dbPools.Master, dbPools.Slave)
 	vehicleRepo := repository.NewVehicleRepo(dbPools.Master)
 	tokenRepo := repository.NewTokenRepo(dbPools.Master)
