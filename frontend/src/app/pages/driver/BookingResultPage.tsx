@@ -22,6 +22,14 @@ export default function BookingResultPage() {
   }
 
   const { success, journeyId, reason } = lastBookingResult;
+  const normalizedReason = (reason ?? '').toLowerCase();
+  const isCapacityRejection = !success && (
+    normalizedReason.includes('capacity')
+    || normalizedReason.includes('segment')
+    || normalizedReason.includes('slot')
+    || normalizedReason.includes('reserved it first')
+  );
+  const rejectionMessage = reason || 'Your journey could not be booked due to road capacity limits at the chosen time.';
 
   return (
     <div className="p-5 lg:p-8 max-w-xl mx-auto">
@@ -55,11 +63,11 @@ export default function BookingResultPage() {
               marginBottom: '8px',
             }}
           >
-            {success ? 'Journey approved' : 'Journey rejected'}
+            {success ? 'Journey approved' : isCapacityRejection ? 'Slot no longer available' : 'Journey rejected'}
           </h1>
 
           <p style={{ color: success ? '#2F6B55' : '#B42318', fontSize: '0.9375rem' }}>
-            Booking reference: <strong>{journeyId}</strong>
+            Booking reference: <strong>{journeyId || 'Not assigned'}</strong>
           </p>
         </div>
 
@@ -123,18 +131,30 @@ export default function BookingResultPage() {
                 style={{ background: '#FDECEA', border: '1px solid #F5C2BE' }}
               >
                 <p style={{ color: '#8E1B13', fontSize: '0.9375rem', lineHeight: 1.65 }}>
-                  {reason || 'Your journey could not be booked due to road capacity limits at the chosen time.'}
+                  {rejectionMessage}
                 </p>
               </div>
+
+              {isCapacityRejection && (
+                <div
+                  className="rounded-xl p-4 mb-5"
+                  style={{ background: '#FFF4E0', border: '1px solid #F1D7A5' }}
+                >
+                  <p style={{ color: '#7A4500', fontSize: '0.875rem', lineHeight: 1.6 }}>
+                    Another driver may have confirmed the same route and departure slot just before your request (ghost reservation). Choose the next available slot and try again.
+                  </p>
+                </div>
+              )}
 
               <h4 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1F2421', marginBottom: '12px' }}>
                 What you can do
               </h4>
               <ul className="space-y-2 mb-6">
                 {[
-                  'Choose a later departure time - after 09:30 usually has more availability.',
+                  'Choose the next 30-minute departure slot and retry immediately.',
+                  'If this was a ghost reservation race, nearby slots are often still available.',
                   'Try a different route or check the traffic map for congestion.',
-                  'Consider an off-peak time such as midday or early evening.',
+                  'Consider an off-peak time such as midday or early evening for better success.',
                 ].map((tip, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span style={{ color: '#2F6B55', fontWeight: 700, fontSize: '1rem', lineHeight: 1.4 }}>·</span>

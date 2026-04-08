@@ -6,6 +6,27 @@ import { getCoordinates, getLocationName } from './coordinates';
 // you can set VITE_API_URL to point at a specific gateway or host.
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
+function generateIdempotencyKey(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    return cryptoApi.randomUUID();
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+
+    // RFC 4122 v4 UUID bits
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  }
+
+  return `idemp-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+}
+
 // ---- Type mapping helpers ----
 
 function mapStatus(apiStatus: string): JourneyStatus {
@@ -86,6 +107,11 @@ function mapSegments(
       // only when the occupancy fetch failed or this segment_id is unrecognised.
       occupancy: occ !== undefined ? Math.round(occ.pct) : 50,
       level: occ !== undefined ? occ.level : ('medium' as const),
+      sequenceOrder: s.sequence_order ?? s.sequence,
+      traversalMinutes: s.traversal_minutes ?? s.traversal_time_minutes,
+      timeWindowStart: s.time_window_start,
+      timeWindowEnd: s.time_window_end,
+      region: s.region,
     };
   });
 }
@@ -164,7 +190,7 @@ export async function createJourney(params: {
   const originCoords = params.originCoords ?? getCoordinates(params.origin);
   const destCoords = params.destCoords ?? getCoordinates(params.destination);
 
-  const idempotencyKey = crypto.randomUUID();
+  const idempotencyKey = generateIdempotencyKey();
   const departureISO = new Date(params.departureTime).toISOString();
 
   const data = await apiFetch<any>('/api/v1/journeys', {

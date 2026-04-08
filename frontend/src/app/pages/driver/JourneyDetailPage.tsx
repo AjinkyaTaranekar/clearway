@@ -174,7 +174,7 @@ export default function JourneyDetailPage() {
             Route segments
           </h4>
           <div className="space-y-2.5">
-            {journey.segments.map((seg) => (
+            {journey.segments.map((seg, index) => (
               <div
                 key={seg.id}
                 className="flex items-center justify-between p-3 rounded-lg"
@@ -185,7 +185,19 @@ export default function JourneyDetailPage() {
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: occupancyColor(seg.level) }}
                   />
-                  <span style={{ color: '#1F2421', fontWeight: 500, fontSize: '0.875rem' }}>{seg.name}</span>
+                  <div>
+                    <div style={{ color: '#1F2421', fontWeight: 500, fontSize: '0.875rem' }}>
+                      {seg.sequenceOrder ?? index + 1}. {seg.name}
+                    </div>
+                    {(seg.timeWindowStart || seg.traversalMinutes) && (
+                      <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                        {seg.timeWindowStart && seg.timeWindowEnd
+                          ? `${formatTime(seg.timeWindowStart)}-${formatTime(seg.timeWindowEnd)}`
+                          : 'Window unavailable'}
+                        {seg.traversalMinutes ? ` · ${seg.traversalMinutes} min` : ''}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>

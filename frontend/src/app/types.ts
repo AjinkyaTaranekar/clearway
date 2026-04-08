@@ -8,6 +8,11 @@ export interface RouteSegment {
   name: string;
   occupancy: number;
   level: TrafficLevel;
+  sequenceOrder?: number;
+  traversalMinutes?: number;
+  timeWindowStart?: string;
+  timeWindowEnd?: string;
+  region?: string;
 }
 
 export interface TimelineEvent {

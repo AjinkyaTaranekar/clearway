@@ -1,11 +1,14 @@
-import { LngLatBounds, Map as MapLibreMap } from 'maplibre-gl';
+import { LngLatBounds, Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { AlertCircle, ChevronRight, Clock, Info } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import PlaceSearch from '../../components/ui/PlaceSearch';
 import OSMMap, { addMarker, addPolyline } from '../../components/ui/OSMMap';
 import { useApp } from '../../context/AppContext';
-import { PlaceResult } from '../../services/mapApi';
+import { authHeaders } from '../../services/auth';
+import { getMapNodes, getRoute, MapNode, PlaceResult } from '../../services/mapApi';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 const VEHICLE_TYPES = [
   { value: 'Car', label: 'Car', icon: 'CAR', desc: 'Standard passenger vehicle' },
@@ -25,11 +28,135 @@ const IAM_TO_BOOKING_VEHICLE: Record<string, string> = {
 // Default map centre: Dublin, Ireland
 const DUBLIN: [number, number] = [53.3498, -6.2603];
 
+const SLOT_INTERVAL_MINUTES = 30;
+
+const VEHICLE_SLOT_WEIGHTS: Record<string, number> = {
+  Car: 1,
+  Van: 1.5,
+  Motorcycle: 0.5,
+  HGV: 3,
+};
+
 interface FormErrors {
   origin?: string;
   destination?: string;
   departureTime?: string;
   vehicleType?: string;
+}
+
+interface RouteCapacitySegment {
+  segmentId: string;
+  segmentName: string;
+  sequence: number;
+  traversalMinutes: number;
+  fromNodeId: string;
+  toNodeId: string;
+}
+
+interface CapacityCheckResponse {
+  segment_id: string;
+  max_capacity: number;
+  reserved_slots: number;
+  available_slots: number;
+  can_reserve: boolean;
+}
+
+interface SlotState {
+  status: 'checking' | 'available' | 'exhausted' | 'error';
+  message?: string;
+  minAvailableSlots?: number;
+  segmentChecks?: SegmentFlowItem[];
+}
+
+interface SegmentWindow {
+  segment: RouteCapacitySegment;
+  timeWindowStart: Date;
+  timeWindowEnd: Date;
+}
+
+interface SegmentFlowItem {
+  segmentId: string;
+  segmentName: string;
+  sequence: number;
+  traversalMinutes: number;
+  timeWindowStart: string;
+  timeWindowEnd: string;
+  maxCapacity?: number;
+  reservedSlots?: number;
+  availableSlots?: number;
+  canReserve?: boolean;
+}
+
+interface SlotOption {
+  value: string;
+  label: string;
+}
+
+function formatDateInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildDaySlots(dateValue: string): SlotOption[] {
+  const slots: SlotOption[] = [];
+  const totalSlots = (24 * 60) / SLOT_INTERVAL_MINUTES;
+
+  for (let i = 0; i < totalSlots; i += 1) {
+    const totalMinutes = i * SLOT_INTERVAL_MINUTES;
+    const hours = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+    const minutes = String(totalMinutes % 60).padStart(2, '0');
+    slots.push({
+      value: `${dateValue}T${hours}:${minutes}`,
+      label: `${hours}:${minutes}`,
+    });
+  }
+
+  return slots;
+}
+
+function nearestNodeId(nodes: MapNode[], lat: number, lng: number): string {
+  let best = '';
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  nodes.forEach((node) => {
+    const distance = Math.hypot(node.lat - lat, node.lng - lng);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = node.node_id;
+    }
+  });
+
+  return best;
+}
+
+function buildSegmentWindows(slotValue: string, segments: RouteCapacitySegment[]): SegmentWindow[] {
+  const departure = new Date(slotValue);
+  if (Number.isNaN(departure.getTime())) return [];
+
+  let cursor = departure;
+  return segments.map((segment) => {
+    const timeWindowStart = new Date(cursor);
+    const timeWindowEnd = new Date(cursor.getTime() + segment.traversalMinutes * 60 * 1000);
+    cursor = timeWindowEnd;
+    return {
+      segment,
+      timeWindowStart,
+      timeWindowEnd,
+    };
+  });
+}
+
+function formatClock(ts: string | Date): string {
+  const date = ts instanceof Date ? ts : new Date(ts);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function formatSlots(slots: number): string {
+  if (Number.isInteger(slots)) return String(slots);
+  return slots.toFixed(1);
 }
 
 export default function BookJourneyPage() {
@@ -43,14 +170,291 @@ export default function BookJourneyPage() {
   const [step, setStep] = useState(1);
   const [originPlace, setOriginPlace] = useState<PlaceResult | null>(null);
   const [destPlace, setDestPlace] = useState<PlaceResult | null>(null);
+  const [selectedDate, setSelectedDate] = useState(formatDateInput(new Date()));
   const [departureTime, setDepartureTime] = useState('');
   const [vehicleType, setVehicleType] = useState(defaultVehicleType);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [routeSegments, setRouteSegments] = useState<RouteCapacitySegment[]>([]);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeStatusMessage, setRouteStatusMessage] = useState('');
+  const [routeTotalMinutes, setRouteTotalMinutes] = useState(0);
+  const [routePolyline, setRoutePolyline] = useState<[number, number][]>([]);
+  const [slotStates, setSlotStates] = useState<Record<string, SlotState>>({});
+  const [ghostNotice, setGhostNotice] = useState('');
 
   const mapRef = useRef<MapLibreMap | null>(null);
+  const markerRefs = useRef<Marker[]>([]);
 
-  const minTime = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
+  const minBookDate = useMemo(() => formatDateInput(new Date()), []);
+  const maxBookDate = useMemo(
+    () => formatDateInput(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
+    [],
+  );
+  const daySlots = useMemo(() => buildDaySlots(selectedDate), [selectedDate]);
+  const requiredSlots = VEHICLE_SLOT_WEIGHTS[vehicleType] ?? 1;
+  const selectedSlotState = departureTime ? slotStates[departureTime] : undefined;
+
+  const segmentFlow = useMemo(() => {
+    if (!departureTime || routeSegments.length === 0) return [];
+
+    const windows = buildSegmentWindows(departureTime, routeSegments);
+    const checksBySegment = new Map(
+      (selectedSlotState?.segmentChecks ?? []).map((check) => [check.segmentId, check]),
+    );
+
+    return windows.map((window) => {
+      const check = checksBySegment.get(window.segment.segmentId);
+      return {
+        segmentId: window.segment.segmentId,
+        segmentName: window.segment.segmentName,
+        sequence: window.segment.sequence,
+        traversalMinutes: window.segment.traversalMinutes,
+        timeWindowStart: window.timeWindowStart.toISOString(),
+        timeWindowEnd: window.timeWindowEnd.toISOString(),
+        maxCapacity: check?.maxCapacity,
+        reservedSlots: check?.reservedSlots,
+        availableSlots: check?.availableSlots,
+        canReserve: check?.availableSlots !== undefined ? check.availableSlots >= requiredSlots : check?.canReserve,
+      } as SegmentFlowItem;
+    });
+  }, [departureTime, routeSegments, selectedSlotState, requiredSlots]);
+
+  const etaTimeLabel = useMemo(() => {
+    if (segmentFlow.length === 0) return '';
+    return formatClock(segmentFlow[segmentFlow.length - 1].timeWindowEnd);
+  }, [segmentFlow]);
+
+  const isSlotWithinAdvanceWindow = (slotValue: string): boolean => {
+    const slotDate = new Date(slotValue);
+    return slotDate.getTime() >= Date.now() + 55 * 60 * 1000;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveRouteSegments = async () => {
+      setSlotStates({});
+      setGhostNotice('');
+
+      if (!originPlace || !destPlace || originPlace.place_id === destPlace.place_id) {
+        setRouteSegments([]);
+        setRouteTotalMinutes(0);
+        setRoutePolyline([]);
+        setRouteStatusMessage('');
+        setRouteLoading(false);
+        return;
+      }
+
+      setRouteLoading(true);
+      setRouteStatusMessage('Resolving route for live slot checks...');
+
+      try {
+        const nodes = await getMapNodes();
+        const originNodeId = nearestNodeId(nodes, originPlace.lat, originPlace.lng);
+        const destinationNodeId = nearestNodeId(nodes, destPlace.lat, destPlace.lng);
+
+        if (!originNodeId || !destinationNodeId || originNodeId === destinationNodeId) {
+          throw new Error('Route could not be resolved');
+        }
+
+        const route = await getRoute(originNodeId, destinationNodeId);
+        const sortedSegments = [...route.segments].sort((a, b) => a.sequence - b.sequence);
+        const mappedSegments = sortedSegments.map((segment, index) => ({
+          segmentId: segment.segment_id,
+          segmentName: segment.segment_name,
+          sequence: segment.sequence || index + 1,
+          traversalMinutes: Math.max(1, segment.traversal_time_minutes),
+          fromNodeId: segment.from_node_id,
+          toNodeId: segment.to_node_id,
+        }));
+
+        if (mappedSegments.length === 0) {
+          throw new Error('Route could not be resolved');
+        }
+
+        const nodeByID = new Map(nodes.map((node) => [node.node_id, node]));
+        const polylineCoords: [number, number][] = [];
+        sortedSegments.forEach((segment, index) => {
+          const fromNode = nodeByID.get(segment.from_node_id);
+          const toNode = nodeByID.get(segment.to_node_id);
+
+          if (index === 0 && fromNode) {
+            polylineCoords.push([fromNode.lat, fromNode.lng]);
+          }
+
+          if (toNode) {
+            const prev = polylineCoords[polylineCoords.length - 1];
+            if (!prev || prev[0] !== toNode.lat || prev[1] !== toNode.lng) {
+              polylineCoords.push([toNode.lat, toNode.lng]);
+            }
+          }
+        });
+
+        if (polylineCoords.length < 2) {
+          polylineCoords.push([originPlace.lat, originPlace.lng], [destPlace.lat, destPlace.lng]);
+        }
+
+        const totalMinutes = Math.max(
+          route.total_traversal_time_minutes || 0,
+          mappedSegments.reduce((sum, segment) => sum + segment.traversalMinutes, 0),
+        );
+
+        if (!cancelled) {
+          setRouteSegments(mappedSegments);
+          setRouteTotalMinutes(totalMinutes);
+          setRoutePolyline(polylineCoords);
+          setRouteStatusMessage(
+            `Live capacity checks are enabled across ${mappedSegments.length} segments (~${totalMinutes} min total).`,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setRouteSegments([]);
+          setRouteTotalMinutes(0);
+          setRoutePolyline([]);
+          setRouteStatusMessage('Live slot checks are unavailable. Final capacity validation still happens on submit.');
+        }
+      } finally {
+        if (!cancelled) {
+          setRouteLoading(false);
+        }
+      }
+    };
+
+    void resolveRouteSegments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [originPlace, destPlace]);
+
+  const checkSlotCapacity = async (slotValue: string, forceRefresh = false): Promise<SlotState> => {
+    const existing = slotStates[slotValue];
+    if (!forceRefresh && existing && existing.status !== 'error') {
+      return existing;
+    }
+
+    setSlotStates((prev) => ({
+      ...prev,
+      [slotValue]: { status: 'checking' },
+    }));
+
+    try {
+      const windows = buildSegmentWindows(slotValue, routeSegments);
+      if (windows.length === 0) {
+        throw new Error('invalid slot datetime');
+      }
+
+      const checks = await Promise.all(
+        windows.map(async (window) => {
+          const query = new URLSearchParams({
+            segment_id: window.segment.segmentId,
+            time_window_start: window.timeWindowStart.toISOString(),
+            time_window_end: window.timeWindowEnd.toISOString(),
+          });
+
+          const res = await fetch(`${API_BASE_URL}/api/v1/capacity/check?${query.toString()}`, {
+            headers: {
+              ...authHeaders(),
+            },
+          });
+
+          if (!res.ok) {
+            throw new Error(`capacity check failed (${res.status})`);
+          }
+
+          const check = (await res.json()) as CapacityCheckResponse;
+          return {
+            segmentId: window.segment.segmentId,
+            segmentName: window.segment.segmentName,
+            sequence: window.segment.sequence,
+            traversalMinutes: window.segment.traversalMinutes,
+            timeWindowStart: window.timeWindowStart.toISOString(),
+            timeWindowEnd: window.timeWindowEnd.toISOString(),
+            maxCapacity: check.max_capacity,
+            reservedSlots: check.reserved_slots,
+            availableSlots: check.available_slots,
+            canReserve: (check.available_slots ?? 0) >= requiredSlots,
+          } as SegmentFlowItem;
+        }),
+      );
+
+      const minAvailableSlots = checks.reduce(
+        (minimum, check) => Math.min(minimum, check.availableSlots ?? 0),
+        Number.POSITIVE_INFINITY,
+      );
+
+      if (minAvailableSlots < requiredSlots) {
+        const firstBlocked = checks.find((segment) => (segment.availableSlots ?? 0) < requiredSlots);
+        const blockedSegmentLabel = firstBlocked
+          ? `${firstBlocked.segmentName} (${formatClock(firstBlocked.timeWindowStart)}-${formatClock(firstBlocked.timeWindowEnd)})`
+          : 'one or more route segments';
+
+        const exhausted: SlotState = {
+          status: 'exhausted',
+          minAvailableSlots,
+          segmentChecks: checks,
+          message: `That slot is now full on ${blockedSegmentLabel}. Another driver may have reserved it first (ghost reservation). Pick a different slot.`,
+        };
+        setSlotStates((prev) => ({ ...prev, [slotValue]: exhausted }));
+        return exhausted;
+      }
+
+      const available: SlotState = {
+        status: 'available',
+        minAvailableSlots,
+        segmentChecks: checks,
+        message: `All ${checks.length} route segments can reserve ${formatSlots(requiredSlots)} slots for this departure.`,
+      };
+      setSlotStates((prev) => ({ ...prev, [slotValue]: available }));
+      return available;
+    } catch {
+      const errorState: SlotState = {
+        status: 'error',
+        message: 'Could not verify live capacity for this slot. Booking will still be validated on submit.',
+      };
+      setSlotStates((prev) => ({ ...prev, [slotValue]: errorState }));
+      return errorState;
+    }
+  };
+
+  const handleSelectSlot = async (slotValue: string) => {
+    if (!isSlotWithinAdvanceWindow(slotValue)) return;
+
+    if (departureTime === slotValue) {
+      setDepartureTime('');
+      setGhostNotice('');
+      setErrors((prev) => ({ ...prev, departureTime: undefined }));
+      return;
+    }
+
+    setErrors((prev) => ({ ...prev, departureTime: undefined }));
+    setGhostNotice('');
+
+    if (routeSegments.length > 0) {
+      const check = await checkSlotCapacity(slotValue, true);
+      if (check.status === 'exhausted') {
+        setDepartureTime('');
+        setGhostNotice(check.message ?? 'Selected slot is no longer available.');
+        setErrors((prev) => ({
+          ...prev,
+          departureTime: check.message ?? 'Selected slot is no longer available.',
+        }));
+        return;
+      }
+      if (check.status === 'error' && check.message) {
+        setGhostNotice(check.message);
+      }
+    }
+
+    setDepartureTime(slotValue);
+  };
+
+  useEffect(() => {
+    if (!departureTime || routeSegments.length === 0) return;
+    void checkSlotCapacity(departureTime, true);
+  }, [departureTime, routeSegments, requiredSlots]);
 
   const validateStep1 = (): FormErrors => {
     const e: FormErrors = {};
@@ -62,6 +466,8 @@ export default function BookJourneyPage() {
     if (!departureTime) e.departureTime = 'Please choose a departure time.';
     else if (new Date(departureTime) < new Date(Date.now() + 55 * 60 * 1000)) {
       e.departureTime = 'Departure must be at least 1 hour from now.';
+    } else if (slotStates[departureTime]?.status === 'exhausted') {
+      e.departureTime = slotStates[departureTime]?.message ?? 'Selected slot is no longer available.';
     }
     if (!vehicleType) e.vehicleType = 'Please select a vehicle type.';
     return e;
@@ -84,26 +490,37 @@ export default function BookJourneyPage() {
   useEffect(() => {
     if (step !== 2 || !mapRef.current) return;
     drawRouteOverlay(mapRef.current);
-  }, [step, originPlace, destPlace]);
+  }, [step, originPlace, destPlace, routePolyline]);
 
   const drawRouteOverlay = (map: MapLibreMap) => {
     if (!originPlace || !destPlace) return;
-    // Draw a direct line between O and D — simple preview without a route API call
+
+    markerRefs.current.forEach((marker) => marker.remove());
+    markerRefs.current = [];
+
+    const polylineCoords: [number, number][] = routePolyline.length >= 2
+      ? routePolyline
+      : [[originPlace.lat, originPlace.lng], [destPlace.lat, destPlace.lng]];
+
     addPolyline(
       map,
       'route-preview',
-      [[originPlace.lat, originPlace.lng], [destPlace.lat, destPlace.lng]],
+      polylineCoords,
       '#2F6B55',
       4,
     );
-    addMarker(map, originPlace.lat, originPlace.lng, '#2F6B55');
-    addMarker(map, destPlace.lat, destPlace.lng, '#B65C3A');
 
-    // Fit map to show both points
-    const bounds = new LngLatBounds(
-      [originPlace.lng, originPlace.lat],
-      [destPlace.lng, destPlace.lat],
+    markerRefs.current.push(
+      addMarker(map, originPlace.lat, originPlace.lng, '#2F6B55'),
+      addMarker(map, destPlace.lat, destPlace.lng, '#B65C3A'),
     );
+
+    const [firstLat, firstLng] = polylineCoords[0];
+    const bounds = new LngLatBounds([firstLng, firstLat], [firstLng, firstLat]);
+    polylineCoords.forEach(([lat, lng]) => {
+      bounds.extend([lng, lat]);
+    });
+
     map.fitBounds(bounds, { padding: 60, maxZoom: 13 });
   };
 
@@ -114,8 +531,22 @@ export default function BookJourneyPage() {
       setStep(1);
       return;
     }
+
     setSubmitting(true);
     try {
+      if (routeSegments.length > 0) {
+        const latestSlotState = await checkSlotCapacity(departureTime, true);
+        if (latestSlotState.status === 'exhausted') {
+          setErrors((prev) => ({
+            ...prev,
+            departureTime: latestSlotState.message ?? 'Selected slot is no longer available.',
+          }));
+          setGhostNotice(latestSlotState.message ?? 'Selected slot is no longer available.');
+          setStep(1);
+          return;
+        }
+      }
+
       await bookJourney({
         origin: originPlace.name,
         destination: destPlace.name,
@@ -238,29 +669,232 @@ export default function BookJourneyPage() {
                 )}
               </div>
 
-              {/* Departure time */}
+              {/* Departure slots */}
               <div>
-                <label htmlFor="departure" className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
-                  Departure time
+                <label htmlFor="departure-date" className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
+                  Departure date
                 </label>
-                <div className="relative">
-                  <Clock size={16} color="#4E5953" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    id="departure"
-                    type="datetime-local"
-                    value={departureTime}
-                    min={minTime}
-                    onChange={(e) => setDepartureTime(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 rounded-lg outline-none"
-                    style={{
-                      border: errors.departureTime ? '1.5px solid #B42318' : '1.5px solid var(--border)',
-                      background: 'white',
-                      color: '#1F2421',
-                    }}
-                  />
+                <input
+                  id="departure-date"
+                  type="date"
+                  value={selectedDate}
+                  min={minBookDate}
+                  max={maxBookDate}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    setSelectedDate(nextDate);
+                    setGhostNotice('');
+                    setErrors((prev) => ({ ...prev, departureTime: undefined }));
+                    if (departureTime && !departureTime.startsWith(nextDate)) {
+                      setDepartureTime('');
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 rounded-lg outline-none mb-3"
+                  style={{
+                    border: '1.5px solid var(--border)',
+                    background: 'white',
+                    color: '#1F2421',
+                  }}
+                />
+
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Clock size={15} color="#4E5953" />
+                  <p style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
+                    Departure slot (30-minute intervals)
+                  </p>
                 </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-60 overflow-y-auto pr-1">
+                  {daySlots.map((slot) => {
+                    const slotState = slotStates[slot.value];
+                    const tooSoon = !isSlotWithinAdvanceWindow(slot.value);
+                    const isSelected = departureTime === slot.value;
+                    const isChecking = slotState?.status === 'checking';
+                    const isExhausted = slotState?.status === 'exhausted';
+                    const isAvailable = slotState?.status === 'available';
+
+                    const statusLabel = isSelected
+                      ? 'Selected'
+                      : tooSoon
+                        ? 'Too soon'
+                        : isChecking
+                          ? 'Checking...'
+                          : isExhausted
+                            ? 'Full'
+                            : isAvailable
+                              ? 'Open'
+                              : 'Tap to select';
+
+                    let border = '1.5px solid var(--border)';
+                    let background = 'white';
+                    let color = '#1F2421';
+
+                    if (tooSoon) {
+                      border = '1.5px solid #E3DED4';
+                      background = '#F8F6F2';
+                      color = '#9AA19C';
+                    } else if (isChecking) {
+                      border = '1.5px solid #E7B46A';
+                      background = '#FFF4E0';
+                      color = '#7A4500';
+                    } else if (isExhausted) {
+                      border = '1.5px solid #F5C2BE';
+                      background = '#FDECEA';
+                      color = '#8E1B13';
+                    } else if (isSelected) {
+                      border = '1.5px solid #2F6B55';
+                      background = '#2F6B55';
+                      color = 'white';
+                    } else if (isAvailable) {
+                      border = '1.5px solid #9AD5AF';
+                      background = '#F1FBF4';
+                      color = '#1E6639';
+                    }
+
+                    const disabled = (tooSoon || isChecking || isExhausted || submitting) && !isSelected;
+
+                    return (
+                      <button
+                        key={slot.value}
+                        type="button"
+                        onClick={() => { void handleSelectSlot(slot.value); }}
+                        disabled={disabled}
+                        className="rounded-lg px-2.5 py-2 text-left transition-colors"
+                        style={{ border, background, color }}
+                      >
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, lineHeight: 1.2 }}>{slot.label}</div>
+                        <div style={{ fontSize: '0.6875rem', opacity: 0.9, marginTop: '2px' }}>{statusLabel}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-2" style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                  Tap a selected slot again to unselect it.
+                </p>
+
+                {routeLoading && (
+                  <p className="mt-2" style={{ color: '#7A4500', fontSize: '0.75rem' }}>
+                    Resolving route for live slot checks...
+                  </p>
+                )}
+
+                {!routeLoading && routeStatusMessage && (
+                  <p className="mt-2" style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                    {routeStatusMessage}
+                  </p>
+                )}
+
+                {routeSegments.length > 0 && (
+                  <div className="mt-3 p-3 rounded-lg" style={{ background: '#F8F6F2', border: '1px solid var(--border)' }}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p style={{ color: '#1F2421', fontSize: '0.8125rem', fontWeight: 600 }}>
+                        Computed route
+                      </p>
+                      <p style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                        {routeSegments.length} segments · ~{routeTotalMinutes} min
+                      </p>
+                    </div>
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                      {routeSegments.map((segment) => (
+                        <div key={segment.segmentId} className="flex items-center justify-between gap-2">
+                          <span style={{ color: '#1F2421', fontSize: '0.75rem' }}>
+                            {segment.sequence}. {segment.segmentName}
+                          </span>
+                          <span style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                            {segment.traversalMinutes} min
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {departureTime && routeSegments.length > 0 && (
+                  <div className="mt-3 p-3 rounded-lg" style={{ background: '#F1FBF4', border: '1px solid #9AD5AF' }}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p style={{ color: '#1E6639', fontSize: '0.8125rem', fontWeight: 600 }}>
+                        Segment booking flow
+                      </p>
+                      {etaTimeLabel && (
+                        <p style={{ color: '#1E6639', fontSize: '0.75rem' }}>
+                          ETA {etaTimeLabel}
+                        </p>
+                      )}
+                    </div>
+
+                    {selectedSlotState?.status === 'checking' && (
+                      <p style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                        Checking segment availability...
+                      </p>
+                    )}
+
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {segmentFlow.map((segment) => {
+                        const isBlocked = segment.canReserve === false;
+                        const hasCapacityData = segment.availableSlots !== undefined;
+                        const availabilityLabel = segment.availableSlots === undefined
+                          ? 'Checking...'
+                          : segment.maxCapacity !== undefined
+                            ? `${formatSlots(segment.availableSlots)} free of ${formatSlots(segment.maxCapacity)}`
+                            : `${formatSlots(segment.availableSlots)} free`;
+
+                        return (
+                          <div
+                            key={segment.segmentId}
+                            className="rounded-md p-2.5"
+                            style={{
+                              background: isBlocked ? '#FDECEA' : 'white',
+                              border: `1px solid ${isBlocked ? '#F5C2BE' : 'var(--border)'}`,
+                            }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span style={{ color: '#1F2421', fontSize: '0.75rem', fontWeight: 600 }}>
+                                {segment.sequence}. {segment.segmentName}
+                              </span>
+                              <span style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                                {formatClock(segment.timeWindowStart)}-{formatClock(segment.timeWindowEnd)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                              <span style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                                {segment.traversalMinutes} min traversal
+                              </span>
+                              <span
+                                style={{
+                                  color: isBlocked
+                                    ? '#B42318'
+                                    : hasCapacityData
+                                      ? '#1E6639'
+                                      : '#4E5953',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {availabilityLabel}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-2 p-2.5 rounded-lg" style={{ background: '#FFF4E0', border: '1px solid #F1D7A5' }}>
+                  <p style={{ color: '#7A4500', fontSize: '0.75rem', lineHeight: 1.5 }}>
+                    Slot capacity is live. On submit, the system reserves each segment in this order using cascading windows (departure + travel time per segment). If another driver reserves first, your slot can become full (ghost reservation).
+                  </p>
+                </div>
+
+                {ghostNotice && (
+                  <p className="mt-2 text-sm flex items-center gap-1" style={{ color: '#B42318' }}>
+                    <AlertCircle size={13} /> {ghostNotice}
+                  </p>
+                )}
+
                 {errors.departureTime && (
-                  <p className="mt-1.5 text-sm flex items-center gap-1" style={{ color: '#B42318' }}>
+                  <p className="mt-2 text-sm flex items-center gap-1" style={{ color: '#B42318' }}>
                     <AlertCircle size={13} /> {errors.departureTime}
                   </p>
                 )}
@@ -335,6 +969,12 @@ export default function BookJourneyPage() {
                 { label: 'To', value: destPlace?.name ?? '' },
                 { label: 'Departure', value: formatDateTime(departureTime) },
                 {
+                  label: 'Route',
+                  value: routeSegments.length > 0
+                    ? `${routeSegments.length} segments · ~${routeTotalMinutes} min`
+                    : 'Route unresolved',
+                },
+                {
                   label: 'Vehicle',
                   value: `${VEHICLE_TYPES.find((v) => v.value === vehicleType)?.icon ?? ''} ${vehicleType}`,
                 },
@@ -345,6 +985,62 @@ export default function BookJourneyPage() {
                 </div>
               ))}
             </div>
+
+            {segmentFlow.length > 0 && (
+              <div className="rounded-xl p-4 mb-5" style={{ background: '#F1FBF4', border: '1px solid #9AD5AF' }}>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <h4 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1E6639', fontSize: '0.9375rem' }}>
+                    Segment-by-segment reservation plan
+                  </h4>
+                  {etaTimeLabel && (
+                    <span style={{ color: '#1E6639', fontSize: '0.75rem' }}>
+                      ETA {etaTimeLabel}
+                    </span>
+                  )}
+                </div>
+                <p style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '10px' }}>
+                  Capacity is reserved in this exact sequence at submit time.
+                </p>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {segmentFlow.map((segment) => {
+                    const isBlocked = segment.canReserve === false;
+                    const availabilityLabel = segment.availableSlots === undefined
+                      ? 'Pending live check'
+                      : segment.maxCapacity !== undefined
+                        ? `${formatSlots(segment.availableSlots)} / ${formatSlots(segment.maxCapacity)} free`
+                        : `${formatSlots(segment.availableSlots)} free`;
+
+                    return (
+                      <div
+                        key={segment.segmentId}
+                        className="rounded-md p-2.5"
+                        style={{
+                          background: 'white',
+                          border: `1px solid ${isBlocked ? '#F5C2BE' : 'var(--border)'}`,
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span style={{ color: '#1F2421', fontSize: '0.75rem', fontWeight: 600 }}>
+                            {segment.sequence}. {segment.segmentName}
+                          </span>
+                          <span style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                            {formatClock(segment.timeWindowStart)}-{formatClock(segment.timeWindowEnd)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <span style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                            {segment.traversalMinutes} min
+                          </span>
+                          <span style={{ color: isBlocked ? '#B42318' : '#1E6639', fontSize: '0.75rem', fontWeight: 600 }}>
+                            {availabilityLabel}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Route map */}
             <div className="rounded-xl overflow-hidden mb-5" style={{ border: '1px solid var(--border)', height: '280px' }}>
@@ -359,7 +1055,7 @@ export default function BookJourneyPage() {
             <div className="flex items-start gap-3 p-3.5 rounded-lg mb-6" style={{ background: '#FFF4E0' }}>
               <AlertCircle size={15} color="#A15C00" className="flex-shrink-0 mt-0.5" />
               <p style={{ color: '#7A4500', fontSize: '0.8125rem', lineHeight: 1.55 }}>
-                By submitting, you agree that this booking is subject to live road capacity checks. The system may reject the booking if a segment is full at your chosen time.
+                By submitting, you agree that this booking is subject to live road capacity checks. The backend reserves each segment in order using its exact time window. If another driver confirms first, remaining capacity can be exhausted and your booking may be rejected.
               </p>
             </div>
 
