@@ -10,6 +10,21 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// MarshalEnvelope builds a JSON-encoded Envelope for outbox storage.
+// Returns the generated eventID (used as the outbox dedup key) and the
+// serialised bytes to persist in journey.outbox.payload.
+func MarshalEnvelope(eventType string, payload interface{}) (eventID string, data []byte, err error) {
+	eventID = uuid.New().String()
+	env := Envelope{
+		EventID:   eventID,
+		EventType: eventType,
+		Timestamp: time.Now().UTC(),
+		Payload:   payload,
+	}
+	data, err = json.Marshal(env)
+	return
+}
+
 // Publisher publishes journey events to Redis Streams
 type Publisher struct {
 	client *redis.Client

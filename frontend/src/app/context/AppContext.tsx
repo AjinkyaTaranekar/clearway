@@ -286,8 +286,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }, 1500);
 
       return result;
-    } catch {
-      return bookJourneyMock(data);
+    } catch (err) {
+      // U-06: Surface the real error instead of silently falling back to mock data.
+      // The driver sees the actual reason (network failure, capacity rejection, etc.)
+      // rather than a fabricated approval/rejection result.
+      const reason = err instanceof Error ? err.message : 'Booking request failed. Please try again.';
+      const result: BookingResult = { success: false, journeyId: '', reason };
+      setLastBookingResult(result);
+      return result;
     }
   };
 
@@ -319,8 +325,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateJourneyStatus = async (id: string, status: JourneyStatus, by = 'You'): Promise<void> => {
     try {
       let updated: Journey | undefined;
-      if (status === 'cancelled') updated = await api.cancelJourney(id);
-      else if (status === 'active') updated = await api.activateJourney(id);
+      if (status === 'cancelled') {
+        // U-07: route admin force-cancel to the correct admin endpoint (no 30-min restriction).
+        updated = by === 'Admin'
+          ? await api.adminCancelJourney(id)
+          : await api.cancelJourney(id);
+      } else if (status === 'active') updated = await api.activateJourney(id);
       else if (status === 'completed') updated = await api.completeJourney(id);
 
       if (updated) {

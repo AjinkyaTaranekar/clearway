@@ -101,7 +101,7 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
   return {
     id: j.journey_id,
     driverId: j.driver_id ?? '',
-    driverName: 'Driver',
+    driverName: j.driver_name ?? 'Driver',
     origin: originName,
     destination: destName,
     departureTime: j.departure_time ?? '',
@@ -261,6 +261,25 @@ export interface EnforcementVerifyResult {
   time_window_start?: string;
   time_window_end?: string;
   timestamp: string;
+}
+
+export interface AdminAnalyticsResult {
+  total_journeys: number;
+  approved: number;
+  rejected: number;
+  active: number;
+  completed: number;
+  cancelled: number;
+  expired: number;
+  approval_rate: number;
+  rejection_rate: number;
+  window: string;
+}
+
+// adminAnalytics fetches real journey counts from the backend (U-14).
+// window: '1h' | '24h' | '7d'
+export async function adminAnalytics(window = '24h'): Promise<AdminAnalyticsResult> {
+  return apiFetch<AdminAnalyticsResult>(`/api/v1/admin/analytics?window=${window}`);
 }
 
 export async function enforcementVerify(params: {

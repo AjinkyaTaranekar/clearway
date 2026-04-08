@@ -41,21 +41,21 @@ type JourneyService struct {
 	mapClient       *client.MapClient
 	routeCache      *client.RedisRouteCache
 	capacityClient  *client.CapacityClient
-	publisher       *event.Publisher
 	minAdvanceMin   int
 	minCancelMin    int
 	activationGrace int
 	log             *logger.Logger
 }
 
-// NewJourneyService creates a new journey service
+// NewJourneyService creates a new journey service.
+// Event publishing is now handled by the transactional outbox (F-03);
+// the publisher parameter has been removed.
 func NewJourneyService(
 	repo *repository.JourneyRepository,
 	idempRepo *repository.IdempotencyRepository,
 	mapClient *client.MapClient,
 	routeCache *client.RedisRouteCache,
 	capacityClient *client.CapacityClient,
-	publisher *event.Publisher,
 	minAdvanceMin, minCancelMin, activationGrace int,
 	log *logger.Logger,
 ) *JourneyService {
@@ -65,7 +65,6 @@ func NewJourneyService(
 		mapClient:       mapClient,
 		routeCache:      routeCache,
 		capacityClient:  capacityClient,
-		publisher:       publisher,
 		minAdvanceMin:   minAdvanceMin,
 		minCancelMin:    minCancelMin,
 		activationGrace: activationGrace,
@@ -289,7 +288,38 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		UpdatedAt:        now,
 	}
 
-	if err := s.repo.Create(ctx, journey, segments); err != nil {
+	// Build the outbox event before persisting the journey so the eventID is
+	// known and can be written atomically in the same transaction (F-03).
+	var evType string
+	var evPayload interface{}
+	if status == model.StatusApproved {
+		evType = event.EventJourneyBooked
+		evPayload = event.BookedPayload{
+			JourneyID:        journeyID,
+			DriverID:         req.DriverID,
+			DepartureTime:    req.DepartureTime,
+			EstimatedArrival: estimatedArrival,
+			VehicleType:      vehicleType,
+			Status:           string(status),
+		}
+	} else {
+		evType = event.EventJourneyRejected
+		evPayload = event.BookedPayload{
+			JourneyID:       journeyID,
+			DriverID:        req.DriverID,
+			DepartureTime:   req.DepartureTime,
+			VehicleType:     vehicleType,
+			Status:          string(status),
+			RejectionReason: rejectionReason,
+		}
+	}
+	eventID, evData, err := event.MarshalEnvelope(evType, evPayload)
+	if err != nil {
+		log.Error().Err(err).Str("service", "JourneyService.CreateJourney").Msg("failed to marshal outbox event")
+		return nil, err
+	}
+
+	if err := s.repo.Create(ctx, journey, segments, eventID, evType, evData); err != nil {
 		log.Error().
 			Str("service", "JourneyService.CreateJourney").
 			Err(err).
@@ -309,26 +339,6 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 				Str("journey_id", journeyID).
 				Msg("idempotency cache saved")
 		}
-	}
-
-	if status == model.StatusApproved {
-		s.publisher.Publish(ctx, event.EventJourneyBooked, event.BookedPayload{
-			JourneyID:        journeyID,
-			DriverID:         req.DriverID,
-			DepartureTime:    req.DepartureTime,
-			EstimatedArrival: estimatedArrival,
-			VehicleType:      vehicleType,
-			Status:           string(status),
-		})
-	} else {
-		s.publisher.Publish(ctx, event.EventJourneyRejected, event.BookedPayload{
-			JourneyID:       journeyID,
-			DriverID:        req.DriverID,
-			DepartureTime:   req.DepartureTime,
-			VehicleType:     vehicleType,
-			Status:          string(status),
-			RejectionReason: rejectionReason,
-		})
 	}
 
 	log.Info().
@@ -418,23 +428,27 @@ func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID 
 	}
 
 	now := time.Now()
-	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusCancelled, j.Version, map[string]interface{}{
-		"cancelled_at": now,
-	}); err != nil {
-		log.Error().Str("service", "JourneyService.CancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
-		return nil, err
-	}
-
-	j.Status = model.StatusCancelled
-	j.CancelledAt = &now
-
-	s.publisher.Publish(ctx, event.EventJourneyCancelled, event.CancelledPayload{
+	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCancelled, event.CancelledPayload{
 		JourneyID:     journeyID,
 		DriverID:      driverID,
 		Status:        string(model.StatusCancelled),
 		CancelledBy:   "driver",
 		ReservationID: j.ReservationID,
 	})
+	if err != nil {
+		log.Error().Err(err).Str("service", "JourneyService.CancelJourney").Msg("failed to marshal cancel event")
+		return nil, err
+	}
+	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusCancelled, j.Version,
+		map[string]interface{}{"cancelled_at": now},
+		evID, event.EventJourneyCancelled, evData,
+	); err != nil {
+		log.Error().Str("service", "JourneyService.CancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
+		return nil, err
+	}
+
+	j.Status = model.StatusCancelled
+	j.CancelledAt = &now
 
 	log.Info().Str("service", "JourneyService.CancelJourney").Str("journey_id", journeyID).Msg("cancel journey flow completed")
 	return j, nil
@@ -470,21 +484,25 @@ func (s *JourneyService) ActivateJourney(ctx context.Context, journeyID, driverI
 		return nil, apperrors.Forbidden("activation window has expired (30 minutes after departure)")
 	}
 
-	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusActive, j.Version, map[string]interface{}{
-		"activated_at": now,
-	}); err != nil {
+	evID, evData, err := event.MarshalEnvelope(event.EventJourneyActivated, event.SimplePayload{
+		JourneyID: journeyID,
+		DriverID:  driverID,
+		Status:    string(model.StatusActive),
+	})
+	if err != nil {
+		log.Error().Err(err).Str("service", "JourneyService.ActivateJourney").Msg("failed to marshal activate event")
+		return nil, err
+	}
+	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusActive, j.Version,
+		map[string]interface{}{"activated_at": now},
+		evID, event.EventJourneyActivated, evData,
+	); err != nil {
 		log.Error().Str("service", "JourneyService.ActivateJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist active status")
 		return nil, err
 	}
 
 	j.Status = model.StatusActive
 	j.ActivatedAt = &now
-
-	s.publisher.Publish(ctx, event.EventJourneyActivated, event.SimplePayload{
-		JourneyID: journeyID,
-		DriverID:  driverID,
-		Status:    string(model.StatusActive),
-	})
 
 	log.Info().Str("service", "JourneyService.ActivateJourney").Str("journey_id", journeyID).Msg("activate journey flow completed")
 	return j, nil
@@ -510,9 +528,20 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 	}
 
 	now := time.Now()
-	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusCompleted, j.Version, map[string]interface{}{
-		"completed_at": now,
-	}); err != nil {
+	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCompleted, event.SimplePayload{
+		JourneyID:     journeyID,
+		DriverID:      driverID,
+		Status:        string(model.StatusCompleted),
+		ReservationID: j.ReservationID,
+	})
+	if err != nil {
+		log.Error().Err(err).Str("service", "JourneyService.CompleteJourney").Msg("failed to marshal complete event")
+		return nil, err
+	}
+	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusCompleted, j.Version,
+		map[string]interface{}{"completed_at": now},
+		evID, event.EventJourneyCompleted, evData,
+	); err != nil {
 		log.Error().Str("service", "JourneyService.CompleteJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist completed status")
 		return nil, err
 	}
@@ -520,19 +549,14 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 	j.Status = model.StatusCompleted
 	j.CompletedAt = &now
 
-	s.publisher.Publish(ctx, event.EventJourneyCompleted, event.SimplePayload{
-		JourneyID:     journeyID,
-		DriverID:      driverID,
-		Status:        string(model.StatusCompleted),
-		ReservationID: j.ReservationID,
-	})
-
 	log.Info().Str("service", "JourneyService.CompleteJourney").Str("journey_id", journeyID).Msg("complete journey flow completed")
 	return j, nil
 }
 
-// AdminCancelJourney force-cancels any APPROVED or ACTIVE journey
-func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID string) (*model.Journey, error) {
+// AdminCancelJourney force-cancels any APPROVED or ACTIVE journey.
+// adminID is the user ID of the admin performing the cancellation, extracted
+// from the JWT by the handler and stored in the event for audit purposes (F-10/F-19).
+func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID, adminID string) (*model.Journey, error) {
 	log := s.logWithTrace(ctx)
 	log.Info().Str("service", "JourneyService.AdminCancelJourney").Str("journey_id", journeyID).Msg("starting admin cancel journey flow")
 
@@ -547,9 +571,26 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID strin
 	}
 
 	now := time.Now()
-	if err := s.repo.UpdateStatus(ctx, journeyID, model.StatusCancelled, j.Version, map[string]interface{}{
-		"cancelled_at": now,
-	}); err != nil {
+	// Use the actual admin user ID for audit trail (F-10/F-19).
+	cancelledBy := adminID
+	if cancelledBy == "" {
+		cancelledBy = "admin"
+	}
+	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCancelled, event.CancelledPayload{
+		JourneyID:     journeyID,
+		DriverID:      j.DriverID,
+		Status:        string(model.StatusCancelled),
+		CancelledBy:   cancelledBy,
+		ReservationID: j.ReservationID,
+	})
+	if err != nil {
+		log.Error().Err(err).Str("service", "JourneyService.AdminCancelJourney").Msg("failed to marshal admin cancel event")
+		return nil, err
+	}
+	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusCancelled, j.Version,
+		map[string]interface{}{"cancelled_at": now},
+		evID, event.EventJourneyCancelled, evData,
+	); err != nil {
 		log.Error().Str("service", "JourneyService.AdminCancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
 		return nil, err
 	}
@@ -557,15 +598,10 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID strin
 	j.Status = model.StatusCancelled
 	j.CancelledAt = &now
 
-	s.publisher.Publish(ctx, event.EventJourneyCancelled, event.CancelledPayload{
-		JourneyID:     journeyID,
-		DriverID:      j.DriverID,
-		Status:        string(model.StatusCancelled),
-		CancelledBy:   "admin",
-		ReservationID: j.ReservationID,
-	})
-
-	log.Info().Str("service", "JourneyService.AdminCancelJourney").Str("journey_id", journeyID).Msg("admin cancel journey flow completed")
+	log.Info().Str("service", "JourneyService.AdminCancelJourney").
+		Str("journey_id", journeyID).
+		Str("cancelled_by", cancelledBy).
+		Msg("admin cancel journey flow completed")
 	return j, nil
 }
 
@@ -635,6 +671,59 @@ func (s *JourneyService) AdminListJourneys(ctx context.Context, filters AdminLis
 	return journeys, total, nil
 }
 
+// AnalyticsResult is the response shape for GET /api/v1/admin/analytics (U-14).
+type AnalyticsResult struct {
+	TotalJourneys int64   `json:"total_journeys"`
+	Approved      int64   `json:"approved"`
+	Rejected      int64   `json:"rejected"`
+	Active        int64   `json:"active"`
+	Completed     int64   `json:"completed"`
+	Cancelled     int64   `json:"cancelled"`
+	Expired       int64   `json:"expired"`
+	ApprovalRate  float64 `json:"approval_rate"`
+	RejectionRate float64 `json:"rejection_rate"`
+	Window        string  `json:"window"`
+}
+
+// AdminAnalytics returns aggregated journey counts for the requested time window.
+// window must be one of "1h", "24h", "7d". Defaults to "24h" on unrecognised input.
+func (s *JourneyService) AdminAnalytics(ctx context.Context, window string) (*AnalyticsResult, error) {
+	windowHours := 24
+	switch window {
+	case "1h":
+		windowHours = 1
+	case "24h":
+		windowHours = 24
+	case "7d":
+		windowHours = 24 * 7
+	}
+
+	counts, err := s.repo.AdminAnalytics(ctx, windowHours)
+	if err != nil {
+		return nil, err
+	}
+
+	var approvalRate, rejectionRate float64
+	decided := counts.Approved + counts.Rejected
+	if decided > 0 {
+		approvalRate = float64(counts.Approved) / float64(decided) * 100
+		rejectionRate = float64(counts.Rejected) / float64(decided) * 100
+	}
+
+	return &AnalyticsResult{
+		TotalJourneys: counts.Total,
+		Approved:      counts.Approved,
+		Rejected:      counts.Rejected,
+		Active:        counts.Active,
+		Completed:     counts.Completed,
+		Cancelled:     counts.Cancelled,
+		Expired:       counts.Expired,
+		ApprovalRate:  approvalRate,
+		RejectionRate: rejectionRate,
+		Window:        window,
+	}, nil
+}
+
 // RunExpiryJob periodically expires approved journeys past their grace window
 func (s *JourneyService) RunExpiryJob(ctx context.Context) {
 	log := s.logWithTrace(ctx)
@@ -667,18 +756,23 @@ func (s *JourneyService) expireJourneys(ctx context.Context) {
 
 	now := time.Now()
 	for _, j := range journeys {
-		if err := s.repo.UpdateStatus(ctx, j.JourneyID, model.StatusExpired, j.Version, map[string]interface{}{
-			"expired_at": now,
-		}); err != nil {
-			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to expire journey")
-			continue
-		}
-		s.publisher.Publish(ctx, event.EventJourneyExpired, event.SimplePayload{
+		evID, evData, err := event.MarshalEnvelope(event.EventJourneyExpired, event.SimplePayload{
 			JourneyID:     j.JourneyID,
 			DriverID:      j.DriverID,
 			Status:        string(model.StatusExpired),
 			ReservationID: j.ReservationID,
 		})
+		if err != nil {
+			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to marshal expire event")
+			continue
+		}
+		if err := s.repo.UpdateStatusWithEvent(ctx, j.JourneyID, model.StatusExpired, j.Version,
+			map[string]interface{}{"expired_at": now},
+			evID, event.EventJourneyExpired, evData,
+		); err != nil {
+			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to expire journey")
+			continue
+		}
 		log.Info().Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("journey expired")
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/lib/pq"
 
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/event"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/model"
 	apperrors "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/errors"
 )
@@ -64,8 +65,10 @@ func isPQUniqueViolation(err error) bool {
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
-// Create inserts a new journey and its segments in a single transaction.
-func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segments []model.JourneySegment) error {
+// Create inserts a new journey, its segments, and an outbox event in a single
+// atomic transaction (F-03). eventID, eventType, and payload are the
+// pre-marshalled Envelope bytes from event.MarshalEnvelope.
+func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segments []model.JourneySegment, eventID, eventType string, payload []byte) error {
 	log := logWithTrace(ctx)
 	log.Info().
 		Str("repository", "JourneyRepository.Create").
@@ -135,6 +138,17 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 				Msg("failed to insert journey segment")
 			return apperrors.DatabaseError("failed to insert segment", err)
 		}
+	}
+
+	// Write the outbox event inside the same transaction so the event is
+	// guaranteed durable alongside the journey row (F-03).
+	if err := r.enqueueOutboxInTx(ctx, tx, eventID, eventType, payload); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.Create").
+			Err(err).
+			Str("journey_id", j.JourneyID).
+			Msg("failed to enqueue outbox event in create transaction")
+		return apperrors.DatabaseError("failed to enqueue outbox event", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -640,6 +654,190 @@ func (r *JourneyRepository) FindActiveJourneyForSegment(ctx context.Context, seg
 		Str("driver_id", rec.DriverID).
 		Msg("active journey found for segment")
 	return &rec, nil
+}
+
+// ---------------------------------------------------------------------------
+// Transactional outbox (F-03)
+// ---------------------------------------------------------------------------
+
+// enqueueOutboxInTx writes a single outbox row inside an existing transaction.
+// The ON CONFLICT DO NOTHING guard makes it safe to call with the same eventID
+// more than once (idempotent).
+func (r *JourneyRepository) enqueueOutboxInTx(ctx context.Context, tx *sql.Tx, eventID, eventType string, payload []byte) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO journey.outbox (event_id, event_type, payload)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (event_id) DO NOTHING`,
+		eventID, eventType, payload,
+	)
+	return err
+}
+
+// UpdateStatusWithEvent updates a journey's status and atomically enqueues an
+// outbox event in the same DB transaction.  This guarantees that the event is
+// durable even if the process crashes before the OutboxRelay can publish it.
+// Replaces the previous UpdateStatus + publisher.Publish pattern (F-03).
+func (r *JourneyRepository) UpdateStatusWithEvent(
+	ctx context.Context,
+	journeyID string,
+	status model.JourneyStatus,
+	version int,
+	extra map[string]interface{},
+	eventID, eventType string,
+	payload []byte,
+) error {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+		Str("journey_id", journeyID).
+		Str("new_status", string(status)).
+		Str("event_type", eventType).
+		Msg("updating journey status with outbox event")
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.DatabaseError("failed to begin tx", err)
+	}
+	defer tx.Rollback()
+
+	setClauses := []string{
+		"status = $1",
+		"version = version + 1",
+		"updated_at = $2",
+	}
+	args := []interface{}{string(status), time.Now()}
+
+	for col, val := range extra {
+		args = append(args, val)
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, len(args)))
+	}
+
+	args = append(args, journeyID, version)
+	query := fmt.Sprintf(
+		"UPDATE journey.journeys SET %s WHERE journey_id = $%d AND version = $%d",
+		strings.Join(setClauses, ", "), len(args)-1, len(args),
+	)
+
+	res, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to update journey status in tx")
+		return apperrors.DatabaseError("failed to update journey status", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		log.Warn().
+			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+			Str("journey_id", journeyID).
+			Msg("optimistic lock conflict on journey status update")
+		return apperrors.Conflict("journey was modified concurrently, please retry")
+	}
+
+	if err := r.enqueueOutboxInTx(ctx, tx, eventID, eventType, payload); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to enqueue outbox event in tx")
+		return apperrors.DatabaseError("failed to enqueue outbox event", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to commit status+outbox transaction")
+		return apperrors.DatabaseError("failed to commit status update", err)
+	}
+
+	log.Info().
+		Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+		Str("journey_id", journeyID).
+		Str("new_status", string(status)).
+		Msg("status+outbox committed")
+	return nil
+}
+
+// FetchUnpublishedOutbox returns up to limit outbox events that have not yet
+// been relayed to Redis, ordered by creation time (FIFO).
+func (r *JourneyRepository) FetchUnpublishedOutbox(ctx context.Context, limit int) ([]event.OutboxEvent, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, event_id, event_type, payload
+		FROM journey.outbox
+		WHERE published = FALSE
+		ORDER BY created_at
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []event.OutboxEvent
+	for rows.Next() {
+		var e event.OutboxEvent
+		if err := rows.Scan(&e.ID, &e.EventID, &e.EventType, &e.Payload); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// MarkOutboxPublished marks the given outbox row IDs as published.
+func (r *JourneyRepository) MarkOutboxPublished(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids)+1)
+	args[0] = time.Now()
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args[i+1] = id
+	}
+	_, err := r.db.ExecContext(ctx, fmt.Sprintf(
+		"UPDATE journey.outbox SET published = TRUE, published_at = $1 WHERE id IN (%s)",
+		strings.Join(placeholders, ","),
+	), args...)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Admin analytics (U-14)
+// ---------------------------------------------------------------------------
+
+// AnalyticsCounts holds aggregated counts over a time window.
+type AnalyticsCounts struct {
+	Total     int64
+	Approved  int64
+	Rejected  int64
+	Active    int64
+	Completed int64
+	Cancelled int64
+	Expired   int64
+}
+
+// AdminAnalytics returns journey counts for the last windowHours hours.
+func (r *JourneyRepository) AdminAnalytics(ctx context.Context, windowHours int) (*AnalyticsCounts, error) {
+	var c AnalyticsCounts
+	err := r.readDB().QueryRowContext(ctx, `
+		SELECT
+			COUNT(*)                                              AS total,
+			COUNT(*) FILTER (WHERE status = 'APPROVED')          AS approved,
+			COUNT(*) FILTER (WHERE status = 'REJECTED')          AS rejected,
+			COUNT(*) FILTER (WHERE status = 'ACTIVE')            AS active,
+			COUNT(*) FILTER (WHERE status = 'COMPLETED')         AS completed,
+			COUNT(*) FILTER (WHERE status = 'CANCELLED')         AS cancelled,
+			COUNT(*) FILTER (WHERE status = 'EXPIRED')           AS expired
+		FROM journey.journeys
+		WHERE created_at >= NOW() - ($1 * INTERVAL '1 hour')`,
+		windowHours,
+	).Scan(&c.Total, &c.Approved, &c.Rejected, &c.Active, &c.Completed, &c.Cancelled, &c.Expired)
+	if err != nil {
+		return nil, apperrors.DatabaseError("failed to compute analytics", err)
+	}
+	return &c, nil
 }
 
 // GetExpiredJourneys returns APPROVED journeys where departure_time < NOW() - 30min.

@@ -75,16 +75,21 @@ func main() {
 	defer dbPools.Close()
 	log.Info().Msg("database connections established")
 
-	// Run migrations
+	// Run migrations (all files in order)
 	journeyRepo := repository.NewJourneyRepository(dbPools.Master, dbPools.Slave)
-	migrationSQL, err := os.ReadFile("migrations/001_create_schema.sql")
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to read migration file")
+	for _, mf := range []string{
+		"migrations/001_create_schema.sql",
+		"migrations/002_create_outbox.sql",
+	} {
+		migrationSQL, err := os.ReadFile(mf)
+		if err != nil {
+			log.Fatal().Err(err).Str("file", mf).Msg("failed to read migration file")
+		}
+		if err := journeyRepo.RunMigrations(context.Background(), string(migrationSQL)); err != nil {
+			log.Fatal().Err(err).Str("file", mf).Msg("failed to run migration")
+		}
+		log.Info().Str("file", mf).Msg("migration applied")
 	}
-	if err := journeyRepo.RunMigrations(context.Background(), string(migrationSQL)); err != nil {
-		log.Fatal().Err(err).Msg("failed to run migrations")
-	}
-	log.Info().Msg("database migrations applied")
 
 	// Redis (optional — graceful if unavailable)
 	var redisClient *redis.Client
@@ -136,17 +141,13 @@ func main() {
 	routeCache := client.NewRedisRouteCache(redisClient, routeCacheTTL)
 	capacityClient := client.NewCapacityClient(cfg.Services.CapacityURL)
 
-	// Event publisher
-	publisher := event.NewPublisher(redisClient, log.Logger)
-
 	// Repositories
 	idempRepo := repository.NewIdempotencyRepository(dbPools.Master)
 
-	// Service
+	// Service — event publishing now handled by transactional outbox (F-03)
 	journeySvc := service.NewJourneyService(
 		journeyRepo, idempRepo,
 		mapClient, routeCache, capacityClient,
-		publisher,
 		minAdvance, minCancel, activationGrace,
 		log,
 	)
@@ -175,6 +176,11 @@ func main() {
 	defer cancelJobs()
 	go journeySvc.RunExpiryJob(ctx)
 	log.Info().Msg("background expiry job started")
+
+	// Outbox relay — reads journey.outbox and publishes to Redis Streams (F-03).
+	// Guarantees at-least-once delivery even across process restarts.
+	go event.RunOutboxRelay(ctx, journeyRepo, redisClient, log.Logger)
+	log.Info().Msg("outbox relay started")
 
 	// Start HTTP server
 	go func() {

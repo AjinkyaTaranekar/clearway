@@ -1,5 +1,5 @@
-import { Activity, AlertCircle, CheckCircle2, Clock, TrendingDown, TrendingUp, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { Activity, CheckCircle2, Clock, TrendingDown, TrendingUp, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -14,6 +14,7 @@ import {
   XAxis, YAxis
 } from 'recharts';
 import { analyticsData } from '../../data/mockData';
+import { AdminAnalyticsResult, adminAnalytics } from '../../services/journeyApi';
 
 type TimeWindow = '1h' | '24h' | '7d';
 
@@ -72,8 +73,24 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function AnalyticsPage() {
   const [window, setWindow] = useState<TimeWindow>('7d');
-  const kpis = kpisByWindow[window];
   const trend = trendData[window];
+
+  // U-14: fetch live KPIs from backend; fall back to mock on error
+  const [liveKpis, setLiveKpis] = useState<AdminAnalyticsResult | null>(null);
+  useEffect(() => {
+    adminAnalytics(window).then(setLiveKpis).catch(() => setLiveKpis(null));
+  }, [window]);
+
+  const kpis = liveKpis
+    ? {
+        totalBookings: liveKpis.total_journeys,
+        approvalRate:  liveKpis.approval_rate,
+        rejectionRate: liveKpis.rejection_rate,
+        activeJourneys: liveKpis.active,
+        cancellations:  liveKpis.cancelled,
+        avgDuration:    0, // not yet tracked server-side
+      }
+    : kpisByWindow[window];
 
   const pieData = [
     { name: 'Approved', value: Math.round(kpis.totalBookings * kpis.approvalRate / 100) },
