@@ -169,8 +169,8 @@ func TestGenerateID_Uniqueness(t *testing.T) {
 func TestAvailabilityCacheKey_Format(t *testing.T) {
 	start := time.Unix(1713168000, 0).UTC() // fixed timestamp for determinism
 	end := time.Unix(1713169800, 0).UTC()
-	key := availabilityCacheKey("seg_city_north", start, end)
-	want := "cap:avail:seg_city_north:1713168000:1713169800"
+	key := availabilityCacheKey("seg_city_north", start, end, priorityLevelNormal)
+	want := "cap:avail:seg_city_north:1713168000:1713169800:normal"
 	if key != want {
 		t.Errorf("availabilityCacheKey = %q, want %q", key, want)
 	}
@@ -179,8 +179,8 @@ func TestAvailabilityCacheKey_Format(t *testing.T) {
 func TestAvailabilityCacheKey_DifferentSegments(t *testing.T) {
 	start := time.Now()
 	end := start.Add(30 * time.Minute)
-	k1 := availabilityCacheKey("seg_city_north", start, end)
-	k2 := availabilityCacheKey("seg_north_airport", start, end)
+	k1 := availabilityCacheKey("seg_city_north", start, end, priorityLevelNormal)
+	k2 := availabilityCacheKey("seg_north_airport", start, end, priorityLevelNormal)
 	if k1 == k2 {
 		t.Error("different segments produced the same cache key")
 	}
@@ -216,9 +216,9 @@ func TestCapacityArithmetic_TruckFillsSegment(t *testing.T) {
 	maxCapacity := 10.0
 	truckSlots := model.VehicleTypeTruck.SlotsNeeded() // 3.0
 	// 3 trucks + 1 van (1.5) = 10.5 — should be at capacity
-	reservedByThreeTrucks := truckSlots * 3            // 9.0
-	available := maxCapacity - reservedByThreeTrucks   // 1.0
-	vanSlots := model.VehicleTypeVan.SlotsNeeded()     // 1.5
+	reservedByThreeTrucks := truckSlots * 3          // 9.0
+	available := maxCapacity - reservedByThreeTrucks // 1.0
+	vanSlots := model.VehicleTypeVan.SlotsNeeded()   // 1.5
 	if available >= vanSlots {
 		t.Errorf("van (%.1f slots) should NOT fit in %.1f remaining slots", vanSlots, available)
 	}

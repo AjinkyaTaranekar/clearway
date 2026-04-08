@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ type CreateJourneyRequest struct {
 	Destination    model.Coordinates `json:"destination"`
 	DepartureTime  time.Time         `json:"departure_time"`
 	VehicleType    string            `json:"vehicle_type"`
+	PriorityLevel  string            `json:"priority_level,omitempty"`
 	IdempotencyKey string            `json:"-"`
 	DriverID       string            `json:"-"`
 }
@@ -92,6 +94,53 @@ func normalizeVehicleType(vt string) (string, error) {
 	}
 }
 
+func buildRejectionReason(failed *client.FailedSegment) string {
+	if failed == nil {
+		return "Capacity unavailable"
+	}
+
+	segmentID := failed.SegmentID
+	reasonCode := strings.ToLower(strings.TrimSpace(failed.Reason))
+
+	switch reasonCode {
+	case "segment_closed":
+		reason := strings.TrimSpace(failed.ClosureReason)
+		if failed.ClosureEnd != nil {
+			endAt := failed.ClosureEnd.UTC().Format(time.RFC3339)
+			if reason != "" {
+				return fmt.Sprintf("Segment %s is closed for %s until %s", segmentID, reason, endAt)
+			}
+			return fmt.Sprintf("Segment %s is closed until %s", segmentID, endAt)
+		}
+		if reason != "" {
+			return fmt.Sprintf("Segment %s is closed for %s", segmentID, reason)
+		}
+		return fmt.Sprintf("Segment %s is closed", segmentID)
+	case "at_capacity":
+		return fmt.Sprintf("Segment %s is at capacity", segmentID)
+	case "unknown_segment":
+		return fmt.Sprintf("Segment %s is unavailable", segmentID)
+	case "invalid_time_window":
+		return "Selected departure slot is invalid for route timing"
+	default:
+		if reasonCode != "" {
+			return fmt.Sprintf("Segment %s is unavailable: %s", segmentID, reasonCode)
+		}
+		return "Capacity unavailable"
+	}
+}
+
+func normalizePriorityLevel(level string) (string, error) {
+	lower := strings.ToLower(strings.TrimSpace(level))
+	if lower == "" {
+		return "normal", nil
+	}
+	if lower == "normal" || lower == "max" {
+		return lower, nil
+	}
+	return "", apperrors.BadRequest("priority_level must be either normal or max")
+}
+
 // CreateJourney orchestrates the full booking flow
 func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyRequest) (*model.Journey, error) {
 	log := s.logWithTrace(ctx)
@@ -110,6 +159,16 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 			Str("driver_id", req.DriverID).
 			Err(err).
 			Msg("invalid vehicle type")
+		return nil, err
+	}
+
+	priorityLevel, err := normalizePriorityLevel(req.PriorityLevel)
+	if err != nil {
+		log.Warn().
+			Str("service", "JourneyService.CreateJourney").
+			Str("driver_id", req.DriverID).
+			Err(err).
+			Msg("invalid priority level")
 		return nil, err
 	}
 
@@ -233,6 +292,7 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		JourneyID:      journeyID,
 		IdempotencyKey: idempKey,
 		VehicleType:    vehicleType,
+		PriorityLevel:  priorityLevel,
 		Reservations:   reservations,
 	})
 	if err != nil {
@@ -251,11 +311,7 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 
 	if reserveResp.Status == "failed" {
 		status = model.StatusRejected
-		if reserveResp.FailedSegment != nil {
-			rejectionReason = "Segment " + reserveResp.FailedSegment.SegmentID + " is at capacity"
-		} else {
-			rejectionReason = "Capacity unavailable"
-		}
+		rejectionReason = buildRejectionReason(reserveResp.FailedSegment)
 		segments = nil
 		log.Warn().
 			Str("service", "JourneyService.CreateJourney").

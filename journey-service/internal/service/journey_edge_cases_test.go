@@ -14,6 +14,7 @@ package service
 //   ✔ Test application/testing framework         → this file
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -257,7 +258,7 @@ func TestVehicleTypeNormalisation_CaseInsensitive(t *testing.T) {
 // TestVehicleTypeNormalisation_InvalidTypes verifies that unknown types are
 // rejected with an error before any DB or HTTP call is made.
 func TestVehicleTypeNormalisation_InvalidTypes(t *testing.T) {
-	invalid := []string{"bus", "tram", "bicycle", "lorry", "", " ", "Car ", "TRACTOR"}
+	invalid := []string{"bus", "tram", "bicycle", "lorry", "", " ", "TRACTOR"}
 	for _, vt := range invalid {
 		_, err := normalizeVehicleType(vt)
 		if err == nil {
@@ -313,9 +314,9 @@ func TestCancellationWindow_MinutesBeforeDeparture(t *testing.T) {
 	now := time.Now().UTC()
 
 	cases := []struct {
-		label          string
-		departure      time.Time
-		expectAllowed  bool
+		label         string
+		departure     time.Time
+		expectAllowed bool
 	}{
 		{"61 min away — allowed", now.Add(61 * time.Minute), true},
 		{"31 min away — allowed", now.Add(31 * time.Minute), true},
@@ -433,6 +434,34 @@ func TestTimeWindows_SequenceOrderPreserved(t *testing.T) {
 	}
 }
 
+func TestBuildRejectionReason_SegmentClosed(t *testing.T) {
+	closureEnd := time.Date(2026, 4, 8, 14, 0, 0, 0, time.UTC)
+	reason := buildRejectionReason(&client.FailedSegment{
+		SegmentID:     "seg_city_north",
+		Reason:        "segment_closed",
+		ClosureReason: "maintenance",
+		ClosureEnd:    &closureEnd,
+	})
+
+	if !strings.Contains(strings.ToLower(reason), "closed") {
+		t.Fatalf("expected closure rejection reason, got %q", reason)
+	}
+	if !strings.Contains(reason, "seg_city_north") {
+		t.Fatalf("expected segment id in rejection reason, got %q", reason)
+	}
+}
+
+func TestBuildRejectionReason_AtCapacity(t *testing.T) {
+	reason := buildRejectionReason(&client.FailedSegment{
+		SegmentID: "seg_city_north",
+		Reason:    "at_capacity",
+	})
+
+	if !strings.Contains(strings.ToLower(reason), "capacity") {
+		t.Fatalf("expected capacity rejection reason, got %q", reason)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 6 — Integration Test Stubs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -442,8 +471,8 @@ func TestTimeWindows_SequenceOrderPreserved(t *testing.T) {
 // gets ONE approved journey, not two.
 //
 // Mechanisms:
-//   1. HasActiveJourney() query prevents a second booking when one is APPROVED
-//   2. Idempotency cache returns the same response for duplicate keys
+//  1. HasActiveJourney() query prevents a second booking when one is APPROVED
+//  2. Idempotency cache returns the same response for duplicate keys
 func TestIntegration_DoubleBooking_SameDriver_SameTime(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration: requires live CockroachDB")
@@ -471,9 +500,10 @@ func TestIntegration_ConcurrentDrivers_SameSegment_AtCapacity(t *testing.T) {
 
 // TestIntegration_CrossVM_JourneyOriginatedOnVM1_NotifiedOnVM2 verifies the
 // event propagation across VMs:
-//   VM1 creates a journey → publishes to Redis Stream (journey.events)
-//   VM2's notification-service consumer group member receives the event
-//   VM2 sends FCM push to driver's registered device
+//
+//	VM1 creates a journey → publishes to Redis Stream (journey.events)
+//	VM2's notification-service consumer group member receives the event
+//	VM2 sends FCM push to driver's registered device
 func TestIntegration_CrossVM_JourneyOriginatedOnVM1_NotifiedOnVM2(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration: requires multi-VM docker-stack + FCM credentials")

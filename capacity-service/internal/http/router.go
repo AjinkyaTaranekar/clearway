@@ -1,6 +1,8 @@
 package http
 
 import (
+	"net/http"
+
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/http/handlers"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/tracing"
@@ -18,7 +20,9 @@ type Router struct {
 	healthHandler    *handlers.HealthHandler
 	capacityHandler  *handlers.CapacityHandler
 	occupancyHandler *handlers.OccupancyHandler
+	closureHandler   *handlers.ClosureHandler
 	logger           *logger.Logger
+	jwksValidator    *JWKSValidator
 }
 
 // NewRouter creates a new router instance
@@ -26,14 +30,18 @@ func NewRouter(
 	healthHandler *handlers.HealthHandler,
 	capacityHandler *handlers.CapacityHandler,
 	occupancyHandler *handlers.OccupancyHandler,
+	closureHandler *handlers.ClosureHandler,
 	log *logger.Logger,
+	jwksValidator *JWKSValidator,
 ) *Router {
 	return &Router{
 		mux:              mux.NewRouter(),
 		healthHandler:    healthHandler,
 		capacityHandler:  capacityHandler,
 		occupancyHandler: occupancyHandler,
+		closureHandler:   closureHandler,
 		logger:           log,
+		jwksValidator:    jwksValidator,
 	}
 }
 
@@ -63,6 +71,12 @@ func (r *Router) Setup() *mux.Router {
 	// does not shadow the more-specific path.
 	api.HandleFunc("/segments", r.occupancyHandler.Segments).Methods("GET")
 	api.HandleFunc("/segments/occupancy", r.occupancyHandler.Occupancy).Methods("GET")
+	if r.closureHandler != nil {
+		listClosures := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.closureHandler.List))))
+		createClosure := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.closureHandler.Create))))
+		api.Handle("/closures", listClosures).Methods("GET")
+		api.Handle("/closures", createClosure).Methods("POST")
+	}
 
 	return r.mux
 }

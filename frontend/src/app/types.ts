@@ -52,3 +52,22 @@ export interface Notification {
   timestamp: string;
   journeyId?: string;
 }
+
+export interface CapacitySegment {
+  segment_id: string;
+  segment_name: string;
+  region: string;
+  max_capacity: number;
+}
+
+export interface SegmentClosure {
+  closure_id: string;
+  segment_id: string;
+  start_time: string;
+  end_time: string;
+  reason: string;
+  admin_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}

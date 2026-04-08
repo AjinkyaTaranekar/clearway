@@ -28,6 +28,10 @@ import (
 // @termsOfService http://swagger.io/terms/
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer" followed by a space and the JWT token.
 func main() {
 	// Load configuration
 	configPath := "config.yaml"
@@ -76,6 +80,11 @@ func main() {
 	defer dbPools.Close()
 	log.Info().Msg("database connections established")
 
+	if err := postgres.RunMigrations(dbPools.Master, "migrations"); err != nil {
+		log.Fatal().Err(err).Msg("failed to run database migrations")
+	}
+	log.Info().Msg("database migrations applied")
+
 	// Initialize Redis (optional — service degrades gracefully without it)
 	var redisClient *redis.Client
 	if cfg.Redis.Host != "" {
@@ -114,6 +123,7 @@ func main() {
 	// Wire up repositories
 	segmentRepo := repository.NewSegmentRepo(dbPools.Slave)
 	reservRepo := repository.NewReservationRepo(dbPools.Master, dbPools.Slave)
+	closureRepo := repository.NewClosureRepo(dbPools.Master)
 	idempRepo := repository.NewIdempotencyRepo(dbPools.Master)
 
 	// Wire up services
@@ -121,6 +131,7 @@ func main() {
 		dbPools.Master,
 		segmentRepo,
 		reservRepo,
+		closureRepo,
 		idempRepo,
 		redisClient,
 		cacheTTL,
@@ -150,13 +161,20 @@ func main() {
 		log.Info().Str("consumer", consumerName).Msg("event consumer started")
 	}
 
+	var jwksValidator *httpHandler.JWKSValidator
+	if cfg.Services.JWKSURL != "" {
+		jwksValidator = httpHandler.NewJWKSValidator(cfg.Services.JWKSURL)
+		log.Info().Str("jwks_url", cfg.Services.JWKSURL).Msg("JWKS validator configured")
+	}
+
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler()
 	capacityHandler := handlers.NewCapacityHandler(reservSvc, log)
 	occupancyHandler := handlers.NewOccupancyHandler(reservSvc, log)
+	closureHandler := handlers.NewClosureHandler(reservSvc, log)
 
 	// Setup router
-	router := httpHandler.NewRouter(healthHandler, capacityHandler, occupancyHandler, log)
+	router := httpHandler.NewRouter(healthHandler, capacityHandler, occupancyHandler, closureHandler, log, jwksValidator)
 	mux := router.Setup()
 
 	// Create HTTP server

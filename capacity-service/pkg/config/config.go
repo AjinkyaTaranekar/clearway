@@ -14,6 +14,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Capacity CapacityConfig `mapstructure:"capacity"`
+	Services ServicesConfig `mapstructure:"services"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
 
@@ -48,10 +49,15 @@ type RedisConfig struct {
 
 // CapacityConfig holds capacity-service specific configuration
 type CapacityConfig struct {
-	VMID                    string        `mapstructure:"vm_id"`
-	AvailabilityCacheTTL    time.Duration `mapstructure:"availability_cache_ttl"`
-	OrphanCleanupInterval   time.Duration `mapstructure:"orphan_cleanup_interval"`
-	OrphanThreshold         time.Duration `mapstructure:"orphan_threshold"`
+	VMID                  string        `mapstructure:"vm_id"`
+	AvailabilityCacheTTL  time.Duration `mapstructure:"availability_cache_ttl"`
+	OrphanCleanupInterval time.Duration `mapstructure:"orphan_cleanup_interval"`
+	OrphanThreshold       time.Duration `mapstructure:"orphan_threshold"`
+}
+
+// ServicesConfig holds external service integration settings.
+type ServicesConfig struct {
+	JWKSURL string `mapstructure:"jwks_url"`
 }
 
 // LoggingConfig represents logging configuration
@@ -84,6 +90,7 @@ func Load(configPath string) (*Config, error) {
 		"database.master.password", "database.master.dbname",
 		"database.slave.host", "database.slave.port", "database.slave.user",
 		"database.slave.password", "database.slave.dbname",
+		"services.jwks_url",
 	} {
 		_ = v.BindEnv(key)
 	}

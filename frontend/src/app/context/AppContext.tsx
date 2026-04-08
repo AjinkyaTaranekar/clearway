@@ -27,6 +27,7 @@ export interface BookingData {
   destCoords?: { lat: number; lng: number };
   departureTime: string;
   vehicleType: string;
+  priorityLevel?: 'normal' | 'max';
 }
 
 export interface BookingResult {

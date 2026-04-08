@@ -24,7 +24,7 @@ func NewCapacityHandler(svc *service.ReservationService, log *logger.Logger) *Ca
 
 // Reserve godoc
 // @Summary      Reserve capacity across multiple road segments
-// @Description  Atomically reserves slots on all requested segments. Returns 201 on success or 200 with a failed_segment on capacity exhaustion.
+// @Description  Atomically reserves slots on all requested segments. Returns 201 on success or 200 with failed_segment when capacity is unavailable or a segment is closed.
 // @Tags         Capacity
 // @Accept       json
 // @Produce      json
@@ -58,6 +58,7 @@ func (h *CapacityHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 		Str("journey_id", req.JourneyID).
 		Str("idempotency_key", req.IdempotencyKey).
 		Str("vehicle_type", string(req.VehicleType)).
+		Str("priority_level", req.PriorityLevel).
 		Int("segment_count", len(req.Reservations)).
 		Msg("invoking reservation service reserve")
 
@@ -91,7 +92,7 @@ func (h *CapacityHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 
 // Check godoc
 // @Summary      Check capacity availability for a segment and time window
-// @Description  Returns current availability for a single road segment. Results are cached for 30 seconds.
+// @Description  Returns current availability for a single road segment. Includes closure metadata when the segment is closed for the requested window.
 // @Tags         Capacity
 // @Produce      json
 // @Param        segment_id         query string true  "Segment ID"
@@ -113,6 +114,7 @@ func (h *CapacityHandler) Check(w http.ResponseWriter, r *http.Request) {
 	segmentID := r.URL.Query().Get("segment_id")
 	startStr := r.URL.Query().Get("time_window_start")
 	endStr := r.URL.Query().Get("time_window_end")
+	priorityLevel := r.URL.Query().Get("priority_level")
 
 	if segmentID == "" || startStr == "" || endStr == "" {
 		log.Warn().
@@ -161,11 +163,12 @@ func (h *CapacityHandler) Check(w http.ResponseWriter, r *http.Request) {
 	log.Info().
 		Str("handler", "CapacityHandler.Check").
 		Str("segment_id", segmentID).
+		Str("priority_level", priorityLevel).
 		Time("window_start", windowStart).
 		Time("window_end", windowEnd).
 		Msg("invoking reservation service availability check")
 
-	resp, err := h.svc.CheckAvailability(r.Context(), segmentID, windowStart, windowEnd)
+	resp, err := h.svc.CheckAvailability(r.Context(), segmentID, windowStart, windowEnd, priorityLevel)
 	if err != nil {
 		log.Error().
 			Str("handler", "CapacityHandler.Check").

@@ -91,11 +91,13 @@ func main() {
 	// Master: all writes and auth-path reads (avoids replication-lag failures).
 	// Slave:  admin read-only queries (list/count users) — lag-tolerant.
 	userRepo := repository.NewUserRepo(dbPools.Master, dbPools.Slave)
+	vehicleRepo := repository.NewVehicleRepo(dbPools.Master)
 	tokenRepo := repository.NewTokenRepo(dbPools.Master)
 
 	// --- Services ---
 	authSvc := service.NewAuthService(dbPools.Master, userRepo, tokenRepo, jwksSvc, cfg.IAM.AccessTokenTTL, cfg.IAM.RefreshTokenTTL, cfg.IAM.BcryptCost)
 	profileSvc := service.NewProfileService(userRepo)
+	vehicleSvc := service.NewVehicleService(vehicleRepo)
 	adminSvc := service.NewAdminService(userRepo, tokenRepo)
 	cleanupSvc := service.NewCleanupService(tokenRepo, cfg.IAM.TokenRetentionDays, cfg.IAM.CleanupInterval, log)
 
@@ -105,6 +107,7 @@ func main() {
 		handlers.NewHealthHandler(dbPools.Master, jwksSvc.IsReady),
 		handlers.NewAuthHandler(authSvc),
 		handlers.NewProfileHandler(profileSvc),
+		handlers.NewVehicleHandler(vehicleSvc),
 		handlers.NewJWKSHandler(jwksSvc),
 		handlers.NewAdminHandler(adminSvc),
 		jwksSvc, log,

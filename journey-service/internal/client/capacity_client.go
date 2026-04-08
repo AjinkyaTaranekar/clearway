@@ -24,17 +24,21 @@ type ReserveRequest struct {
 	JourneyID      string        `json:"journey_id"`
 	IdempotencyKey string        `json:"idempotency_key"`
 	VehicleType    string        `json:"vehicle_type"`
+	PriorityLevel  string        `json:"priority_level,omitempty"`
 	Reservations   []Reservation `json:"reservations"`
 }
 
 // FailedSegment details a failed reservation
 type FailedSegment struct {
-	SegmentID       string    `json:"segment_id"`
-	Reason          string    `json:"reason"`
-	AvailableSlots  float64   `json:"available_slots"`
-	RequestedSlots  float64   `json:"requested_slots"`
-	TimeWindowStart time.Time `json:"time_window_start"`
-	TimeWindowEnd   time.Time `json:"time_window_end"`
+	SegmentID       string     `json:"segment_id"`
+	Reason          string     `json:"reason"`
+	AvailableSlots  float64    `json:"available_slots"`
+	RequestedSlots  float64    `json:"requested_slots"`
+	TimeWindowStart time.Time  `json:"time_window_start"`
+	TimeWindowEnd   time.Time  `json:"time_window_end"`
+	ClosureReason   string     `json:"closure_reason,omitempty"`
+	ClosureStart    *time.Time `json:"closure_start,omitempty"`
+	ClosureEnd      *time.Time `json:"closure_end,omitempty"`
 }
 
 // ReserveResponse is returned by Capacity Service.

@@ -23,7 +23,12 @@ export default function BookingResultPage() {
 
   const { success, journeyId, reason } = lastBookingResult;
   const normalizedReason = (reason ?? '').toLowerCase();
-  const isCapacityRejection = !success && (
+  const isClosureRejection = !success && (
+    normalizedReason.includes('closed')
+    || normalizedReason.includes('closure')
+    || normalizedReason.includes('maintenance')
+  );
+  const isCapacityRejection = !success && !isClosureRejection && (
     normalizedReason.includes('capacity')
     || normalizedReason.includes('segment')
     || normalizedReason.includes('slot')
@@ -63,7 +68,13 @@ export default function BookingResultPage() {
               marginBottom: '8px',
             }}
           >
-            {success ? 'Journey approved' : isCapacityRejection ? 'Slot no longer available' : 'Journey rejected'}
+            {success
+              ? 'Journey approved'
+              : isClosureRejection
+                ? 'Segment temporarily closed'
+                : isCapacityRejection
+                  ? 'Slot no longer available'
+                  : 'Journey rejected'}
           </h1>
 
           <p style={{ color: success ? '#2F6B55' : '#B42318', fontSize: '0.9375rem' }}>
@@ -142,6 +153,17 @@ export default function BookingResultPage() {
                 >
                   <p style={{ color: '#7A4500', fontSize: '0.875rem', lineHeight: 1.6 }}>
                     Another driver may have confirmed the same route and departure slot just before your request (ghost reservation). Choose the next available slot and try again.
+                  </p>
+                </div>
+              )}
+
+              {isClosureRejection && (
+                <div
+                  className="rounded-xl p-4 mb-5"
+                  style={{ background: '#FFF4E0', border: '1px solid #F1D7A5' }}
+                >
+                  <p style={{ color: '#7A4500', fontSize: '0.875rem', lineHeight: 1.6 }}>
+                    This route currently crosses a segment blocked by admin operations. Try a different departure time while the closure remains active.
                   </p>
                 </div>
               )}

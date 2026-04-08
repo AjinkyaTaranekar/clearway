@@ -144,7 +144,10 @@ func (s *CleanupService) invalidateCache(ctx context.Context, affected []model.S
 	}
 	keys := make([]string, 0, len(affected))
 	for _, r := range affected {
-		keys = append(keys, availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd))
+		keys = append(keys,
+			availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd, priorityLevelNormal),
+			availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd, priorityLevelMax),
+		)
 	}
 	if err := s.redis.Del(ctx, keys...).Err(); err != nil {
 		log.Warn().Err(err).Msg("orphan cleanup: failed to invalidate availability cache")

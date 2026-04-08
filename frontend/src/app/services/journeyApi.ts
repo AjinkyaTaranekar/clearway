@@ -49,6 +49,11 @@ function toApiVehicleType(frontendType: string): string {
     Van: 'van',
     HGV: 'truck',
     Motorcycle: 'motorcycle',
+    car: 'car',
+    van: 'van',
+    truck: 'truck',
+    motorcycle: 'motorcycle',
+    hgv: 'truck',
   };
   return map[frontendType] ?? frontendType.toLowerCase();
 }
@@ -186,6 +191,7 @@ export async function createJourney(params: {
   destCoords?: { lat: number; lng: number };
   departureTime: string;
   vehicleType: string;
+  priorityLevel?: 'normal' | 'max';
 }): Promise<Journey> {
   const originCoords = params.originCoords ?? getCoordinates(params.origin);
   const destCoords = params.destCoords ?? getCoordinates(params.destination);
@@ -201,6 +207,7 @@ export async function createJourney(params: {
       destination: destCoords,
       departure_time: departureISO,
       vehicle_type: toApiVehicleType(params.vehicleType),
+      priority_level: params.priorityLevel ?? 'normal',
     }),
   });
 

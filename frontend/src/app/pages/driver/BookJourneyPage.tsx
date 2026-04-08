@@ -5,25 +5,18 @@ import { useNavigate } from 'react-router';
 import PlaceSearch from '../../components/ui/PlaceSearch';
 import OSMMap, { addMarker, addPolyline } from '../../components/ui/OSMMap';
 import { useApp } from '../../context/AppContext';
-import { authHeaders } from '../../services/auth';
+import { authHeaders, getToken } from '../../services/auth';
+import { iamListVehicles, UserVehicle } from '../../services/iamApi';
 import { getMapNodes, getRoute, MapNode, PlaceResult } from '../../services/mapApi';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
-const VEHICLE_TYPES = [
-  { value: 'Car', label: 'Car', icon: 'CAR', desc: 'Standard passenger vehicle' },
-  { value: 'Van', label: 'Van', icon: 'VAN', desc: 'Light commercial vehicle' },
-  { value: 'Motorcycle', label: 'Motorcycle', icon: 'MOTO', desc: 'Two-wheeled vehicle' },
-  { value: 'HGV', label: 'HGV', icon: 'HGV', desc: 'Heavy goods vehicle' },
-];
-
-// Map IAM vehicle type values (lowercase) to the booking page display values.
-const IAM_TO_BOOKING_VEHICLE: Record<string, string> = {
-  car: 'Car',
-  van: 'Van',
-  motorcycle: 'Motorcycle',
-  truck: 'HGV',
-};
+const VEHICLE_TYPES = {
+  car: { api: 'car', value: 'Car', label: 'Car', icon: 'CAR', desc: 'Standard passenger vehicle' },
+  van: { api: 'van', value: 'Van', label: 'Van', icon: 'VAN', desc: 'Light commercial vehicle' },
+  motorcycle: { api: 'motorcycle', value: 'Motorcycle', label: 'Motorcycle', icon: 'MOTO', desc: 'Two-wheeled vehicle' },
+  truck: { api: 'truck', value: 'HGV', label: 'HGV', icon: 'HGV', desc: 'Heavy goods vehicle' },
+} as const;
 
 // Default map centre: Dublin, Ireland
 const DUBLIN: [number, number] = [53.3498, -6.2603];
@@ -31,11 +24,13 @@ const DUBLIN: [number, number] = [53.3498, -6.2603];
 const SLOT_INTERVAL_MINUTES = 30;
 
 const VEHICLE_SLOT_WEIGHTS: Record<string, number> = {
-  Car: 1,
-  Van: 1.5,
-  Motorcycle: 0.5,
-  HGV: 3,
+  car: 1,
+  van: 1.5,
+  motorcycle: 0.5,
+  truck: 3,
 };
+
+const FALLBACK_PRIMARY_VEHICLE_ID = 'primary';
 
 interface FormErrors {
   origin?: string;
@@ -59,6 +54,10 @@ interface CapacityCheckResponse {
   reserved_slots: number;
   available_slots: number;
   can_reserve: boolean;
+  is_closed?: boolean;
+  closure_reason?: string;
+  closure_start?: string;
+  closure_end?: string;
 }
 
 interface SlotState {
@@ -85,6 +84,18 @@ interface SegmentFlowItem {
   reservedSlots?: number;
   availableSlots?: number;
   canReserve?: boolean;
+  isClosed?: boolean;
+  closureReason?: string;
+  closureStart?: string;
+  closureEnd?: string;
+}
+
+interface DriverVehicle {
+  id: string;
+  vehicleType: string;
+  isPrimary: boolean;
+  isEmergencyVehicle: boolean;
+  licenseNumber: string;
 }
 
 interface SlotOption {
@@ -163,16 +174,15 @@ export default function BookJourneyPage() {
   const navigate = useNavigate();
   const { bookJourney, user } = useApp();
 
-  const defaultVehicleType = user?.vehicle_type
-    ? (IAM_TO_BOOKING_VEHICLE[user.vehicle_type.toLowerCase()] ?? '')
-    : '';
-
   const [step, setStep] = useState(1);
   const [originPlace, setOriginPlace] = useState<PlaceResult | null>(null);
   const [destPlace, setDestPlace] = useState<PlaceResult | null>(null);
   const [selectedDate, setSelectedDate] = useState(formatDateInput(new Date()));
   const [departureTime, setDepartureTime] = useState('');
-  const [vehicleType, setVehicleType] = useState(defaultVehicleType);
+  const [availableVehicles, setAvailableVehicles] = useState<DriverVehicle[]>([]);
+  const [selectedVehicleID, setSelectedVehicleID] = useState('');
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehiclesError, setVehiclesError] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [routeSegments, setRouteSegments] = useState<RouteCapacitySegment[]>([]);
@@ -192,8 +202,80 @@ export default function BookJourneyPage() {
     [],
   );
   const daySlots = useMemo(() => buildDaySlots(selectedDate), [selectedDate]);
-  const requiredSlots = VEHICLE_SLOT_WEIGHTS[vehicleType] ?? 1;
+  const selectedVehicle = useMemo(
+    () => availableVehicles.find((vehicle) => vehicle.id === selectedVehicleID) ?? null,
+    [availableVehicles, selectedVehicleID],
+  );
+  const selectedVehicleMeta = useMemo(() => {
+    if (!selectedVehicle) return null;
+    return VEHICLE_TYPES[selectedVehicle.vehicleType as keyof typeof VEHICLE_TYPES] ?? null;
+  }, [selectedVehicle]);
+  const requiredSlots = selectedVehicle ? (VEHICLE_SLOT_WEIGHTS[selectedVehicle.vehicleType] ?? 1) : 1;
   const selectedSlotState = departureTime ? slotStates[departureTime] : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserVehicles = async () => {
+      const token = getToken();
+      if (!token) return;
+
+      setVehiclesLoading(true);
+      setVehiclesError('');
+
+      const fallbackType = (user?.vehicle_type ?? '').toLowerCase();
+      const fallbackVehicles: DriverVehicle[] = VEHICLE_TYPES[fallbackType as keyof typeof VEHICLE_TYPES]
+        ? [{
+            id: FALLBACK_PRIMARY_VEHICLE_ID,
+            vehicleType: fallbackType,
+            isPrimary: true,
+            isEmergencyVehicle: false,
+            licenseNumber: '',
+          }]
+        : [];
+
+      try {
+        const items = await iamListVehicles(token);
+        if (cancelled) return;
+
+        const mappedVehicles: DriverVehicle[] = items
+          .map((vehicle: UserVehicle) => ({
+            id: vehicle.id,
+            vehicleType: vehicle.vehicle_type.toLowerCase(),
+            isPrimary: vehicle.is_primary,
+            isEmergencyVehicle: vehicle.is_emergency_vehicle,
+            licenseNumber: vehicle.license_info?.license_number ?? '',
+          }))
+          .filter((vehicle) => Boolean(VEHICLE_TYPES[vehicle.vehicleType as keyof typeof VEHICLE_TYPES]));
+
+        const nextVehicles = mappedVehicles.length > 0 ? mappedVehicles : fallbackVehicles;
+        setAvailableVehicles(nextVehicles);
+        setSelectedVehicleID((current) => {
+          if (nextVehicles.some((vehicle) => vehicle.id === current)) return current;
+          return nextVehicles.find((vehicle) => vehicle.isPrimary)?.id ?? nextVehicles[0]?.id ?? '';
+        });
+
+        if (mappedVehicles.length === 0 && fallbackVehicles.length > 0) {
+          setVehiclesError('Using your primary profile vehicle because IAM vehicle list is empty.');
+        }
+      } catch {
+        if (cancelled) return;
+        setAvailableVehicles(fallbackVehicles);
+        setSelectedVehicleID(fallbackVehicles[0]?.id ?? '');
+        setVehiclesError('Could not load your saved vehicles. Showing fallback primary vehicle only.');
+      } finally {
+        if (!cancelled) {
+          setVehiclesLoading(false);
+        }
+      }
+    };
+
+    void loadUserVehicles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.vehicle_type]);
 
   const segmentFlow = useMemo(() => {
     if (!departureTime || routeSegments.length === 0) return [];
@@ -353,6 +435,9 @@ export default function BookJourneyPage() {
             time_window_start: window.timeWindowStart.toISOString(),
             time_window_end: window.timeWindowEnd.toISOString(),
           });
+          if (selectedVehicle?.isEmergencyVehicle) {
+            query.set('priority_level', 'max');
+          }
 
           const res = await fetch(`${API_BASE_URL}/api/v1/capacity/check?${query.toString()}`, {
             headers: {
@@ -365,6 +450,7 @@ export default function BookJourneyPage() {
           }
 
           const check = (await res.json()) as CapacityCheckResponse;
+          const isClosed = check.is_closed === true;
           return {
             segmentId: window.segment.segmentId,
             segmentName: window.segment.segmentName,
@@ -375,7 +461,11 @@ export default function BookJourneyPage() {
             maxCapacity: check.max_capacity,
             reservedSlots: check.reserved_slots,
             availableSlots: check.available_slots,
-            canReserve: (check.available_slots ?? 0) >= requiredSlots,
+            canReserve: !isClosed && (check.available_slots ?? 0) >= requiredSlots,
+            isClosed,
+            closureReason: check.closure_reason,
+            closureStart: check.closure_start,
+            closureEnd: check.closure_end,
           } as SegmentFlowItem;
         }),
       );
@@ -385,7 +475,23 @@ export default function BookJourneyPage() {
         Number.POSITIVE_INFINITY,
       );
 
-      if (minAvailableSlots < requiredSlots) {
+      const firstClosed = checks.find((segment) => segment.isClosed);
+      if (firstClosed || minAvailableSlots < requiredSlots) {
+        if (firstClosed) {
+          const closeWindow = `${formatClock(firstClosed.timeWindowStart)}-${formatClock(firstClosed.timeWindowEnd)}`;
+          const closureEnd = firstClosed.closureEnd ? ` until ${formatClock(firstClosed.closureEnd)}` : '';
+          const closureReason = firstClosed.closureReason ? ` (${firstClosed.closureReason})` : '';
+
+          const exhausted: SlotState = {
+            status: 'exhausted',
+            minAvailableSlots,
+            segmentChecks: checks,
+            message: `${firstClosed.segmentName} is closed for ${closeWindow}${closureEnd}${closureReason}. Choose a different departure slot.`,
+          };
+          setSlotStates((prev) => ({ ...prev, [slotValue]: exhausted }));
+          return exhausted;
+        }
+
         const firstBlocked = checks.find((segment) => (segment.availableSlots ?? 0) < requiredSlots);
         const blockedSegmentLabel = firstBlocked
           ? `${firstBlocked.segmentName} (${formatClock(firstBlocked.timeWindowStart)}-${formatClock(firstBlocked.timeWindowEnd)})`
@@ -454,7 +560,7 @@ export default function BookJourneyPage() {
   useEffect(() => {
     if (!departureTime || routeSegments.length === 0) return;
     void checkSlotCapacity(departureTime, true);
-  }, [departureTime, routeSegments, requiredSlots]);
+  }, [departureTime, routeSegments, requiredSlots, selectedVehicleID, selectedVehicle?.isEmergencyVehicle]);
 
   const validateStep1 = (): FormErrors => {
     const e: FormErrors = {};
@@ -469,7 +575,7 @@ export default function BookJourneyPage() {
     } else if (slotStates[departureTime]?.status === 'exhausted') {
       e.departureTime = slotStates[departureTime]?.message ?? 'Selected slot is no longer available.';
     }
-    if (!vehicleType) e.vehicleType = 'Please select a vehicle type.';
+    if (!selectedVehicle) e.vehicleType = 'Please select one of your saved vehicles.';
     return e;
   };
 
@@ -526,7 +632,7 @@ export default function BookJourneyPage() {
 
   const handleSubmit = async () => {
     const e = validateStep1();
-    if (Object.keys(e).length > 0 || !originPlace || !destPlace) {
+    if (Object.keys(e).length > 0 || !originPlace || !destPlace || !selectedVehicle) {
       setErrors(e);
       setStep(1);
       return;
@@ -553,7 +659,8 @@ export default function BookJourneyPage() {
         originCoords: { lat: originPlace.lat, lng: originPlace.lng },
         destCoords: { lat: destPlace.lat, lng: destPlace.lng },
         departureTime,
-        vehicleType,
+        vehicleType: selectedVehicle.vehicleType,
+        priorityLevel: selectedVehicle.isEmergencyVehicle ? 'max' : 'normal',
       });
       navigate('/driver/booking-result');
     } catch {
@@ -900,40 +1007,73 @@ export default function BookJourneyPage() {
                 )}
               </div>
 
-              {/* Vehicle type */}
+              {/* Vehicle */}
               <div>
                 <label className="block mb-2" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
-                  Vehicle type
+                  Your vehicles
                 </label>
+                {vehiclesLoading && (
+                  <p className="mb-2 text-sm" style={{ color: '#4E5953' }}>
+                    Loading your saved vehicles...
+                  </p>
+                )}
+                {vehiclesError && (
+                  <p className="mb-2 text-sm flex items-center gap-1" style={{ color: '#7A4500' }}>
+                    <AlertCircle size={13} /> {vehiclesError}
+                  </p>
+                )}
                 {errors.vehicleType && (
                   <p className="mb-2 text-sm flex items-center gap-1" style={{ color: '#B42318' }}>
                     <AlertCircle size={13} /> {errors.vehicleType}
                   </p>
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  {VEHICLE_TYPES.map((v) => (
-                    <button
-                      key={v.value}
-                      type="button"
-                      onClick={() => setVehicleType(v.value)}
-                      className="flex items-center gap-3 p-3 rounded-xl text-left transition-all"
-                      style={{
-                        border: vehicleType === v.value
-                          ? '1.5px solid #2F6B55'
-                          : errors.vehicleType ? '1.5px solid #B42318' : '1.5px solid var(--border)',
-                        background: vehicleType === v.value ? '#E8F4ED' : 'white',
-                      }}
-                    >
-                      <span className="text-xl">{v.icon}</span>
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.875rem', fontFamily: 'var(--font-heading)' }}>
-                          {v.label}
-                        </div>
-                        <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>{v.desc}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                {availableVehicles.length === 0 ? (
+                  <div className="rounded-lg p-3" style={{ border: '1px solid #F5C2BE', background: '#FDECEA', color: '#8E1B13', fontSize: '0.8125rem' }}>
+                    No vehicles are available for booking. Add a vehicle in Settings first.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {availableVehicles.map((vehicle) => {
+                      const vehicleMeta = VEHICLE_TYPES[vehicle.vehicleType as keyof typeof VEHICLE_TYPES];
+                      if (!vehicleMeta) return null;
+
+                      const isSelected = selectedVehicleID === vehicle.id;
+                      return (
+                        <button
+                          key={vehicle.id}
+                          type="button"
+                          onClick={() => setSelectedVehicleID(vehicle.id)}
+                          className="flex items-center gap-3 p-3 rounded-xl text-left transition-all"
+                          style={{
+                            border: isSelected
+                              ? '1.5px solid #2F6B55'
+                              : errors.vehicleType ? '1.5px solid #B42318' : '1.5px solid var(--border)',
+                            background: isSelected ? '#E8F4ED' : 'white',
+                          }}
+                        >
+                          <span className="text-xl">{vehicleMeta.icon}</span>
+                          <div>
+                            <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.875rem', fontFamily: 'var(--font-heading)' }}>
+                              {vehicleMeta.label}
+                              {vehicle.isPrimary ? ' · Primary' : ' · Secondary'}
+                            </div>
+                            <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                              {vehicleMeta.desc}
+                            </div>
+                            <div style={{ color: vehicle.isEmergencyVehicle ? '#1E6639' : '#7A4500', fontSize: '0.75rem' }}>
+                              {vehicle.isEmergencyVehicle ? 'Emergency priority enabled' : 'Standard priority'}
+                            </div>
+                            {vehicle.licenseNumber && (
+                              <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                                License: {vehicle.licenseNumber}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -976,7 +1116,9 @@ export default function BookJourneyPage() {
                 },
                 {
                   label: 'Vehicle',
-                  value: `${VEHICLE_TYPES.find((v) => v.value === vehicleType)?.icon ?? ''} ${vehicleType}`,
+                  value: selectedVehicleMeta && selectedVehicle
+                    ? `${selectedVehicleMeta.icon} ${selectedVehicleMeta.label}${selectedVehicle.isEmergencyVehicle ? ' (Emergency priority)' : ''}`
+                    : 'Not selected',
                 },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-start">

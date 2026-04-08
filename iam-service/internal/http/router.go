@@ -19,14 +19,15 @@ type Router struct {
 	healthHandler  *handlers.HealthHandler
 	authHandler    *handlers.AuthHandler
 	profileHandler *handlers.ProfileHandler
+	vehicleHandler *handlers.VehicleHandler
 	jwksHandler    *handlers.JWKSHandler
 	adminHandler   *handlers.AdminHandler
 	jwks           *service.JWKSService
 	logger         *logger.Logger
 }
 
-func NewRouter(health *handlers.HealthHandler, auth *handlers.AuthHandler, profile *handlers.ProfileHandler, jwks *handlers.JWKSHandler, admin *handlers.AdminHandler, jwksSvc *service.JWKSService, log *logger.Logger) *Router {
-	return &Router{mux: mux.NewRouter(), healthHandler: health, authHandler: auth, profileHandler: profile, jwksHandler: jwks, adminHandler: admin, jwks: jwksSvc, logger: log}
+func NewRouter(health *handlers.HealthHandler, auth *handlers.AuthHandler, profile *handlers.ProfileHandler, vehicle *handlers.VehicleHandler, jwks *handlers.JWKSHandler, admin *handlers.AdminHandler, jwksSvc *service.JWKSService, log *logger.Logger) *Router {
+	return &Router{mux: mux.NewRouter(), healthHandler: health, authHandler: auth, profileHandler: profile, vehicleHandler: vehicle, jwksHandler: jwks, adminHandler: admin, jwks: jwksSvc, logger: log}
 }
 
 func (r *Router) Setup() *mux.Router {
@@ -53,6 +54,11 @@ func (r *Router) Setup() *mux.Router {
 	authed.HandleFunc("/logout", r.authHandler.Logout).Methods("POST")
 	authed.HandleFunc("/profile", r.profileHandler.GetProfile).Methods("GET")
 	authed.HandleFunc("/profile", r.profileHandler.UpdateProfile).Methods("PUT")
+	authed.HandleFunc("/vehicles", r.vehicleHandler.ListVehicles).Methods("GET")
+	authed.HandleFunc("/vehicles/primary", r.vehicleHandler.UpdatePrimary).Methods("PUT")
+	authed.HandleFunc("/vehicles/secondary", r.vehicleHandler.AddSecondary).Methods("POST")
+	authed.HandleFunc("/vehicles/secondary/{id}", r.vehicleHandler.UpdateSecondary).Methods("PUT")
+	authed.HandleFunc("/vehicles/secondary/{id}", r.vehicleHandler.DeleteSecondary).Methods("DELETE")
 
 	adminRouter := r.mux.PathPrefix("/api/v1/admin/auth").Subrouter()
 	adminRouter.Use(jwtMW)

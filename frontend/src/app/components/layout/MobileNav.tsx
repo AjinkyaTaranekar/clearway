@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router';
 import { useApp } from '../../context/AppContext';
-import { LayoutDashboard, Navigation, List, Bell, Settings, BarChart2, Map } from 'lucide-react';
+import { LayoutDashboard, Navigation, List, Bell, Settings, BarChart2, Map, Construction } from 'lucide-react';
 
 const driverNav = [
   { to: '/driver', label: 'Home', icon: LayoutDashboard, end: true },
@@ -14,6 +14,7 @@ const adminNav = [
   { to: '/admin', label: 'Home', icon: LayoutDashboard, end: true },
   { to: '/admin/journeys', label: 'Journeys', icon: List },
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart2 },
+  { to: '/admin/closures', label: 'Closures', icon: Construction },
   { to: '/admin/map', label: 'Map', icon: Map },
   { to: '/admin/notifications', label: 'Alerts', icon: Bell },
 ];

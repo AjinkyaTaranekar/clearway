@@ -21,6 +21,7 @@ import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AllJourneysPage from './pages/admin/AllJourneysPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
 import EnforcementPage from './pages/admin/EnforcementPage';
+import SegmentClosuresPage from './pages/admin/SegmentClosuresPage';
 import TrafficMapPage from './pages/admin/TrafficMapPage';
 
 function NotFound() {
@@ -84,6 +85,7 @@ export const router = createBrowserRouter([
       { path: 'journeys/:id', Component: AdminJourneyDetailPage },
       { path: 'analytics', Component: AnalyticsPage },
       { path: 'enforcement', Component: EnforcementPage },
+      { path: 'closures', Component: SegmentClosuresPage },
       { path: 'map', Component: TrafficMapPage },
       { path: 'notifications', Component: AdminNotificationsPage },
       { path: 'settings', Component: AdminSettingsPage },

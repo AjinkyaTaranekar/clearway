@@ -30,6 +30,9 @@ capacity:
   orphan_cleanup_interval: 30m
   orphan_threshold: 1h
 
+services:
+  jwks_url: ""
+
 logging:
   level: "info"
   format: "console"

@@ -54,6 +54,7 @@ services:
       VCS_DATABASE_SLAVE_USER: postgres
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
+      VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       VCS_LOGGING_LEVEL: info
       VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
     depends_on:

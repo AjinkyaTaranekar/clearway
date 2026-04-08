@@ -31,6 +31,7 @@ type createJourneyRequest struct {
 	Destination   model.Coordinates `json:"destination"`
 	DepartureTime jsonTime          `json:"departure_time"`
 	VehicleType   string            `json:"vehicle_type"`
+	PriorityLevel string            `json:"priority_level,omitempty"`
 }
 
 // CreateJourney godoc
@@ -113,6 +114,7 @@ func (h *JourneyHandler) CreateJourney(w http.ResponseWriter, r *http.Request) {
 		Destination:    req.Destination,
 		DepartureTime:  req.DepartureTime.Time,
 		VehicleType:    req.VehicleType,
+		PriorityLevel:  req.PriorityLevel,
 		IdempotencyKey: idempKey,
 		DriverID:       driverID,
 	})

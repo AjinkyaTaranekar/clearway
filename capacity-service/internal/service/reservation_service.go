@@ -23,17 +23,25 @@ type ReservationService struct {
 	db          *sql.DB
 	segmentRepo *repository.SegmentRepo
 	reservRepo  *repository.ReservationRepo
+	closureRepo *repository.ClosureRepo
 	idempRepo   *repository.IdempotencyRepo
 	redis       *redis.Client
 	cacheTTL    time.Duration
 	log         *logger.Logger
 }
 
+const (
+	priorityLevelNormal         = "normal"
+	priorityLevelMax            = "max"
+	emergencyCapacityBufferSlot = 1.0
+)
+
 // NewReservationService creates a new ReservationService.
 func NewReservationService(
 	db *sql.DB,
 	segmentRepo *repository.SegmentRepo,
 	reservRepo *repository.ReservationRepo,
+	closureRepo *repository.ClosureRepo,
 	idempRepo *repository.IdempotencyRepo,
 	redisClient *redis.Client,
 	cacheTTL time.Duration,
@@ -43,6 +51,7 @@ func NewReservationService(
 		db:          db,
 		segmentRepo: segmentRepo,
 		reservRepo:  reservRepo,
+		closureRepo: closureRepo,
 		idempRepo:   idempRepo,
 		redis:       redisClient,
 		cacheTTL:    cacheTTL,
@@ -60,6 +69,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			Str("journey_id", req.JourneyID).
 			Str("idempotency_key", req.IdempotencyKey).
 			Str("vehicle_type", string(req.VehicleType)).
+			Str("priority_level", normalizePriorityLevel(req.PriorityLevel)).
 			Int("segment_count", len(req.Reservations)).
 			Msg("starting capacity reservation flow")
 	} else {
@@ -77,6 +87,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		return nil, 400, err
 	}
 
+	priorityLevel := normalizePriorityLevel(req.PriorityLevel)
 	slotsNeeded := req.VehicleType.SlotsNeeded()
 
 	// Sort reservations by segment_id to guarantee a consistent lock order
@@ -199,6 +210,34 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			return nil, 500, fmt.Errorf("lock segment %s: %w", r.SegmentID, err)
 		}
 
+		if s.closureRepo != nil {
+			activeClosure, err := s.closureRepo.FindActiveOverlapTx(ctx, tx, r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd)
+			if err != nil {
+				log.Error().
+					Str("service", "ReservationService.Reserve").
+					Err(err).
+					Str("segment_id", r.SegmentID).
+					Msg("failed to check segment closure overlap")
+				return nil, 500, fmt.Errorf("check closure overlap %s: %w", r.SegmentID, err)
+			}
+			if activeClosure != nil {
+				closureStart := activeClosure.StartTime
+				closureEnd := activeClosure.EndTime
+				failedSegment = &model.FailedSegment{
+					SegmentID:       r.SegmentID,
+					Reason:          "segment_closed",
+					AvailableSlots:  0,
+					RequestedSlots:  slotsNeeded,
+					TimeWindowStart: r.TimeWindowStart,
+					TimeWindowEnd:   r.TimeWindowEnd,
+					ClosureReason:   activeClosure.Reason,
+					ClosureStart:    &closureStart,
+					ClosureEnd:      &closureEnd,
+				}
+				break
+			}
+		}
+
 		currentlyReserved, err := s.reservRepo.SumActiveOverlapping(ctx, tx, r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd)
 		if err != nil {
 			log.Error().
@@ -209,7 +248,8 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			return nil, 500, fmt.Errorf("sum overlapping %s: %w", r.SegmentID, err)
 		}
 
-		available := maxCapacity - currentlyReserved
+		effectiveCapacity := effectiveCapacityForPriority(maxCapacity, priorityLevel)
+		available := effectiveCapacity - currentlyReserved
 		if available < slotsNeeded {
 			if available < 0 {
 				available = 0
@@ -217,6 +257,8 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 			log.Warn().
 				Str("service", "ReservationService.Reserve").
 				Str("segment_id", r.SegmentID).
+				Str("priority_level", priorityLevel).
+				Float64("effective_capacity", effectiveCapacity).
 				Float64("available_slots", available).
 				Float64("requested_slots", slotsNeeded).
 				Msg("reserve failed: segment at capacity")
@@ -347,22 +389,44 @@ func (s *ReservationService) CheckAvailability(
 	ctx context.Context,
 	segmentID string,
 	windowStart, windowEnd time.Time,
+	priorityLevel string,
 ) (*model.CheckResponse, error) {
+	normalizedPriority := normalizePriorityLevel(priorityLevel)
 	log := s.logWithTrace(ctx)
 	log.Info().
 		Str("service", "ReservationService.CheckAvailability").
 		Str("segment_id", segmentID).
+		Str("priority_level", normalizedPriority).
 		Time("window_start", windowStart).
 		Time("window_end", windowEnd).
 		Msg("checking segment availability")
 
-	cacheKey := availabilityCacheKey(segmentID, windowStart, windowEnd)
+	cacheKey := availabilityCacheKey(segmentID, windowStart, windowEnd, normalizedPriority)
 
 	// Try Redis cache first.
 	if s.redis != nil {
 		if val, err := s.redis.Get(ctx, cacheKey).Bytes(); err == nil {
 			var cached model.CheckResponse
 			if json.Unmarshal(val, &cached) == nil {
+				if s.closureRepo != nil {
+					activeClosure, cErr := s.closureRepo.FindActiveOverlap(ctx, segmentID, windowStart, windowEnd)
+					if cErr != nil {
+						log.Warn().
+							Str("service", "ReservationService.CheckAvailability").
+							Err(cErr).
+							Str("segment_id", segmentID).
+							Msg("failed to validate closure state for cached availability")
+					} else if activeClosure != nil {
+						closureStart := activeClosure.StartTime
+						closureEnd := activeClosure.EndTime
+						cached.AvailableSlots = 0
+						cached.CanReserve = false
+						cached.IsClosed = true
+						cached.ClosureReason = activeClosure.Reason
+						cached.ClosureStart = &closureStart
+						cached.ClosureEnd = &closureEnd
+					}
+				}
 				log.Debug().
 					Str("service", "ReservationService.CheckAvailability").
 					Str("segment_id", segmentID).
@@ -389,8 +453,25 @@ func (s *ReservationService) CheckAvailability(
 		return nil, err
 	}
 
-	available := maxCap - reserved
+	effectiveCapacity := effectiveCapacityForPriority(maxCap, normalizedPriority)
+	available := effectiveCapacity - reserved
 	if available < 0 {
+		available = 0
+	}
+
+	var activeClosure *model.SegmentClosure
+	if s.closureRepo != nil {
+		activeClosure, err = s.closureRepo.FindActiveOverlap(ctx, segmentID, windowStart, windowEnd)
+		if err != nil {
+			log.Error().
+				Str("service", "ReservationService.CheckAvailability").
+				Err(err).
+				Str("segment_id", segmentID).
+				Msg("closure overlap query failed")
+			return nil, err
+		}
+	}
+	if activeClosure != nil {
 		available = 0
 	}
 
@@ -400,6 +481,15 @@ func (s *ReservationService) CheckAvailability(
 		ReservedSlots:  reserved,
 		AvailableSlots: available,
 		CanReserve:     available >= 1.0, // minimum vehicle weight is 0.5 (motorcycle); use 1.0 as sensible default
+	}
+	if activeClosure != nil {
+		closureStart := activeClosure.StartTime
+		closureEnd := activeClosure.EndTime
+		resp.IsClosed = true
+		resp.CanReserve = false
+		resp.ClosureReason = activeClosure.Reason
+		resp.ClosureStart = &closureStart
+		resp.ClosureEnd = &closureEnd
 	}
 
 	// Populate cache asynchronously to not delay the response.
@@ -412,6 +502,8 @@ func (s *ReservationService) CheckAvailability(
 	log.Info().
 		Str("service", "ReservationService.CheckAvailability").
 		Str("segment_id", segmentID).
+		Str("priority_level", normalizedPriority).
+		Float64("effective_capacity", effectiveCapacity).
 		Float64("available_slots", resp.AvailableSlots).
 		Float64("reserved_slots", resp.ReservedSlots).
 		Float64("max_capacity", resp.MaxCapacity).
@@ -542,7 +634,10 @@ func (s *ReservationService) invalidateAvailabilityCache(ctx context.Context, re
 	}
 	keys := make([]string, 0, len(reservations))
 	for _, r := range reservations {
-		keys = append(keys, availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd))
+		keys = append(keys,
+			availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd, priorityLevelNormal),
+			availabilityCacheKey(r.SegmentID, r.TimeWindowStart, r.TimeWindowEnd, priorityLevelMax),
+		)
 	}
 	if len(keys) == 0 {
 		log.Debug().
@@ -560,8 +655,40 @@ func (s *ReservationService) invalidateAvailabilityCache(ctx context.Context, re
 		Msg("availability cache invalidated")
 }
 
-func availabilityCacheKey(segmentID string, start, end time.Time) string {
-	return fmt.Sprintf("cap:avail:%s:%d:%d", segmentID, start.Unix(), end.Unix())
+func (s *ReservationService) invalidateAvailabilityCacheBySegment(ctx context.Context, segmentID string) {
+	log := s.logWithTrace(ctx)
+	if s.redis == nil {
+		return
+	}
+
+	pattern := fmt.Sprintf("cap:avail:%s:*", segmentID)
+	keys := make([]string, 0, 16)
+	iter := s.redis.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		log.Warn().
+			Str("service", "ReservationService.invalidateAvailabilityCacheBySegment").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("failed while scanning availability cache keys")
+		return
+	}
+	if len(keys) == 0 {
+		return
+	}
+	if err := s.redis.Del(ctx, keys...).Err(); err != nil {
+		log.Warn().
+			Str("service", "ReservationService.invalidateAvailabilityCacheBySegment").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("failed to invalidate segment availability cache keys")
+	}
+}
+
+func availabilityCacheKey(segmentID string, start, end time.Time, priorityLevel string) string {
+	return fmt.Sprintf("cap:avail:%s:%d:%d:%s", segmentID, start.Unix(), end.Unix(), normalizePriorityLevel(priorityLevel))
 }
 
 func generateID(prefix string) string {
@@ -586,6 +713,36 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
+func normalizePriorityLevel(level string) string {
+	lower := strings.ToLower(strings.TrimSpace(level))
+	if lower == priorityLevelMax {
+		return priorityLevelMax
+	}
+	return priorityLevelNormal
+}
+
+func isPriorityLevelValid(level string) bool {
+	lower := strings.ToLower(strings.TrimSpace(level))
+	return lower == "" || lower == priorityLevelNormal || lower == priorityLevelMax
+}
+
+func effectiveCapacityForPriority(maxCapacity float64, priorityLevel string) float64 {
+	if normalizePriorityLevel(priorityLevel) == priorityLevelMax {
+		return maxCapacity
+	}
+
+	buffer := emergencyCapacityBufferSlot
+	if buffer > maxCapacity {
+		buffer = maxCapacity
+	}
+
+	effectiveCapacity := maxCapacity - buffer
+	if effectiveCapacity < 0 {
+		return 0
+	}
+	return effectiveCapacity
+}
+
 func validateReserveRequest(req *model.ReserveRequest) error {
 	if req.JourneyID == "" {
 		return fmt.Errorf("journey_id is required")
@@ -595,6 +752,9 @@ func validateReserveRequest(req *model.ReserveRequest) error {
 	}
 	if !req.VehicleType.IsValid() {
 		return fmt.Errorf("invalid vehicle_type %q: must be car, van, motorcycle, or truck", req.VehicleType)
+	}
+	if !isPriorityLevelValid(req.PriorityLevel) {
+		return fmt.Errorf("priority_level must be either normal or max")
 	}
 	if len(req.Reservations) == 0 {
 		return fmt.Errorf("reservations list must not be empty")

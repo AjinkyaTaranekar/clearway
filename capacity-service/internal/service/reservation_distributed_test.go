@@ -48,8 +48,9 @@ func segSort(s []model.SegmentReservation) {
 // eliminating the classic ABBA deadlock.
 //
 // Without sorting:
-//   Driver A locks seg_city_north → seg_north_airport
-//   Driver B locks seg_north_airport → seg_city_north  ← deadlock
+//
+//	Driver A locks seg_city_north → seg_north_airport
+//	Driver B locks seg_north_airport → seg_city_north  ← deadlock
 //
 // With sorting both arrive at: seg_city_north → seg_north_airport
 func TestDeadlockPrevention_TwoDriversSameSegments(t *testing.T) {
@@ -229,7 +230,7 @@ func TestCapacityArithmetic_TwoConcurrentTrucks_OnlyOneFits(t *testing.T) {
 	const existingLoad = 77.5 // mixed existing bookings leave 2.5 slots
 
 	truckSlots := model.VehicleTypeTruck.SlotsNeeded() // 3.0
-	available := maxCap - existingLoad                  // 2.5
+	available := maxCap - existingLoad                 // 2.5
 
 	// Neither truck fits — both should be rejected.
 	if available >= truckSlots {
@@ -289,7 +290,7 @@ func TestCapacityArithmetic_AllVehicleTypesRoundtrip(t *testing.T) {
 		}
 	}
 	// A truck blocks as many motorcycles as it does slots.
-	trucksInMax10 := int(10.0 / model.VehicleTypeTruck.SlotsNeeded())  // 3 trucks
+	trucksInMax10 := int(10.0 / model.VehicleTypeTruck.SlotsNeeded())     // 3 trucks
 	motosInMax10 := int(10.0 / model.VehicleTypeMotorcycle.SlotsNeeded()) // 20 motos
 	if trucksInMax10 != 3 {
 		t.Errorf("expected 3 trucks in capacity=10, got %d", trucksInMax10)
@@ -344,8 +345,8 @@ func TestIdempotency_CacheKey_SameInputSameKey(t *testing.T) {
 	start := time.Unix(1713168000, 0).UTC()
 	end := start.Add(30 * time.Minute)
 
-	k1 := availabilityCacheKey(seg, start, end)
-	k2 := availabilityCacheKey(seg, start, end)
+	k1 := availabilityCacheKey(seg, start, end, priorityLevelNormal)
+	k2 := availabilityCacheKey(seg, start, end, priorityLevelNormal)
 
 	if k1 != k2 {
 		t.Errorf("same inputs produced different cache keys: %q vs %q — idempotency broken", k1, k2)
@@ -357,11 +358,11 @@ func TestIdempotency_CacheKey_SameInputSameKey(t *testing.T) {
 // collision here would return wrong availability data.
 func TestIdempotency_CacheKey_DifferentSlots_DifferentKey(t *testing.T) {
 	seg := "seg_city_north"
-	slot1Start := time.Unix(1713168000, 0).UTC() // 08:00
+	slot1Start := time.Unix(1713168000, 0).UTC()   // 08:00
 	slot2Start := slot1Start.Add(30 * time.Minute) // 08:30
 
-	k1 := availabilityCacheKey(seg, slot1Start, slot1Start.Add(30*time.Minute))
-	k2 := availabilityCacheKey(seg, slot2Start, slot2Start.Add(30*time.Minute))
+	k1 := availabilityCacheKey(seg, slot1Start, slot1Start.Add(30*time.Minute), priorityLevelNormal)
+	k2 := availabilityCacheKey(seg, slot2Start, slot2Start.Add(30*time.Minute), priorityLevelNormal)
 
 	if k1 == k2 {
 		t.Error("different time slots produced the same cache key — booking-slot confusion possible")
@@ -374,8 +375,8 @@ func TestIdempotency_CacheKey_DifferentSegments_DifferentKey(t *testing.T) {
 	start := time.Unix(1713168000, 0).UTC()
 	end := start.Add(30 * time.Minute)
 
-	k1 := availabilityCacheKey("seg_city_north", start, end)
-	k2 := availabilityCacheKey("seg_north_airport", start, end)
+	k1 := availabilityCacheKey("seg_city_north", start, end, priorityLevelNormal)
+	k2 := availabilityCacheKey("seg_north_airport", start, end, priorityLevelNormal)
 
 	if k1 == k2 {
 		t.Error("different segments produced the same cache key — cross-segment availability pollution")
@@ -522,73 +523,73 @@ func overlaps(existingStart, existingEnd, newStart, newEnd int64) bool {
 
 func TestTimeWindowOverlap_AllCases(t *testing.T) {
 	cases := []struct {
-		name                       string
-		exStart, exEnd             int64
-		newStart, newEnd           int64
-		wantOverlap                bool
+		name             string
+		exStart, exEnd   int64
+		newStart, newEnd int64
+		wantOverlap      bool
 	}{
 		// Core overlap cases
 		{
-			name: "identical windows conflict",
+			name:    "identical windows conflict",
 			exStart: 100, exEnd: 200, newStart: 100, newEnd: 200,
 			wantOverlap: true,
 		},
 		{
-			name: "new booking inside existing window",
+			name:    "new booking inside existing window",
 			exStart: 100, exEnd: 200, newStart: 120, newEnd: 160,
 			wantOverlap: true,
 		},
 		{
-			name: "existing inside new booking window",
+			name:    "existing inside new booking window",
 			exStart: 120, exEnd: 160, newStart: 100, newEnd: 200,
 			wantOverlap: true,
 		},
 		{
-			name: "partial overlap at start of new window",
+			name:    "partial overlap at start of new window",
 			exStart: 100, exEnd: 150, newStart: 130, newEnd: 200,
 			wantOverlap: true,
 		},
 		{
-			name: "partial overlap at end of new window",
+			name:    "partial overlap at end of new window",
 			exStart: 150, exEnd: 250, newStart: 100, newEnd: 170,
 			wantOverlap: true,
 		},
 		// Non-overlap cases (must NOT reject)
 		{
-			name: "back-to-back: existing ends when new starts (no overlap)",
+			name:    "back-to-back: existing ends when new starts (no overlap)",
 			exStart: 100, exEnd: 200, newStart: 200, newEnd: 300,
 			wantOverlap: false,
 		},
 		{
-			name: "back-to-back: new ends when existing starts (no overlap)",
+			name:    "back-to-back: new ends when existing starts (no overlap)",
 			exStart: 200, exEnd: 300, newStart: 100, newEnd: 200,
 			wantOverlap: false,
 		},
 		{
-			name: "existing completely before new booking",
+			name:    "existing completely before new booking",
 			exStart: 100, exEnd: 120, newStart: 200, newEnd: 300,
 			wantOverlap: false,
 		},
 		{
-			name: "existing completely after new booking",
+			name:    "existing completely after new booking",
 			exStart: 300, exEnd: 400, newStart: 100, newEnd: 200,
 			wantOverlap: false,
 		},
 		// Cross-region time zone scenario: EU morning vs APAC evening on the same segment
 		{
-			name: "EU 08:00-09:00 vs APAC 22:00-23:00 same day, no overlap",
+			name:    "EU 08:00-09:00 vs APAC 22:00-23:00 same day, no overlap",
 			exStart: 28800, exEnd: 32400, newStart: 79200, newEnd: 82800,
 			wantOverlap: false,
 		},
 		// Same-minute slots adjacent — must NOT be treated as conflicting
 		{
-			name: "adjacent 30-min slots (08:00-08:30 and 08:30-09:00)",
+			name:    "adjacent 30-min slots (08:00-08:30 and 08:30-09:00)",
 			exStart: 0, exEnd: 1800, newStart: 1800, newEnd: 3600,
 			wantOverlap: false,
 		},
 		// Two drivers booking overlapping 30-min windows on a highway segment
 		{
-			name: "overlapping 30-min windows: 08:00-08:30 and 08:15-08:45",
+			name:    "overlapping 30-min windows: 08:00-08:30 and 08:15-08:45",
 			exStart: 0, exEnd: 1800, newStart: 900, newEnd: 2700,
 			wantOverlap: true,
 		},

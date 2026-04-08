@@ -43,6 +43,7 @@ type ReserveRequest struct {
 	JourneyID      string               `json:"journey_id"`
 	IdempotencyKey string               `json:"idempotency_key"`
 	VehicleType    VehicleType          `json:"vehicle_type"`
+	PriorityLevel  string               `json:"priority_level,omitempty"`
 	Reservations   []SegmentReservation `json:"reservations"`
 }
 
@@ -61,21 +62,28 @@ type ReserveFailResponse struct {
 
 // FailedSegment describes which segment caused a reservation failure.
 type FailedSegment struct {
-	SegmentID       string    `json:"segment_id"`
-	Reason          string    `json:"reason"`
-	AvailableSlots  float64   `json:"available_slots"`
-	RequestedSlots  float64   `json:"requested_slots"`
-	TimeWindowStart time.Time `json:"time_window_start"`
-	TimeWindowEnd   time.Time `json:"time_window_end"`
+	SegmentID       string     `json:"segment_id"`
+	Reason          string     `json:"reason"`
+	AvailableSlots  float64    `json:"available_slots"`
+	RequestedSlots  float64    `json:"requested_slots"`
+	TimeWindowStart time.Time  `json:"time_window_start"`
+	TimeWindowEnd   time.Time  `json:"time_window_end"`
+	ClosureReason   string     `json:"closure_reason,omitempty"`
+	ClosureStart    *time.Time `json:"closure_start,omitempty"`
+	ClosureEnd      *time.Time `json:"closure_end,omitempty"`
 }
 
 // CheckResponse is returned by GET /api/v1/capacity/check.
 type CheckResponse struct {
-	SegmentID      string  `json:"segment_id"`
-	MaxCapacity    float64 `json:"max_capacity"`
-	ReservedSlots  float64 `json:"reserved_slots"`
-	AvailableSlots float64 `json:"available_slots"`
-	CanReserve     bool    `json:"can_reserve"`
+	SegmentID      string     `json:"segment_id"`
+	MaxCapacity    float64    `json:"max_capacity"`
+	ReservedSlots  float64    `json:"reserved_slots"`
+	AvailableSlots float64    `json:"available_slots"`
+	CanReserve     bool       `json:"can_reserve"`
+	IsClosed       bool       `json:"is_closed,omitempty"`
+	ClosureReason  string     `json:"closure_reason,omitempty"`
+	ClosureStart   *time.Time `json:"closure_start,omitempty"`
+	ClosureEnd     *time.Time `json:"closure_end,omitempty"`
 }
 
 // OccupancyInfo is one element in the GET /api/v1/capacity/segments/occupancy list.

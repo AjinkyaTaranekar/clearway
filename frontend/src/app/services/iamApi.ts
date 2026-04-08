@@ -22,6 +22,20 @@ export interface AuthTokens {
   user: AuthUser;
 }
 
+export interface UserVehicle {
+  id: string;
+  vehicle_type: string;
+  license_info: {
+    license_number: string;
+    license_state?: string;
+    expiry_date?: string;
+  };
+  is_emergency_vehicle: boolean;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RegisterParams {
   name: string;
   email: string;
@@ -139,6 +153,74 @@ export async function iamUpdateProfile(
   return iamFetch<AuthUser>('/api/v1/auth/profile', {
     method: 'PUT',
     body: JSON.stringify(params),
+    authToken: accessToken,
+  });
+}
+
+export interface AddSecondaryVehicleParams {
+  vehicle_type: string;
+  license_info: {
+    license_number: string;
+    license_state?: string;
+    expiry_date?: string;
+  };
+  is_emergency_vehicle?: boolean;
+}
+
+export interface UpdateVehicleParams {
+  vehicle_type?: string;
+  license_info?: {
+    license_number: string;
+    license_state?: string;
+    expiry_date?: string;
+  };
+  is_emergency_vehicle?: boolean;
+}
+
+export async function iamListVehicles(accessToken: string): Promise<UserVehicle[]> {
+  return iamFetch<UserVehicle[]>('/api/v1/auth/vehicles', {
+    method: 'GET',
+    authToken: accessToken,
+  });
+}
+
+export async function iamUpdatePrimaryVehicle(
+  accessToken: string,
+  params: UpdateVehicleParams,
+): Promise<UserVehicle> {
+  return iamFetch<UserVehicle>('/api/v1/auth/vehicles/primary', {
+    method: 'PUT',
+    body: JSON.stringify(params),
+    authToken: accessToken,
+  });
+}
+
+export async function iamAddSecondaryVehicle(
+  accessToken: string,
+  params: AddSecondaryVehicleParams,
+): Promise<UserVehicle> {
+  return iamFetch<UserVehicle>('/api/v1/auth/vehicles/secondary', {
+    method: 'POST',
+    body: JSON.stringify(params),
+    authToken: accessToken,
+  });
+}
+
+export async function iamUpdateSecondaryVehicle(
+  accessToken: string,
+  vehicleID: string,
+  params: UpdateVehicleParams,
+): Promise<UserVehicle> {
+  return iamFetch<UserVehicle>(`/api/v1/auth/vehicles/secondary/${vehicleID}`, {
+    method: 'PUT',
+    body: JSON.stringify(params),
+    authToken: accessToken,
+  });
+}
+
+export async function iamDeleteSecondaryVehicle(accessToken: string, vehicleID: string): Promise<void> {
+  await iamFetch<void>(`/api/v1/auth/vehicles/secondary/${vehicleID}`, {
+    method: 'DELETE',
     authToken: accessToken,
   });
 }
