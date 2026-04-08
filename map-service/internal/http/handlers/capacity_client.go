@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,6 +25,16 @@ type capacityOccupancy struct {
 	CurrentVehicles float64 `json:"current_vehicles"`
 	MaxCapacity     float64 `json:"max_capacity"`
 	Trend           string  `json:"trend"`
+}
+
+type capacitySegmentRegistration struct {
+	SegmentID   string `json:"segment_id"`
+	SegmentName string `json:"segment_name"`
+	Region      string `json:"region"`
+}
+
+type registerSegmentsPayload struct {
+	Segments []capacitySegmentRegistration `json:"segments"`
 }
 
 func NewCapacityClient(baseURL string, log *logger.Logger) *CapacityClient {
@@ -89,4 +100,42 @@ func (c *CapacityClient) GetOccupancy(ctx context.Context) ([]capacityOccupancy,
 		Msg("capacity occupancy endpoint call completed")
 
 	return payload, nil
+}
+
+// RegisterSegments ensures all provided segment IDs exist in capacity-service.
+func (c *CapacityClient) RegisterSegments(ctx context.Context, segments []capacitySegmentRegistration) error {
+	if len(segments) == 0 {
+		return nil
+	}
+	if c == nil {
+		return fmt.Errorf("capacity client not configured")
+	}
+
+	body, err := json.Marshal(registerSegmentsPayload{Segments: segments})
+	if err != nil {
+		return fmt.Errorf("encode segment registration payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/api/v1/capacity/segments/register",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return fmt.Errorf("build segment registration request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("call segment registration endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("segment registration returned status %d", resp.StatusCode)
+	}
+
+	return nil
 }

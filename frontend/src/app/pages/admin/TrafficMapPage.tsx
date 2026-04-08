@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import OSMMap, { addMarker } from '../../components/ui/OSMMap';
-import { TrafficSegment, getTrafficData } from '../../services/mapApi';
+import { TrafficSegment, getTrafficData, updateSegmentCapacity } from '../../services/mapApi';
 
 type LevelFilter = 'all' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -66,6 +66,8 @@ export default function TrafficMapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [capacityDraft, setCapacityDraft] = useState('');
+  const [capacitySaving, setCapacitySaving] = useState(false);
 
   const mapRef = useRef<MapLibreMap | null>(null);
   // Track drawn segment layer IDs so we can update them on refresh
@@ -92,6 +94,39 @@ export default function TrafficMapPage() {
     const timer = setInterval(fetchTraffic, 60_000);
     return () => clearInterval(timer);
   }, [fetchTraffic]);
+
+  useEffect(() => {
+    if (selected) {
+      setCapacityDraft(String(selected.capacity));
+    } else {
+      setCapacityDraft('');
+    }
+  }, [selected]);
+
+  const handleUpdateSegmentCapacity = async () => {
+    if (!selected) return;
+
+    const parsedCapacity = Number(capacityDraft);
+    if (!Number.isFinite(parsedCapacity) || parsedCapacity <= 0) {
+      toast.error('Invalid capacity value', { description: 'Please enter a positive number.' });
+      return;
+    }
+
+    setCapacitySaving(true);
+    try {
+      await updateSegmentCapacity(selected.segment_id, parsedCapacity);
+      toast.success('Segment capacity updated', {
+        description: `${selected.name} is now set to ${parsedCapacity} vehicles/hour.`,
+      });
+      setSelected((prev) => (prev ? { ...prev, capacity: parsedCapacity } : prev));
+      await fetchTraffic();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Capacity update failed.';
+      toast.error('Could not update capacity', { description: message });
+    } finally {
+      setCapacitySaving(false);
+    }
+  };
 
   // Draw/update segment overlays whenever segments or filter changes
   useEffect(() => {
@@ -361,6 +396,35 @@ export default function TrafficMapPage() {
                     <div style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '2px' }}>Capacity</div>
                     <div style={{ fontWeight: 700, color: '#1F2421', fontFamily: 'var(--font-heading)' }}>{selected.capacity}</div>
                   </div>
+                </div>
+
+                <div className="p-3 rounded-lg" style={{ background: '#F8F6F2' }}>
+                  <div style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '8px' }}>
+                    Adjust max capacity (vehicles/hour)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      step="0.5"
+                      value={capacityDraft}
+                      onChange={(e) => setCapacityDraft(e.target.value)}
+                      className="flex-1 px-2.5 py-2 rounded-lg outline-none text-sm"
+                      style={{ border: '1.5px solid var(--border)', background: 'white', color: '#1F2421' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { void handleUpdateSegmentCapacity(); }}
+                      disabled={capacitySaving}
+                      className="px-3 py-2 rounded-lg text-sm text-white"
+                      style={{ background: '#2F6B55', opacity: capacitySaving ? 0.7 : 1 }}
+                    >
+                      {capacitySaving ? 'Saving…' : 'Update'}
+                    </button>
+                  </div>
+                  <p style={{ color: '#4E5953', fontSize: '0.75rem', marginTop: '6px' }}>
+                    This affects upcoming 30-minute slot checks and reservations on this segment.
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between">

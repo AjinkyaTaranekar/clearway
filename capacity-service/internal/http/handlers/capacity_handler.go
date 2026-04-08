@@ -1,15 +1,33 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/service"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/tracing"
+	"github.com/gorilla/mux"
 )
+
+type registerSegmentPayload struct {
+	SegmentID   string `json:"segment_id"`
+	SegmentName string `json:"segment_name"`
+	Region      string `json:"region"`
+}
+
+type registerSegmentsRequest struct {
+	Segments []registerSegmentPayload `json:"segments"`
+}
+
+type updateCapacityRequest struct {
+	MaxCapacity float64 `json:"max_capacity"`
+}
 
 // CapacityHandler handles reservation and availability check endpoints.
 type CapacityHandler struct {
@@ -192,6 +210,178 @@ func (h *CapacityHandler) Check(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Trace-ID", traceID)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
+}
+
+// RegisterSegments godoc
+// @Summary      Register dynamic segments
+// @Description  Internal endpoint used by Map Service to ensure OSRM-derived segment IDs exist in capacity storage.
+// @Tags         Capacity
+// @Accept       json
+// @Produce      json
+// @Param        body body registerSegmentsRequest true "Segments to register"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /api/v1/capacity/segments/register [post]
+func (h *CapacityHandler) RegisterSegments(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	var req registerSegmentsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", traceID)
+		return
+	}
+	if len(req.Segments) == 0 {
+		h.writeError(w, http.StatusBadRequest, "segments list must not be empty", traceID)
+		return
+	}
+
+	segments := make([]service.SegmentRegistration, 0, len(req.Segments))
+	for _, segment := range req.Segments {
+		segmentID := strings.TrimSpace(segment.SegmentID)
+		if segmentID == "" {
+			h.writeError(w, http.StatusBadRequest, "segment_id is required for every segment", traceID)
+			return
+		}
+
+		segments = append(segments, service.SegmentRegistration{
+			SegmentID:   segmentID,
+			SegmentName: strings.TrimSpace(segment.SegmentName),
+			Region:      strings.TrimSpace(segment.Region),
+		})
+	}
+
+	defaultCapacity, registeredCount, err := h.svc.RegisterSegments(r.Context(), segments)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to register segments", traceID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"registered_count":        registeredCount,
+		"default_max_capacity":    defaultCapacity,
+		"requested_segment_count": len(req.Segments),
+	})
+}
+
+// GetDefaultCapacity godoc
+// @Summary      Get default segment max capacity
+// @Description  Admin-only endpoint returning the default max capacity used for newly discovered segments.
+// @Tags         Capacity
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} map[string]number
+// @Failure      500 {object} map[string]string
+// @Router       /api/v1/capacity/default-capacity [get]
+func (h *CapacityHandler) GetDefaultCapacity(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	defaultCapacity, err := h.svc.GetDefaultSegmentCapacity(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to load default capacity", traceID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]float64{
+		"default_max_capacity": defaultCapacity,
+	})
+}
+
+// UpdateDefaultCapacity godoc
+// @Summary      Update default segment max capacity
+// @Description  Admin-only endpoint to change default max capacity for newly discovered segments.
+// @Tags         Capacity
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body updateCapacityRequest true "Default capacity payload"
+// @Success      200 {object} map[string]number
+// @Failure      400 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /api/v1/capacity/default-capacity [put]
+func (h *CapacityHandler) UpdateDefaultCapacity(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+
+	var req updateCapacityRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", traceID)
+		return
+	}
+	if req.MaxCapacity <= 0 {
+		h.writeError(w, http.StatusBadRequest, "max_capacity must be greater than 0", traceID)
+		return
+	}
+
+	adminID := strings.TrimSpace(r.Header.Get("X-Auth-Subject"))
+	updated, err := h.svc.UpdateDefaultSegmentCapacity(r.Context(), req.MaxCapacity, adminID)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to update default capacity", traceID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]float64{
+		"default_max_capacity": updated,
+	})
+}
+
+// UpdateSegmentCapacity godoc
+// @Summary      Update one segment max capacity
+// @Description  Admin-only endpoint to change max capacity for an existing segment.
+// @Tags         Capacity
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        segment_id path string true "Segment ID"
+// @Param        body body updateCapacityRequest true "Segment capacity payload"
+// @Success      200 {object} map[string]interface{}
+// @Failure      400 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /api/v1/capacity/segments/{segment_id}/capacity [put]
+func (h *CapacityHandler) UpdateSegmentCapacity(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	segmentID := strings.TrimSpace(mux.Vars(r)["segment_id"])
+	if segmentID == "" {
+		h.writeError(w, http.StatusBadRequest, "segment_id is required", traceID)
+		return
+	}
+
+	var req updateCapacityRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", traceID)
+		return
+	}
+	if req.MaxCapacity <= 0 {
+		h.writeError(w, http.StatusBadRequest, "max_capacity must be greater than 0", traceID)
+		return
+	}
+
+	err := h.svc.UpdateSegmentCapacity(r.Context(), segmentID, req.MaxCapacity)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.writeError(w, http.StatusNotFound, "segment not found", traceID)
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "failed to update segment capacity", traceID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Trace-ID", traceID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"segment_id":   segmentID,
+		"max_capacity": req.MaxCapacity,
+	})
 }
 
 func (h *CapacityHandler) writeError(w http.ResponseWriter, status int, message, traceID string) {

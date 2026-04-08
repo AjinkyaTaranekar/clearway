@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router';
+import { getDefaultSegmentCapacity, updateDefaultSegmentCapacity } from '../../services/mapApi';
 import {
   Bell, Shield, HelpCircle, LogOut, ChevronRight, Check, Settings,
   AlertTriangle, Activity,
@@ -34,6 +35,37 @@ export default function AdminSettingsPage() {
   const [saveError, setSaveError] = useState('');
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
+  const [defaultCapacity, setDefaultCapacity] = useState('100');
+  const [initialDefaultCapacity, setInitialDefaultCapacity] = useState<number | null>(null);
+  const [capacityLoading, setCapacityLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDefaultCapacity = async () => {
+      try {
+        const value = await getDefaultSegmentCapacity();
+        if (!cancelled) {
+          setDefaultCapacity(String(value));
+          setInitialDefaultCapacity(value);
+        }
+      } catch {
+        if (!cancelled) {
+          setSaveError('Could not load default segment capacity. You can still save profile changes.');
+        }
+      } finally {
+        if (!cancelled) {
+          setCapacityLoading(false);
+        }
+      }
+    };
+
+    void loadDefaultCapacity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -43,6 +75,7 @@ export default function AdminSettingsPage() {
   const handleSave = async () => {
     const trimmedName = name.trim();
     const trimmedPhone = phone.trim();
+    const parsedCapacity = Number(defaultCapacity);
 
     if (!trimmedName) {
       setSaveError('Full name is required.');
@@ -50,6 +83,10 @@ export default function AdminSettingsPage() {
     }
     if (!isValidPhone(trimmedPhone)) {
       setSaveError('Phone number must be empty or valid (7-32 chars, digits and + - ( ) space only).');
+      return;
+    }
+    if (!Number.isFinite(parsedCapacity) || parsedCapacity <= 0) {
+      setSaveError('Default segment capacity must be a positive number.');
       return;
     }
 
@@ -62,6 +99,13 @@ export default function AdminSettingsPage() {
       if (Object.keys(fields).length > 0) {
         await updateProfile(fields);
       }
+
+      if (initialDefaultCapacity === null || Math.abs(parsedCapacity - initialDefaultCapacity) > 0.0001) {
+        const updatedCapacity = await updateDefaultSegmentCapacity(parsedCapacity);
+        setDefaultCapacity(String(updatedCapacity));
+        setInitialDefaultCapacity(updatedCapacity);
+      }
+
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err: any) {
@@ -155,6 +199,26 @@ export default function AdminSettingsPage() {
               onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
               onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
             />
+          </div>
+          <div>
+            <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
+              Default segment capacity <span style={{ color: '#4E5953', fontWeight: 400 }}>(vehicles/hour)</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              step="0.5"
+              value={defaultCapacity}
+              onChange={(e) => setDefaultCapacity(e.target.value)}
+              disabled={capacityLoading}
+              className="w-full px-3.5 py-2.5 rounded-lg outline-none"
+              style={{ border: '1.5px solid var(--border)', background: capacityLoading ? '#F8F6F2' : 'white', color: '#1F2421' }}
+              onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
+              onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+            />
+            <p style={{ color: '#4E5953', fontSize: '0.75rem', marginTop: '6px' }}>
+              New OSRM-discovered segments use this value until you override each segment in Live traffic map.
+            </p>
           </div>
         </div>
 

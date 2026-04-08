@@ -103,15 +103,18 @@ func main() {
 
 	// Initialize HTTP handlers
 	healthHandler := handlers.NewHealthHandler(graphStore)
-	mapHandler := handlers.NewMapHandler(
-		graphStore,
-		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL, log),
-		log,
-	)
 	geoClient := handlers.NewGeoClient(
 		cfg.Services.NominatimBaseURL,
 		cfg.Services.OSRMBaseURL,
 		cfg.Services.UserAgent,
+		log,
+	)
+	capacityClient := handlers.NewCapacityClient(cfg.Services.CapacityBaseURL, log)
+	mapHandler := handlers.NewMapHandler(
+		graphStore,
+		dbPools.Master,
+		geoClient,
+		capacityClient,
 		log,
 	)
 	searchHandler := handlers.NewSearchHandler(geoClient, log)

@@ -7,16 +7,77 @@ import OSMMap, { addMarker, addPolyline } from '../../components/ui/OSMMap';
 import { useApp } from '../../context/AppContext';
 import { authHeaders, getToken } from '../../services/auth';
 import { iamListVehicles, UserVehicle } from '../../services/iamApi';
-import { getMapNodes, getRoute, MapNode, PlaceResult } from '../../services/mapApi';
+import { computeRoute, PlaceResult } from '../../services/mapApi';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 const VEHICLE_TYPES = {
-  car: { api: 'car', value: 'Car', label: 'Car', icon: 'CAR', desc: 'Standard passenger vehicle' },
-  van: { api: 'van', value: 'Van', label: 'Van', icon: 'VAN', desc: 'Light commercial vehicle' },
-  motorcycle: { api: 'motorcycle', value: 'Motorcycle', label: 'Motorcycle', icon: 'MOTO', desc: 'Two-wheeled vehicle' },
-  truck: { api: 'truck', value: 'HGV', label: 'HGV', icon: 'HGV', desc: 'Heavy goods vehicle' },
+  car: { api: 'car', value: 'Car', label: 'Car', icon: 'car', desc: 'Standard passenger vehicle' },
+  van: { api: 'van', value: 'Van', label: 'Van', icon: 'van', desc: 'Light commercial vehicle' },
+  motorcycle: { api: 'motorcycle', value: 'Motorcycle', label: 'Motorcycle', icon: 'motorcycle', desc: 'Two-wheeled vehicle' },
+  truck: { api: 'truck', value: 'HGV', label: 'HGV', icon: 'truck', desc: 'Heavy goods vehicle' },
 } as const;
+
+type VehicleIconType = (typeof VEHICLE_TYPES)[keyof typeof VEHICLE_TYPES]['icon'];
+
+function VehicleTypeIcon({ icon, size = 22, stroke = '#2F6B55' }: { icon: VehicleIconType; size?: number; stroke?: string }) {
+  const bodyFill = '#E8F4ED';
+  const accentFill = '#CFE5D8';
+  const wheelFill = '#202824';
+
+  if (icon === 'car') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 64 40" fill="none" aria-hidden="true">
+        <path d="M14 18L21 10H42L50 18H14Z" fill={accentFill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+        <rect x="7" y="18" width="50" height="13" rx="4" fill={bodyFill} stroke={stroke} strokeWidth="2" />
+        <rect x="25" y="12" width="13" height="5" rx="1.5" fill="white" opacity="0.8" />
+        <circle cx="20" cy="31" r="4.5" fill={wheelFill} />
+        <circle cx="44" cy="31" r="4.5" fill={wheelFill} />
+      </svg>
+    );
+  }
+
+  if (icon === 'van') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 64 40" fill="none" aria-hidden="true">
+        <rect x="6" y="14" width="44" height="17" rx="3" fill={bodyFill} stroke={stroke} strokeWidth="2" />
+        <path d="M50 19L56 19L59 24V31H50V19Z" fill={accentFill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+        <rect x="11" y="18" width="19" height="7" rx="1.5" fill="white" opacity="0.8" />
+        <rect x="34" y="18" width="10" height="7" rx="1.5" fill="white" opacity="0.8" />
+        <circle cx="18" cy="31" r="4.5" fill={wheelFill} />
+        <circle cx="46" cy="31" r="4.5" fill={wheelFill} />
+      </svg>
+    );
+  }
+
+  if (icon === 'motorcycle') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 64 40" fill="none" aria-hidden="true">
+        <circle cx="16" cy="30" r="6.5" fill={wheelFill} />
+        <circle cx="48" cy="30" r="6.5" fill={wheelFill} />
+        <path d="M16 30L26 20H36L48 30" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M30 20L38 14L43 14" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M28 20L24 30" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="36" cy="20" r="3" fill={accentFill} stroke={stroke} strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (icon === 'truck') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 64 40" fill="none" aria-hidden="true">
+        <rect x="5" y="14" width="34" height="16" rx="2.5" fill={bodyFill} stroke={stroke} strokeWidth="2" />
+        <path d="M39 18H49L57 24V30H39V18Z" fill={accentFill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+        <rect x="43" y="20" width="8" height="5" rx="1.5" fill="white" opacity="0.8" />
+        <circle cx="16" cy="31" r="4.5" fill={wheelFill} />
+        <circle cx="33" cy="31" r="4.5" fill={wheelFill} />
+        <circle cx="49" cy="31" r="4.5" fill={wheelFill} />
+      </svg>
+    );
+  }
+
+  return null;
+}
 
 // Default map centre: Dublin, Ireland
 const DUBLIN: [number, number] = [53.3498, -6.2603];
@@ -125,21 +186,6 @@ function buildDaySlots(dateValue: string): SlotOption[] {
   }
 
   return slots;
-}
-
-function nearestNodeId(nodes: MapNode[], lat: number, lng: number): string {
-  let best = '';
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  nodes.forEach((node) => {
-    const distance = Math.hypot(node.lat - lat, node.lng - lng);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = node.node_id;
-    }
-  });
-
-  return best;
 }
 
 function buildSegmentWindows(slotValue: string, segments: RouteCapacitySegment[]): SegmentWindow[] {
@@ -344,16 +390,11 @@ export default function BookJourneyPage() {
       setRouteStatusMessage('Resolving route for live slot checks...');
 
       try {
-        const nodes = await getMapNodes();
-        const originNodeId = nearestNodeId(nodes, originPlace.lat, originPlace.lng);
-        const destinationNodeId = nearestNodeId(nodes, destPlace.lat, destPlace.lng);
-
-        if (!originNodeId || !destinationNodeId || originNodeId === destinationNodeId) {
-          throw new Error('Route could not be resolved');
-        }
-
-        const route = await getRoute(originNodeId, destinationNodeId);
-        const sortedSegments = [...route.segments].sort((a, b) => a.sequence - b.sequence);
+        const route = await computeRoute(
+          { lat: originPlace.lat, lng: originPlace.lng },
+          { lat: destPlace.lat, lng: destPlace.lng },
+        );
+        const sortedSegments = [...route.segments].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
         const mappedSegments = sortedSegments.map((segment, index) => ({
           segmentId: segment.segment_id,
           segmentName: segment.segment_name,
@@ -367,30 +408,15 @@ export default function BookJourneyPage() {
           throw new Error('Route could not be resolved');
         }
 
-        const nodeByID = new Map(nodes.map((node) => [node.node_id, node]));
-        const polylineCoords: [number, number][] = [];
-        sortedSegments.forEach((segment, index) => {
-          const fromNode = nodeByID.get(segment.from_node_id);
-          const toNode = nodeByID.get(segment.to_node_id);
-
-          if (index === 0 && fromNode) {
-            polylineCoords.push([fromNode.lat, fromNode.lng]);
-          }
-
-          if (toNode) {
-            const prev = polylineCoords[polylineCoords.length - 1];
-            if (!prev || prev[0] !== toNode.lat || prev[1] !== toNode.lng) {
-              polylineCoords.push([toNode.lat, toNode.lng]);
-            }
-          }
-        });
+        const polylineCoords: [number, number][] = (route.path ?? [])
+          .map((point) => [point.lat, point.lng] as [number, number]);
 
         if (polylineCoords.length < 2) {
           polylineCoords.push([originPlace.lat, originPlace.lng], [destPlace.lat, destPlace.lng]);
         }
 
         const totalMinutes = Math.max(
-          route.total_traversal_time_minutes || 0,
+          route.total_duration_minutes || route.total_traversal_time_minutes || 0,
           mappedSegments.reduce((sum, segment) => sum + segment.traversalMinutes, 0),
         );
 
@@ -1064,7 +1090,19 @@ export default function BookJourneyPage() {
                             background: isSelected ? '#E8F4ED' : 'white',
                           }}
                         >
-                          <span className="text-xl">{vehicleMeta.icon}</span>
+                          <span
+                            className="h-11 w-11 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{
+                              background: isSelected ? '#DCEFE4' : '#F8F6F2',
+                              border: '1px solid #DCE5DE',
+                            }}
+                          >
+                            <VehicleTypeIcon
+                              icon={vehicleMeta.icon}
+                              size={24}
+                              stroke={isSelected ? '#1E6639' : '#2F6B55'}
+                            />
+                          </span>
                           <div>
                             <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.875rem', fontFamily: 'var(--font-heading)' }}>
                               {vehicleMeta.label}
@@ -1130,7 +1168,20 @@ export default function BookJourneyPage() {
                 {
                   label: 'Vehicle',
                   value: selectedVehicleMeta && selectedVehicle
-                    ? `${selectedVehicleMeta.icon} ${selectedVehicleMeta.label}${selectedVehicle.isEmergencyVehicle ? ' (Emergency priority)' : ''}`
+                    ? (
+                      <span className="inline-flex items-center gap-2" style={{ justifyContent: 'flex-end' }}>
+                        <span
+                          className="h-7 w-7 rounded-md flex items-center justify-center"
+                          style={{ background: '#E8F4ED', border: '1px solid #DCE5DE' }}
+                        >
+                          <VehicleTypeIcon icon={selectedVehicleMeta.icon} size={16} stroke="#1E6639" />
+                        </span>
+                        <span>
+                          {selectedVehicleMeta.label}
+                          {selectedVehicle.isEmergencyVehicle ? ' (Emergency priority)' : ''}
+                        </span>
+                      </span>
+                    )
                     : 'Not selected',
                 },
               ].map(({ label, value }) => (

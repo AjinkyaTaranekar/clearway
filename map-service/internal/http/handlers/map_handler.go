@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -16,14 +17,18 @@ import (
 // MapHandler handles map-related endpoints.
 type MapHandler struct {
 	graph          *GraphStore
+	db             *sql.DB
+	geo            *GeoClient
 	capacityClient *CapacityClient
 	log            *logger.Logger
 }
 
 // NewMapHandler creates a new map handler.
-func NewMapHandler(graph *GraphStore, capacityClient *CapacityClient, log *logger.Logger) *MapHandler {
+func NewMapHandler(graph *GraphStore, db *sql.DB, geo *GeoClient, capacityClient *CapacityClient, log *logger.Logger) *MapHandler {
 	return &MapHandler{
 		graph:          graph,
+		db:             db,
+		geo:            geo,
 		capacityClient: capacityClient,
 		log:            log,
 	}
@@ -111,10 +116,11 @@ type ComputeRouteRequest struct {
 }
 
 type ComputeRouteResponse struct {
-	RouteID              string         `json:"route_id"`
-	TotalDistanceKm      float64        `json:"total_distance_km"`
-	TotalDurationMinutes int            `json:"total_duration_minutes"`
-	Segments             []RouteSegment `json:"segments"`
+	RouteID              string              `json:"route_id"`
+	TotalDistanceKm      float64             `json:"total_distance_km"`
+	TotalDurationMinutes int                 `json:"total_duration_minutes"`
+	Segments             []RouteSegment      `json:"segments"`
+	Path                 []RoutePointRequest `json:"path,omitempty"`
 }
 
 type graphEdge struct {
@@ -309,8 +315,6 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 		Str("path", r.URL.Path).
 		Msg("compute route request received")
 
-	graph := h.graph.Snapshot()
-
 	var req ComputeRouteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn().
@@ -321,53 +325,17 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	origin, ok := findNearestNode(graph.Nodes, req.Origin.Lat, req.Origin.Lng)
-	if !ok {
-		log.Warn().
-			Str("handler", "MapHandler.ComputeRoute").
-			Float64("origin_lat", req.Origin.Lat).
-			Float64("origin_lng", req.Origin.Lng).
-			Msg("compute route failed: origin node not found")
-		response.Error(w, appErrors.NotFound("origin node not found"), traceID)
-		return
-	}
-
-	destination, ok := findNearestNode(graph.Nodes, req.Destination.Lat, req.Destination.Lng)
-	if !ok {
-		log.Warn().
-			Str("handler", "MapHandler.ComputeRoute").
-			Float64("destination_lat", req.Destination.Lat).
-			Float64("destination_lng", req.Destination.Lng).
-			Msg("compute route failed: destination node not found")
-		response.Error(w, appErrors.NotFound("destination node not found"), traceID)
-		return
-	}
-
-	if origin.NodeID == destination.NodeID {
-		log.Warn().
-			Str("handler", "MapHandler.ComputeRoute").
-			Str("resolved_origin_node_id", origin.NodeID).
-			Str("resolved_destination_node_id", destination.NodeID).
-			Msg("compute route validation failed: identical resolved nodes")
-		response.Error(w, appErrors.BadRequest("origin and destination resolve to the same node"), traceID)
-		return
-	}
-
-	log.Info().
-		Str("handler", "MapHandler.ComputeRoute").
-		Str("origin_node_id", origin.NodeID).
-		Str("destination_node_id", destination.NodeID).
-		Msg("building computed route")
-
-	computeRoute, err := buildComputeRoute(graph, origin.NodeID, destination.NodeID)
+	computeRoute, err := h.computeDynamicRoute(r.Context(), req.Origin, req.Destination)
 	if err != nil {
 		log.Error().
 			Str("handler", "MapHandler.ComputeRoute").
 			Err(err).
-			Str("origin_node_id", origin.NodeID).
-			Str("destination_node_id", destination.NodeID).
 			Msg("compute route build failed")
-		response.Error(w, err, traceID)
+		if strings.Contains(strings.ToLower(err.Error()), "origin and destination must be different") {
+			response.Error(w, appErrors.BadRequest("origin and destination must be different"), traceID)
+			return
+		}
+		response.Error(w, appErrors.InternalError("route computation failed", err), traceID)
 		return
 	}
 
@@ -425,32 +393,60 @@ func (h *MapHandler) GetTraffic(w http.ResponseWriter, r *http.Request) {
 		Int("occupancy_row_count", len(occupancyRows)).
 		Msg("received occupancy rows from capacity service")
 
-	occupancyBySegment := make(map[string]capacityOccupancy, len(occupancyRows))
-	for _, occupancy := range occupancyRows {
-		occupancyBySegment[occupancy.SegmentID] = occupancy
+	staticSegments := make(map[string]SegmentMetadata, len(graph.Segments))
+	for _, segment := range graph.Segments {
+		staticSegments[segment.SegmentID] = segment
 	}
 
-	trafficSegments := make([]TrafficSegment, 0, len(graph.Segments))
-	for _, segment := range graph.Segments {
-		occupancy, ok := occupancyBySegment[segment.SegmentID]
-		if !ok {
-			err := fmt.Errorf("missing occupancy for segment %s", segment.SegmentID)
-			log.Error().
-				Str("handler", "MapHandler.GetTraffic").
-				Err(err).
-				Str("segment_id", segment.SegmentID).
-				Msg("traffic join failed")
-			response.Error(w, appErrors.ExternalAPIError("incomplete occupancy data from capacity service", err), traceID)
-			return
+	intercitySegments, err := h.loadIntercitySegmentMetadata(r.Context(), occupancyRows)
+	if err != nil {
+		log.Error().
+			Str("handler", "MapHandler.GetTraffic").
+			Err(err).
+			Msg("failed to load intercity segment metadata")
+		response.Error(w, appErrors.InternalError("failed to load traffic segment metadata", err), traceID)
+		return
+	}
+
+	trafficSegments := make([]TrafficSegment, 0, len(occupancyRows))
+	for _, occupancy := range occupancyRows {
+		segmentID := occupancy.SegmentID
+
+		segmentName := segmentID
+		region := "intercity"
+		fromNode := Node{}
+		toNode := Node{}
+
+		if staticSegment, ok := staticSegments[segmentID]; ok {
+			segmentName = staticSegment.SegmentName
+			region = staticSegment.Region
+			fromNode, _ = findNode(graph.Nodes, staticSegment.FromNodeID)
+			toNode, _ = findNode(graph.Nodes, staticSegment.ToNodeID)
+		} else if intercitySegment, ok := intercitySegments[segmentID]; ok {
+			segmentName = intercitySegment.SegmentName
+			region = intercityCountryToRegion(intercitySegment.CountryCode)
+			fromNode = Node{
+				NodeID: intercitySegment.SegmentID + "_from",
+				Label:  segmentName + " start",
+				Lat:    intercitySegment.FromLat,
+				Lng:    intercitySegment.FromLng,
+			}
+			toNode = Node{
+				NodeID: intercitySegment.SegmentID + "_to",
+				Label:  segmentName + " end",
+				Lat:    intercitySegment.ToLat,
+				Lng:    intercitySegment.ToLng,
+			}
+		} else {
+			// Capacity can expose segments discovered by other regions/services.
+			// Skip those when map metadata is unavailable to avoid plotting 0,0 lines.
+			continue
 		}
 
-		fromNode, _ := findNode(graph.Nodes, segment.FromNodeID)
-		toNode, _ := findNode(graph.Nodes, segment.ToNodeID)
-
 		trafficSegments = append(trafficSegments, TrafficSegment{
-			SegmentID:    segment.SegmentID,
-			Name:         segment.SegmentName,
-			Region:       segment.Region,
+			SegmentID:    segmentID,
+			Name:         segmentName,
+			Region:       region,
 			Level:        normalizeTrafficLevel(occupancy.Level, occupancy.OccupancyPct),
 			OccupancyPct: int(math.Round(occupancy.OccupancyPct)),
 			Vehicles:     int(math.Round(occupancy.CurrentVehicles)),

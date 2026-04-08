@@ -36,6 +36,14 @@ const (
 	emergencyCapacityBufferSlot = 1.0
 )
 
+// SegmentRegistration represents a segment that should exist in capacity.segments.
+// The map-service uses this to register OSRM-derived segments before booking.
+type SegmentRegistration struct {
+	SegmentID   string `json:"segment_id"`
+	SegmentName string `json:"segment_name"`
+	Region      string `json:"region"`
+}
+
 // NewReservationService creates a new ReservationService.
 func NewReservationService(
 	db *sql.DB,
@@ -589,6 +597,121 @@ func (s *ReservationService) GetAllSegments(ctx context.Context) ([]model.Segmen
 	return segments, nil
 }
 
+// RegisterSegments ensures all provided segments exist in capacity.segments.
+// Missing rows are inserted using the current default max capacity.
+func (s *ReservationService) RegisterSegments(ctx context.Context, segments []SegmentRegistration) (float64, int, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "ReservationService.RegisterSegments").
+		Int("requested_count", len(segments)).
+		Msg("registering dynamic segments")
+
+	if len(segments) == 0 {
+		return 0, 0, fmt.Errorf("segments list must not be empty")
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	defaultCapacity, err := s.segmentRepo.GetDefaultMaxCapacityTx(ctx, tx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("load default segment capacity: %w", err)
+	}
+
+	registeredCount := 0
+	seen := make(map[string]struct{}, len(segments))
+	for _, segment := range segments {
+		segmentID := strings.TrimSpace(segment.SegmentID)
+		if segmentID == "" {
+			return 0, 0, fmt.Errorf("segment_id is required")
+		}
+		if _, ok := seen[segmentID]; ok {
+			continue
+		}
+		seen[segmentID] = struct{}{}
+
+		segmentName := strings.TrimSpace(segment.SegmentName)
+		if segmentName == "" {
+			segmentName = segmentID
+		}
+
+		if err := s.segmentRepo.InsertIfMissingTx(
+			ctx,
+			tx,
+			segmentID,
+			segmentName,
+			normalizeSegmentRegion(segment.Region),
+			defaultCapacity,
+		); err != nil {
+			return 0, 0, err
+		}
+		registeredCount++
+	}
+
+	if registeredCount == 0 {
+		return 0, 0, fmt.Errorf("no valid segments provided")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("commit segment registration tx: %w", err)
+	}
+
+	log.Info().
+		Str("service", "ReservationService.RegisterSegments").
+		Float64("default_max_capacity", defaultCapacity).
+		Int("registered_count", registeredCount).
+		Msg("dynamic segment registration completed")
+
+	return defaultCapacity, registeredCount, nil
+}
+
+// GetDefaultSegmentCapacity returns the default max capacity used for newly
+// discovered segments.
+func (s *ReservationService) GetDefaultSegmentCapacity(ctx context.Context) (float64, error) {
+	return s.segmentRepo.GetDefaultMaxCapacity(ctx)
+}
+
+// UpdateDefaultSegmentCapacity updates the default max capacity used for newly
+// discovered segments.
+func (s *ReservationService) UpdateDefaultSegmentCapacity(ctx context.Context, maxCapacity float64, adminID string) (float64, error) {
+	if maxCapacity <= 0 {
+		return 0, fmt.Errorf("max_capacity must be greater than 0")
+	}
+
+	updatedBy := strings.TrimSpace(adminID)
+	if updatedBy == "" {
+		updatedBy = "admin"
+	}
+
+	persisted, err := s.segmentRepo.SetDefaultMaxCapacity(ctx, maxCapacity, updatedBy)
+	if err != nil {
+		return 0, err
+	}
+
+	return persisted, nil
+}
+
+// UpdateSegmentCapacity updates max capacity for one segment.
+func (s *ReservationService) UpdateSegmentCapacity(ctx context.Context, segmentID string, maxCapacity float64) error {
+	segmentID = strings.TrimSpace(segmentID)
+	if segmentID == "" {
+		return fmt.Errorf("segment_id is required")
+	}
+	if maxCapacity <= 0 {
+		return fmt.Errorf("max_capacity must be greater than 0")
+	}
+
+	if err := s.segmentRepo.UpdateMaxCapacity(ctx, segmentID, maxCapacity); err != nil {
+		return err
+	}
+
+	s.invalidateAvailabilityCacheBySegment(ctx, segmentID)
+	return nil
+}
+
 // InvalidateCacheForJourney removes availability cache entries for the segments
 // that were just released. Called by the event consumer after a release.
 func (s *ReservationService) InvalidateCacheForJourney(ctx context.Context, affected []model.SegmentReservation) {
@@ -719,6 +842,15 @@ func normalizePriorityLevel(level string) string {
 		return priorityLevelMax
 	}
 	return priorityLevelNormal
+}
+
+func normalizeSegmentRegion(region string) string {
+	switch strings.ToLower(strings.TrimSpace(region)) {
+	case "north", "south", "east", "west", "central", "intercity":
+		return strings.ToLower(strings.TrimSpace(region))
+	default:
+		return "intercity"
+	}
 }
 
 func isPriorityLevelValid(level string) bool {

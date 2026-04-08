@@ -28,15 +28,22 @@ export interface MapNode {
 }
 
 export interface MapRoute {
-  origin: MapNode;
-  destination: MapNode;
-  total_traversal_time_minutes: number;
+  route_id?: string;
+  origin?: MapNode;
+  destination?: MapNode;
+  total_traversal_time_minutes?: number;
+  total_duration_minutes?: number;
+  total_distance_km?: number;
+  path?: {
+    lat: number;
+    lng: number;
+  }[];
   segments: {
     sequence: number;
     segment_id: string;
     segment_name: string;
-    from_node_id: string;
-    to_node_id: string;
+    from_node_id?: string;
+    to_node_id?: string;
     traversal_time_minutes: number;
   }[];
 }
@@ -101,8 +108,47 @@ export async function getRoute(originNodeId: string, destNodeId: string): Promis
   return mapFetch<MapRoute>(`/api/v1/map/route?${q}`);
 }
 
+export async function computeRoute(origin: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<MapRoute> {
+  return mapFetch<MapRoute>('/api/v1/routes/compute', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      origin,
+      destination,
+    }),
+  });
+}
+
 export async function getTrafficData(): Promise<TrafficData> {
   return mapFetch<TrafficData>('/api/v1/map/traffic');
+}
+
+export async function getDefaultSegmentCapacity(): Promise<number> {
+  const data = await mapFetch<{ default_max_capacity: number }>('/api/v1/capacity/default-capacity');
+  return data.default_max_capacity;
+}
+
+export async function updateDefaultSegmentCapacity(maxCapacity: number): Promise<number> {
+  const data = await mapFetch<{ default_max_capacity: number }>('/api/v1/capacity/default-capacity', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ max_capacity: maxCapacity }),
+  });
+  return data.default_max_capacity;
+}
+
+export async function updateSegmentCapacity(segmentId: string, maxCapacity: number): Promise<void> {
+  await mapFetch(`/api/v1/capacity/segments/${encodeURIComponent(segmentId)}/capacity`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ max_capacity: maxCapacity }),
+  });
 }
 
 // getRegion returns the deployment region from the load balancer (nginx injects REGION env var).

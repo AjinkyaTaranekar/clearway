@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -66,6 +67,16 @@ type mapNodesData struct {
 type mapRouteData struct {
 	TotalTraversalTimeMinutes int          `json:"total_traversal_time_minutes"`
 	Segments                  []MapSegment `json:"segments"`
+}
+
+type mapComputeRouteRequest struct {
+	Origin      MapCoordinates `json:"origin"`
+	Destination MapCoordinates `json:"destination"`
+}
+
+type mapComputeRouteData struct {
+	TotalDurationMinutes int          `json:"total_duration_minutes"`
+	Segments             []MapSegment `json:"segments"`
 }
 
 // ---------------------------------------------------------------------------
@@ -219,36 +230,28 @@ func nearestNodeID(nodes []mapNode, lat, lng float64) string {
 	return best
 }
 
-// ComputeRoute converts lat/lng coordinates to the nearest map node IDs and
-// calls GET /api/v1/map/route?origin_node_id=X&destination_node_id=Y.
-//
-// Returns a non-nil error when the map service is unreachable or returns an
-// unexpected response. The caller (journey service) must treat this as a hard
-// failure - no silent fallback is performed here.
+// ComputeRoute calls the coordinate-based map endpoint and returns ordered
+// segments from OSRM-backed routing.
 func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinates) (*RouteResponse, error) {
-	nodes, err := c.getNodes(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("map service unavailable (nodes): %w", err)
-	}
-
-	originNodeID := nearestNodeID(nodes, origin.Lat, origin.Lng)
-	destNodeID := nearestNodeID(nodes, dest.Lat, dest.Lng)
-
-	if originNodeID == "" || destNodeID == "" {
-		return nil, fmt.Errorf("map service: could not resolve coordinates to nodes")
-	}
-	if originNodeID == destNodeID {
-		return nil, fmt.Errorf("map service: origin and destination resolve to the same node (%s)", originNodeID)
-	}
-
-	url := fmt.Sprintf("%s/api/v1/map/route?origin_node_id=%s&destination_node_id=%s",
-		c.baseURL, originNodeID, destNodeID)
-
 	routeCall := func() (*RouteResponse, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		requestBody, err := json.Marshal(mapComputeRouteRequest{
+			Origin:      origin,
+			Destination: dest,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("map service: encode compute route request: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			c.baseURL+"/api/v1/routes/compute",
+			bytes.NewReader(requestBody),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("map service: build request: %w", err)
 		}
+		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -257,8 +260,7 @@ func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinate
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("map service: unexpected status %d for route %s→%s",
-				resp.StatusCode, originNodeID, destNodeID)
+			return nil, fmt.Errorf("map service: unexpected status %d for coordinate route", resp.StatusCode)
 		}
 
 		var envelope mapAPIEnvelope
@@ -266,20 +268,27 @@ func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinate
 			return nil, fmt.Errorf("map service: decode route envelope: %w", err)
 		}
 		if !envelope.Success {
-			return nil, fmt.Errorf("map service: success=false for route %s→%s", originNodeID, destNodeID)
+			return nil, fmt.Errorf("map service: success=false for coordinate route")
 		}
 
-		var data mapRouteData
+		var data mapComputeRouteData
 		if err := json.Unmarshal(envelope.Data, &data); err != nil {
 			return nil, fmt.Errorf("map service: decode route data: %w", err)
 		}
 
 		if len(data.Segments) == 0 {
-			return nil, fmt.Errorf("map service: no segments returned for route %s→%s", originNodeID, destNodeID)
+			return nil, fmt.Errorf("map service: no segments returned for coordinate route")
+		}
+
+		totalTraversalMinutes := data.TotalDurationMinutes
+		if totalTraversalMinutes <= 0 {
+			for _, segment := range data.Segments {
+				totalTraversalMinutes += segment.TraversalTimeMinutes
+			}
 		}
 
 		return &RouteResponse{
-			TotalTraversalTimeMinutes: data.TotalTraversalTimeMinutes,
+			TotalTraversalTimeMinutes: totalTraversalMinutes,
 			Segments:                  data.Segments,
 		}, nil
 	}

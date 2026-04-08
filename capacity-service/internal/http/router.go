@@ -67,6 +67,15 @@ func (r *Router) Setup() *mux.Router {
 	api := r.mux.PathPrefix("/api/v1/capacity").Subrouter()
 	api.HandleFunc("/reserve", r.capacityHandler.Reserve).Methods("POST")
 	api.HandleFunc("/check", r.capacityHandler.Check).Methods("GET")
+	api.HandleFunc("/segments/register", r.capacityHandler.RegisterSegments).Methods("POST")
+
+	adminGetDefaultCapacity := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.capacityHandler.GetDefaultCapacity))))
+	adminUpdateDefaultCapacity := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.capacityHandler.UpdateDefaultCapacity))))
+	adminUpdateSegmentCapacity := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.capacityHandler.UpdateSegmentCapacity))))
+	api.Handle("/default-capacity", adminGetDefaultCapacity).Methods("GET")
+	api.Handle("/default-capacity", adminUpdateDefaultCapacity).Methods("PUT")
+	api.Handle("/segments/{segment_id}/capacity", adminUpdateSegmentCapacity).Methods("PUT")
+
 	// /segments must be registered before /segments/occupancy so gorilla/mux
 	// does not shadow the more-specific path.
 	api.HandleFunc("/segments", r.occupancyHandler.Segments).Methods("GET")
