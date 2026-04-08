@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { useApp } from '../../context/AppContext';
 import { AdminAnalyticsResult, adminAnalytics } from '../../services/journeyApi';
@@ -21,8 +22,10 @@ export default function AdminDashboardPage() {
   // U-14: fetch real analytics from backend instead of using hardcoded mock data
   const [analytics, setAnalytics] = useState<AdminAnalyticsResult | null>(null);
   useEffect(() => {
-    adminAnalytics('24h').then(setAnalytics).catch(() => {
-      // leave null — stats will show '—' rather than fake numbers
+    adminAnalytics('24h').then(setAnalytics).catch((err) => {
+      toast.error('Analytics unavailable', {
+        description: err instanceof Error ? err.message : 'Could not load dashboard stats.',
+      });
     });
   }, []);
 

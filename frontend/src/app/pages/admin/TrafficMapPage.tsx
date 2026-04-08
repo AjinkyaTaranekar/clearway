@@ -1,4 +1,5 @@
 import { Map as MapLibreMap } from 'maplibre-gl';
+import { toast } from 'sonner';
 import {
   AlertTriangle,
   Info,
@@ -77,8 +78,10 @@ export default function TrafficMapPage() {
       const data = await getTrafficData();
       setSegments(data.segments);
       setLastRefresh(new Date());
-    } catch {
-      setError('Unable to load traffic data. Retrying in 60 s.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to load traffic data.';
+      setError(`${msg} Retrying in 60 s.`);
+      toast.error('Traffic data unavailable', { description: msg });
     } finally {
       setLoading(false);
     }

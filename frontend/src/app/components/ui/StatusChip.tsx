@@ -1,4 +1,4 @@
-import { JourneyStatus } from '../../data/mockData';
+import { JourneyStatus } from '../../types';
 
 const config: Record<
   JourneyStatus,

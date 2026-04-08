@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
 import { StatusChip } from '../../components/ui/StatusChip';
-import { JourneyStatus, Region } from '../../data/mockData';
+import { JourneyStatus, Region } from '../../types';
 import {
   Search, ChevronRight, ChevronUp, ChevronDown, Filter,
   Navigation, ArrowUpDown,

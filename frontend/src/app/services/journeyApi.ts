@@ -1,4 +1,4 @@
-import { Journey, JourneyStatus, RouteSegment, VehicleType } from '../data/mockData';
+import { Journey, JourneyStatus, RouteSegment, VehicleType } from '../types';
 import { authHeaders } from './auth';
 import { getCoordinates, getLocationName } from './coordinates';
 
