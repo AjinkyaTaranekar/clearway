@@ -1,14 +1,14 @@
 import { AlertCircle, ChevronRight, Clock, Info, MapPin } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
-import { getMapNodes, MapNode } from '../../services/mapApi';
+import { getMapNodes, getRoute, MapNode, MapRoute } from '../../services/mapApi';
 
 const VEHICLE_TYPES = [
-  { value: 'Car', label: 'Car', icon: '🚗', desc: 'Standard passenger vehicle' },
-  { value: 'Van', label: 'Van', icon: '🚐', desc: 'Light commercial vehicle' },
-  { value: 'Motorcycle', label: 'Motorcycle', icon: '🏍️', desc: 'Two-wheeled vehicle' },
-  { value: 'HGV', label: 'HGV', icon: '🚛', desc: 'Heavy goods vehicle' },
+  { value: 'Car', label: 'Car', icon: 'CAR', desc: 'Standard passenger vehicle' },
+  { value: 'Van', label: 'Van', icon: 'VAN', desc: 'Light commercial vehicle' },
+  { value: 'Motorcycle', label: 'Motorcycle', icon: 'MOTO', desc: 'Two-wheeled vehicle' },
+  { value: 'HGV', label: 'HGV', icon: 'HGV', desc: 'Heavy goods vehicle' },
 ];
 
 interface FormData {
@@ -25,6 +25,7 @@ interface FormErrors {
   destination?: string;
   departureTime?: string;
   vehicleType?: string;
+  mapNodes?: string;
 }
 
 export default function BookJourneyPage() {
@@ -41,25 +42,72 @@ export default function BookJourneyPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [mapNodes, setMapNodes] = useState<MapNode[]>([]);
+  const [mapNodesLoading, setMapNodesLoading] = useState(true);
+  const [mapNodesError, setMapNodesError] = useState<string | null>(null);
+  const [routePreview, setRoutePreview] = useState<MapRoute | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
+
+  const loadMapNodes = () => {
+    setMapNodesLoading(true);
+    setMapNodesError(null);
+    setErrors((current) => ({ ...current, mapNodes: undefined }));
+    getMapNodes()
+      .then((nodes) => {
+        setMapNodes(nodes);
+      })
+      .catch(() => {
+        setMapNodes([]);
+        setMapNodesError('Unable to load map nodes. Please retry before booking.');
+      })
+      .finally(() => {
+        setMapNodesLoading(false);
+      });
+  };
 
   useEffect(() => {
-    getMapNodes()
-      .then(setMapNodes)
-      .catch(() => {}); // fall back to empty — selects will just be empty
+    loadMapNodes();
   }, []);
 
-  // Min time = now + 60 min
+  useEffect(() => {
+    if (
+      step !== 2
+      || !form.originNode
+      || !form.destNode
+      || form.originNode.node_id === form.destNode.node_id
+    ) {
+      return;
+    }
+
+    setRouteLoading(true);
+    setRouteError(null);
+    getRoute(form.originNode.node_id, form.destNode.node_id)
+      .then((route) => {
+        setRoutePreview(route);
+      })
+      .catch((err) => {
+        setRoutePreview(null);
+        setRouteError(err instanceof Error ? err.message : 'Route preview unavailable.');
+      })
+      .finally(() => {
+        setRouteLoading(false);
+      });
+  }, [form.destNode, form.originNode, step]);
+
   const minTime = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
 
   const validateStep1 = () => {
     const e: FormErrors = {};
-    if (!form.origin) e.origin = 'Please select an origin.';
-    if (!form.destination) e.destination = 'Please select a destination.';
-    if (form.origin && form.destination && form.origin === form.destination)
+    if (mapNodesError) e.mapNodes = 'Map nodes must load successfully before you can book.';
+    if (!form.originNode) e.origin = 'Please select an origin node.';
+    if (!form.destNode) e.destination = 'Please select a destination node.';
+    if (form.originNode && form.destNode && form.originNode.node_id === form.destNode.node_id) {
       e.destination = 'Origin and destination must be different.';
+    }
     if (!form.departureTime) e.departureTime = 'Please choose a departure time.';
-    else if (new Date(form.departureTime) < new Date(Date.now() + 55 * 60 * 1000))
+    else if (new Date(form.departureTime) < new Date(Date.now() + 55 * 60 * 1000)) {
       e.departureTime = 'Departure must be at least 1 hour from now.';
+    }
     if (!form.vehicleType) e.vehicleType = 'Please select a vehicle type.';
     return e;
   };
@@ -71,17 +119,26 @@ export default function BookJourneyPage() {
       return;
     }
     setErrors({});
+    setRoutePreview(null);
+    setRouteError(null);
     setStep(2);
   };
 
   const handleSubmit = async () => {
+    const e = validateStep1();
+    if (Object.keys(e).length > 0 || !form.originNode || !form.destNode || !routePreview || routeLoading || routeError) {
+      setErrors(e);
+      setStep(1);
+      return;
+    }
+
     setSubmitting(true);
     try {
       await bookJourney({
-        origin: form.origin,
-        destination: form.destination,
-        originCoords: form.originNode ? { lat: form.originNode.lat, lng: form.originNode.lng } : undefined,
-        destCoords: form.destNode ? { lat: form.destNode.lat, lng: form.destNode.lng } : undefined,
+        origin: form.originNode.label,
+        destination: form.destNode.label,
+        originCoords: { lat: form.originNode.lat, lng: form.originNode.lng },
+        destCoords: { lat: form.destNode.lat, lng: form.destNode.lng },
         departureTime: form.departureTime,
         vehicleType: form.vehicleType,
       });
@@ -98,11 +155,18 @@ export default function BookJourneyPage() {
     try {
       const d = new Date(dt);
       return d.toLocaleString('en-GB', {
-        weekday: 'short', day: 'numeric', month: 'short',
-        hour: '2-digit', minute: '2-digit',
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
       });
-    } catch { return dt; }
+    } catch {
+      return dt;
+    }
   };
+
+  const nodeLoadMessage = mapNodesError ?? errors.mapNodes;
 
   return (
     <div className="p-5 lg:p-8 max-w-2xl mx-auto">
@@ -115,7 +179,6 @@ export default function BookJourneyPage() {
         </p>
       </div>
 
-      {/* Stepper */}
       <div className="flex items-center gap-2 mb-7">
         {[1, 2].map((s) => (
           <div key={s} className="flex items-center gap-2">
@@ -147,19 +210,35 @@ export default function BookJourneyPage() {
       <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--border)' }}>
         {step === 1 ? (
           <div>
-            {/* Policy hint */}
-            <div
-              className="flex items-start gap-3 p-3.5 rounded-lg mb-6"
-              style={{ background: '#F0EDE7' }}
-            >
+            <div className="flex items-start gap-3 p-3.5 rounded-lg mb-6" style={{ background: '#F0EDE7' }}>
               <Info size={15} color="#4E5953" className="flex-shrink-0 mt-0.5" />
               <p style={{ color: '#4E5953', fontSize: '0.8125rem', lineHeight: 1.55 }}>
-                You must book at least <strong style={{ color: '#1F2421' }}>1 hour before departure</strong>. Journeys are checked against live road capacity - peak hours (07:00–09:00) on busy routes may be rejected.
+                You must book at least <strong style={{ color: '#1F2421' }}>1 hour before departure</strong>. Journeys are checked against live road capacity - peak hours (07:00-09:00) on busy routes may be rejected.
               </p>
             </div>
 
             <div className="space-y-5">
-              {/* Origin */}
+              {nodeLoadMessage && (
+                <div className="rounded-lg p-3.5" style={{ background: '#FEF3F2', border: '1px solid #FECACA' }}>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={15} color="#B42318" className="flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p style={{ color: '#B42318', fontSize: '0.875rem', fontWeight: 500 }}>
+                        {nodeLoadMessage}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={loadMapNodes}
+                        className="mt-2 text-sm"
+                        style={{ color: '#7A271A', fontWeight: 600 }}
+                      >
+                        Retry loading nodes
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="origin" className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
                   From
@@ -168,20 +247,32 @@ export default function BookJourneyPage() {
                   <MapPin size={16} color="#4E5953" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <select
                     id="origin"
-                    value={form.origin}
+                    value={form.originNode?.node_id ?? ''}
                     onChange={(e) => {
                       const node = mapNodes.find((n) => n.node_id === e.target.value);
-                      setForm({ ...form, origin: node?.label ?? e.target.value, originNode: node });
+                      const shouldClearDestination = node?.node_id === form.destNode?.node_id;
+                      setForm({
+                        ...form,
+                        origin: node?.label ?? '',
+                        originNode: node,
+                        destination: shouldClearDestination ? '' : form.destination,
+                        destNode: shouldClearDestination ? undefined : form.destNode,
+                      });
                     }}
+                    disabled={mapNodesLoading || !!mapNodesError}
                     className="w-full pl-9 pr-4 py-2.5 rounded-lg appearance-none outline-none"
                     style={{
                       border: errors.origin ? '1.5px solid #B42318' : '1.5px solid var(--border)',
-                      background: 'white',
-                      color: form.origin ? '#1F2421' : '#4E5953',
+                      background: mapNodesLoading || mapNodesError ? '#F8F6F2' : 'white',
+                      color: form.originNode ? '#1F2421' : '#4E5953',
                     }}
                   >
-                    <option value="">Select origin</option>
-                    {mapNodes.map((n) => <option key={n.node_id} value={n.node_id}>{n.label}</option>)}
+                    <option value="">
+                      {mapNodesLoading ? 'Loading nodes...' : mapNodesError ? 'Nodes unavailable' : 'Select origin'}
+                    </option>
+                    {mapNodes.map((n) => (
+                      <option key={n.node_id} value={n.node_id}>{n.label}</option>
+                    ))}
                   </select>
                 </div>
                 {errors.origin && (
@@ -191,7 +282,6 @@ export default function BookJourneyPage() {
                 )}
               </div>
 
-              {/* Destination */}
               <div>
                 <label htmlFor="destination" className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
                   To
@@ -203,19 +293,24 @@ export default function BookJourneyPage() {
                     value={form.destNode?.node_id ?? ''}
                     onChange={(e) => {
                       const node = mapNodes.find((n) => n.node_id === e.target.value);
-                      setForm({ ...form, destination: node?.label ?? e.target.value, destNode: node });
+                      setForm({ ...form, destination: node?.label ?? '', destNode: node });
                     }}
+                    disabled={mapNodesLoading || !!mapNodesError}
                     className="w-full pl-9 pr-4 py-2.5 rounded-lg appearance-none outline-none"
                     style={{
                       border: errors.destination ? '1.5px solid #B42318' : '1.5px solid var(--border)',
-                      background: 'white',
-                      color: form.destination ? '#1F2421' : '#4E5953',
+                      background: mapNodesLoading || mapNodesError ? '#F8F6F2' : 'white',
+                      color: form.destNode ? '#1F2421' : '#4E5953',
                     }}
                   >
-                    <option value="">Select destination</option>
+                    <option value="">
+                      {mapNodesLoading ? 'Loading nodes...' : mapNodesError ? 'Nodes unavailable' : 'Select destination'}
+                    </option>
                     {mapNodes
                       .filter((n) => n.node_id !== form.originNode?.node_id)
-                      .map((n) => <option key={n.node_id} value={n.node_id}>{n.label}</option>)}
+                      .map((n) => (
+                        <option key={n.node_id} value={n.node_id}>{n.label}</option>
+                      ))}
                   </select>
                 </div>
                 {errors.destination && (
@@ -225,7 +320,6 @@ export default function BookJourneyPage() {
                 )}
               </div>
 
-              {/* Departure time */}
               <div>
                 <label htmlFor="departure" className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
                   Departure time
@@ -253,7 +347,6 @@ export default function BookJourneyPage() {
                 )}
               </div>
 
-              {/* Vehicle type */}
               <div>
                 <label className="block mb-2" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
                   Vehicle type
@@ -300,10 +393,19 @@ export default function BookJourneyPage() {
               </button>
               <button
                 onClick={handleNext}
+                disabled={mapNodesLoading || !!mapNodesError}
                 className="flex-1 py-2.5 rounded-lg text-white text-sm transition-colors flex items-center justify-center gap-2"
-                style={{ background: '#2F6B55', fontWeight: 600 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#245343')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#2F6B55')}
+                style={{
+                  background: mapNodesLoading || mapNodesError ? '#4E5953' : '#2F6B55',
+                  fontWeight: 600,
+                  cursor: mapNodesLoading || mapNodesError ? 'not-allowed' : 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  if (!mapNodesLoading && !mapNodesError) e.currentTarget.style.background = '#245343';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = mapNodesLoading || mapNodesError ? '#4E5953' : '#2F6B55';
+                }}
               >
                 Review journey <ChevronRight size={16} />
               </button>
@@ -315,17 +417,14 @@ export default function BookJourneyPage() {
               Review your journey
             </h3>
 
-            <div
-              className="rounded-xl p-5 mb-5 space-y-4"
-              style={{ background: '#F8F6F2', border: '1px solid var(--border)' }}
-            >
+            <div className="rounded-xl p-5 mb-5 space-y-4" style={{ background: '#F8F6F2', border: '1px solid var(--border)' }}>
               <div className="flex justify-between items-start">
                 <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>From</span>
-                <span style={{ fontWeight: 600, color: '#1F2421' }}>{form.origin}</span>
+                <span style={{ fontWeight: 600, color: '#1F2421' }}>{form.originNode?.label ?? form.origin}</span>
               </div>
               <div className="flex justify-between items-start">
                 <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>To</span>
-                <span style={{ fontWeight: 600, color: '#1F2421' }}>{form.destination}</span>
+                <span style={{ fontWeight: 600, color: '#1F2421' }}>{form.destNode?.label ?? form.destination}</span>
               </div>
               <div className="flex justify-between items-start">
                 <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>Departure</span>
@@ -342,10 +441,72 @@ export default function BookJourneyPage() {
               </div>
             </div>
 
-            <div
-              className="flex items-start gap-3 p-3.5 rounded-lg mb-6"
-              style={{ background: '#FFF4E0' }}
-            >
+            <div className="rounded-xl p-5 mb-5 space-y-4" style={{ background: '#F8F6F2', border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between">
+                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1F2421' }}>
+                  Route preview
+                </span>
+                {routePreview && (
+                  <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
+                    {routePreview.total_traversal_time_minutes} min total
+                  </span>
+                )}
+              </div>
+
+              {routeLoading && (
+                <p style={{ color: '#4E5953', fontSize: '0.875rem' }}>
+                  Loading route preview...
+                </p>
+              )}
+
+              {routeError && (
+                <div className="rounded-lg p-3.5" style={{ background: '#FEF3F2', border: '1px solid #FECACA' }}>
+                  <p style={{ color: '#B42318', fontSize: '0.875rem', fontWeight: 500 }}>
+                    Route preview unavailable: {routeError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRoutePreview(null);
+                      setRouteError(null);
+                      setStep(1);
+                    }}
+                    className="mt-2 text-sm"
+                    style={{ color: '#7A271A', fontWeight: 600 }}
+                  >
+                    Back to edit journey
+                  </button>
+                </div>
+              )}
+
+              {!routeLoading && !routeError && routePreview && (
+                <div className="space-y-3">
+                  {routePreview.segments.map((segment) => (
+                    <div
+                      key={`${segment.sequence}-${segment.segment_id}`}
+                      className="rounded-lg p-3"
+                      style={{ background: 'white', border: '1px solid var(--border)' }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div style={{ color: '#1F2421', fontWeight: 600, fontSize: '0.875rem' }}>
+                            {segment.sequence}. {segment.segment_name}
+                          </div>
+                          <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                            {segment.segment_id}
+                          </div>
+                        </div>
+                        <div style={{ color: '#4E5953', fontSize: '0.8125rem', fontWeight: 500 }}>
+                          {segment.traversal_time_minutes} min
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-start gap-3 p-3.5 rounded-lg mb-6" style={{ background: '#FFF4E0' }}>
               <AlertCircle size={15} color="#A15C00" className="flex-shrink-0 mt-0.5" />
               <p style={{ color: '#7A4500', fontSize: '0.8125rem', lineHeight: 1.55 }}>
                 By submitting, you agree that this booking is subject to live road capacity checks. The system may reject the booking if a segment is full at your chosen time.
@@ -362,18 +523,18 @@ export default function BookJourneyPage() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || routeLoading || !!routeError || !routePreview}
                 className="flex-1 py-2.5 rounded-lg text-white text-sm flex items-center justify-center gap-2 transition-colors"
                 style={{
-                  background: submitting ? '#4E5953' : '#2F6B55',
+                  background: submitting || routeLoading || routeError || !routePreview ? '#4E5953' : '#2F6B55',
                   fontWeight: 600,
-                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  cursor: submitting || routeLoading || routeError || !routePreview ? 'not-allowed' : 'pointer',
                 }}
               >
                 {submitting ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Checking road availability…
+                    Checking road availability...
                   </>
                 ) : (
                   'Submit booking'

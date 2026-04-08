@@ -5,18 +5,28 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 
 	appErrors "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/errors"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/response"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/tracing"
 )
 
 // MapHandler handles map-related endpoints.
-type MapHandler struct{}
+type MapHandler struct {
+	graph          *GraphStore
+	capacityClient *CapacityClient
+	log            *logger.Logger
+}
 
 // NewMapHandler creates a new map handler.
-func NewMapHandler() *MapHandler {
-	return &MapHandler{}
+func NewMapHandler(graph *GraphStore, capacityClient *CapacityClient, log *logger.Logger) *MapHandler {
+	return &MapHandler{
+		graph:          graph,
+		capacityClient: capacityClient,
+		log:            log,
+	}
 }
 
 // Node represents a selectable map node.
@@ -39,9 +49,22 @@ type RouteSegment struct {
 	Region               string `json:"region,omitempty"`
 }
 
+type SegmentMetadata struct {
+	SegmentID            string `json:"segment_id"`
+	SegmentName          string `json:"segment_name"`
+	Region               string `json:"region"`
+	FromNodeID           string `json:"from_node_id"`
+	ToNodeID             string `json:"to_node_id"`
+	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
+}
+
 // NodesResponse represents the response body for map nodes.
 type NodesResponse struct {
 	Nodes []Node `json:"nodes"`
+}
+
+type SegmentsResponse struct {
+	Segments []SegmentMetadata `json:"segments"`
 }
 
 // RouteResponse represents the response body for a route lookup.
@@ -50,6 +73,31 @@ type RouteResponse struct {
 	Destination               Node           `json:"destination"`
 	TotalTraversalTimeMinutes int            `json:"total_traversal_time_minutes"`
 	Segments                  []RouteSegment `json:"segments"`
+}
+
+type TrafficSegment struct {
+	SegmentID    string `json:"segment_id"`
+	Name         string `json:"name"`
+	Region       string `json:"region"`
+	Level        string `json:"level"`
+	OccupancyPct int    `json:"occupancy_pct"`
+	Vehicles     int    `json:"vehicles"`
+	Capacity     int    `json:"capacity"`
+	Trend        string `json:"trend"`
+	FromNode     Node   `json:"from_node"`
+	ToNode       Node   `json:"to_node"`
+}
+
+type TrafficNode struct {
+	NodeID string `json:"node_id"`
+	Label  string `json:"label"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+}
+
+type TrafficResponse struct {
+	Segments []TrafficSegment `json:"segments"`
+	Nodes    []TrafficNode    `json:"nodes"`
 }
 
 type RoutePointRequest struct {
@@ -80,10 +128,8 @@ type graphEdge struct {
 }
 
 type bidirectionalRoad struct {
-	ForwardSegmentID     string
-	ForwardSegmentName   string
-	ReverseSegmentID     string
-	ReverseSegmentName   string
+	SegmentID            string
+	SegmentName          string
 	Region               string
 	FromNodeID           string
 	ToNodeID             string
@@ -103,7 +149,18 @@ var hardcodedNodes = []Node{
 	{NodeID: "riverside", Label: "Riverside", Lat: 53.3350, Lng: -6.2700},
 }
 
-var hardcodedEdges = buildHardcodedEdges()
+var hardcodedNodePositions = map[string]TrafficNode{
+	"city":       {NodeID: "city", Label: "City Centre", X: 300, Y: 250},
+	"north":      {NodeID: "north", Label: "North Gate", X: 300, Y: 60},
+	"airport":    {NodeID: "airport", Label: "Airport", X: 500, Y: 60},
+	"east":       {NodeID: "east", Label: "East Quay", X: 520, Y: 250},
+	"south":      {NodeID: "south", Label: "South Terminal", X: 300, Y: 420},
+	"industrial": {NodeID: "industrial", Label: "Industrial Park", X: 470, Y: 400},
+	"west":       {NodeID: "west", Label: "West Depot", X: 80, Y: 250},
+	"port":       {NodeID: "port", Label: "Port Terminal", X: 80, Y: 390},
+	"northfield": {NodeID: "northfield", Label: "Northfield", X: 130, Y: 80},
+	"riverside":  {NodeID: "riverside", Label: "Riverside", X: 200, Y: 380},
+}
 
 // GetNodes godoc
 // @Summary Get map nodes
@@ -115,9 +172,27 @@ var hardcodedEdges = buildHardcodedEdges()
 // @Router /api/v1/map/nodes [get]
 func (h *MapHandler) GetNodes(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	graph := h.graph.Snapshot()
 
 	response.Success(w, NodesResponse{
-		Nodes: hardcodedNodes,
+		Nodes: graph.Nodes,
+	}, traceID)
+}
+
+// GetSegments godoc
+// @Summary Get map segments
+// @Description Returns all static segment topology metadata
+// @Tags Map
+// @Accept json
+// @Produce json
+// @Success 200 {object} SegmentsResponse
+// @Router /api/v1/map/segments [get]
+func (h *MapHandler) GetSegments(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	graph := h.graph.Snapshot()
+
+	response.Success(w, SegmentsResponse{
+		Segments: graph.Segments,
 	}, traceID)
 }
 
@@ -133,6 +208,7 @@ func (h *MapHandler) GetNodes(w http.ResponseWriter, r *http.Request) {
 // @Router /api/v1/map/route [get]
 func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	graph := h.graph.Snapshot()
 
 	originNodeID := r.URL.Query().Get("origin_node_id")
 	destinationNodeID := r.URL.Query().Get("destination_node_id")
@@ -147,7 +223,7 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route, err := buildRoute(originNodeID, destinationNodeID)
+	route, err := buildRoute(graph, originNodeID, destinationNodeID)
 	if err != nil {
 		response.Error(w, err, traceID)
 		return
@@ -167,6 +243,7 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 // @Router /api/v1/routes/compute [post]
 func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	graph := h.graph.Snapshot()
 
 	var req ComputeRouteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -174,13 +251,13 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	origin, ok := findNearestNode(req.Origin.Lat, req.Origin.Lng)
+	origin, ok := findNearestNode(graph.Nodes, req.Origin.Lat, req.Origin.Lng)
 	if !ok {
 		response.Error(w, appErrors.NotFound("origin node not found"), traceID)
 		return
 	}
 
-	destination, ok := findNearestNode(req.Destination.Lat, req.Destination.Lng)
+	destination, ok := findNearestNode(graph.Nodes, req.Destination.Lat, req.Destination.Lng)
 	if !ok {
 		response.Error(w, appErrors.NotFound("destination node not found"), traceID)
 		return
@@ -191,7 +268,7 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	computeRoute, err := buildComputeRoute(origin.NodeID, destination.NodeID)
+	computeRoute, err := buildComputeRoute(graph, origin.NodeID, destination.NodeID)
 	if err != nil {
 		response.Error(w, err, traceID)
 		return
@@ -203,8 +280,69 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(computeRoute)
 }
 
-func findNode(nodeID string) (Node, bool) {
-	for _, node := range hardcodedNodes {
+// GetTraffic godoc
+// @Summary Get traffic map data
+// @Description Returns traffic payload joined with live capacity occupancy
+// @Tags Map
+// @Accept json
+// @Produce json
+// @Success 200 {object} TrafficResponse
+// @Router /api/v1/map/traffic [get]
+func (h *MapHandler) GetTraffic(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	graph := h.graph.Snapshot()
+
+	occupancyRows, err := h.capacityClient.GetOccupancy(r.Context())
+	if err != nil {
+		if h.log != nil {
+			h.log.Error().Err(err).Str("trace_id", traceID).Msg("traffic occupancy lookup failed")
+		}
+		response.Error(w, appErrors.ExternalAPIError("failed to retrieve capacity occupancy", err), traceID)
+		return
+	}
+
+	occupancyBySegment := make(map[string]capacityOccupancy, len(occupancyRows))
+	for _, occupancy := range occupancyRows {
+		occupancyBySegment[occupancy.SegmentID] = occupancy
+	}
+
+	trafficSegments := make([]TrafficSegment, 0, len(graph.Segments))
+	for _, segment := range graph.Segments {
+		occupancy, ok := occupancyBySegment[segment.SegmentID]
+		if !ok {
+			err := fmt.Errorf("missing occupancy for segment %s", segment.SegmentID)
+			if h.log != nil {
+				h.log.Error().Err(err).Str("trace_id", traceID).Msg("traffic join failed")
+			}
+			response.Error(w, appErrors.ExternalAPIError("incomplete occupancy data from capacity service", err), traceID)
+			return
+		}
+
+		fromNode, _ := findNode(graph.Nodes, segment.FromNodeID)
+		toNode, _ := findNode(graph.Nodes, segment.ToNodeID)
+
+		trafficSegments = append(trafficSegments, TrafficSegment{
+			SegmentID:    segment.SegmentID,
+			Name:         segment.SegmentName,
+			Region:       segment.Region,
+			Level:        normalizeTrafficLevel(occupancy.Level, occupancy.OccupancyPct),
+			OccupancyPct: int(math.Round(occupancy.OccupancyPct)),
+			Vehicles:     int(math.Round(occupancy.CurrentVehicles)),
+			Capacity:     int(math.Round(occupancy.MaxCapacity)),
+			Trend:        occupancy.Trend,
+			FromNode:     fromNode,
+			ToNode:       toNode,
+		})
+	}
+
+	response.Success(w, TrafficResponse{
+		Segments: trafficSegments,
+		Nodes:    buildTrafficNodes(graph.Nodes),
+	}, traceID)
+}
+
+func findNode(nodes []Node, nodeID string) (Node, bool) {
+	for _, node := range nodes {
 		if node.NodeID == nodeID {
 			return node, true
 		}
@@ -213,15 +351,15 @@ func findNode(nodeID string) (Node, bool) {
 	return Node{}, false
 }
 
-func findNearestNode(lat, lng float64) (Node, bool) {
-	if len(hardcodedNodes) == 0 {
+func findNearestNode(nodes []Node, lat, lng float64) (Node, bool) {
+	if len(nodes) == 0 {
 		return Node{}, false
 	}
 
-	bestNode := hardcodedNodes[0]
+	bestNode := nodes[0]
 	bestDistance := coordinateDistanceKm(lat, lng, bestNode.Lat, bestNode.Lng)
 
-	for _, node := range hardcodedNodes[1:] {
+	for _, node := range nodes[1:] {
 		distance := coordinateDistanceKm(lat, lng, node.Lat, node.Lng)
 		if distance < bestDistance {
 			bestNode = node
@@ -232,18 +370,18 @@ func findNearestNode(lat, lng float64) (Node, bool) {
 	return bestNode, true
 }
 
-func buildRoute(originNodeID, destinationNodeID string) (RouteResponse, error) {
-	origin, ok := findNode(originNodeID)
+func buildRoute(graph GraphSnapshot, originNodeID, destinationNodeID string) (RouteResponse, error) {
+	origin, ok := findNode(graph.Nodes, originNodeID)
 	if !ok {
 		return RouteResponse{}, appErrors.NotFound("origin node not found")
 	}
 
-	destination, ok := findNode(destinationNodeID)
+	destination, ok := findNode(graph.Nodes, destinationNodeID)
 	if !ok {
 		return RouteResponse{}, appErrors.NotFound("destination node not found")
 	}
 
-	segments, totalTraversalTime, _, ok := calculateShortestRoute(originNodeID, destinationNodeID)
+	segments, totalTraversalTime, _, ok := calculateShortestRoute(graph.Nodes, graph.Edges, originNodeID, destinationNodeID)
 	if !ok {
 		return RouteResponse{}, appErrors.NotFound("route not found")
 	}
@@ -256,8 +394,8 @@ func buildRoute(originNodeID, destinationNodeID string) (RouteResponse, error) {
 	}, nil
 }
 
-func buildComputeRoute(originNodeID, destinationNodeID string) (ComputeRouteResponse, error) {
-	segments, totalTraversalTime, totalDistanceKm, ok := calculateShortestRoute(originNodeID, destinationNodeID)
+func buildComputeRoute(graph GraphSnapshot, originNodeID, destinationNodeID string) (ComputeRouteResponse, error) {
+	segments, totalTraversalTime, totalDistanceKm, ok := calculateShortestRoute(graph.Nodes, graph.Edges, originNodeID, destinationNodeID)
 	if !ok {
 		return ComputeRouteResponse{}, appErrors.NotFound("route not found")
 	}
@@ -270,16 +408,16 @@ func buildComputeRoute(originNodeID, destinationNodeID string) (ComputeRouteResp
 	}, nil
 }
 
-func calculateShortestRoute(originNodeID, destinationNodeID string) ([]RouteSegment, int, float64, bool) {
+func calculateShortestRoute(nodes []Node, edges []graphEdge, originNodeID, destinationNodeID string) ([]RouteSegment, int, float64, bool) {
 	if originNodeID == destinationNodeID {
 		return []RouteSegment{}, 0, 0, true
 	}
 
-	distances := make(map[string]int, len(hardcodedNodes))
-	visited := make(map[string]bool, len(hardcodedNodes))
-	previous := make(map[string]graphEdge, len(hardcodedNodes))
+	distances := make(map[string]int, len(nodes))
+	visited := make(map[string]bool, len(nodes))
+	previous := make(map[string]graphEdge, len(nodes))
 
-	for _, node := range hardcodedNodes {
+	for _, node := range nodes {
 		distances[node.NodeID] = -1
 	}
 	distances[originNodeID] = 0
@@ -296,7 +434,7 @@ func calculateShortestRoute(originNodeID, destinationNodeID string) ([]RouteSegm
 
 		visited[currentNodeID] = true
 
-		for _, edge := range outgoingEdges(currentNodeID) {
+		for _, edge := range outgoingEdges(edges, currentNodeID) {
 			nextDistance := distances[currentNodeID] + edge.TraversalTimeMinutes
 			currentDistance := distances[edge.ToNodeID]
 			if currentDistance == -1 || nextDistance < currentDistance {
@@ -362,48 +500,111 @@ func findClosestUnvisitedNode(distances map[string]int, visited map[string]bool)
 	return bestNodeID, true
 }
 
-func outgoingEdges(nodeID string) []graphEdge {
-	edges := make([]graphEdge, 0)
-	for _, edge := range hardcodedEdges {
+func outgoingEdges(edges []graphEdge, nodeID string) []graphEdge {
+	matches := make([]graphEdge, 0)
+	for _, edge := range edges {
 		if edge.FromNodeID == nodeID {
-			edges = append(edges, edge)
+			matches = append(matches, edge)
 		}
 	}
 
-	return edges
+	return matches
 }
 
 func buildHardcodedEdges() []graphEdge {
-	roads := []bidirectionalRoad{
-		{ForwardSegmentID: "seg_m50", ForwardSegmentName: "M50 Motorway (North-South)", ReverseSegmentID: "seg_m50", ReverseSegmentName: "M50 Motorway (North-South)", Region: "central", FromNodeID: "city", ToNodeID: "north", TraversalTimeMinutes: 8},
-		{ForwardSegmentID: "seg_m1_n", ForwardSegmentName: "M1 Motorway Northbound", ReverseSegmentID: "seg_m1_s", ReverseSegmentName: "M1 Motorway Southbound", Region: "north", FromNodeID: "north", ToNodeID: "airport", TraversalTimeMinutes: 16},
-		{ForwardSegmentID: "seg_quays_e", ForwardSegmentName: "Dublin Quays Eastbound", ReverseSegmentID: "seg_quays_w", ReverseSegmentName: "Dublin Quays Westbound", Region: "central", FromNodeID: "city", ToNodeID: "east", TraversalTimeMinutes: 6},
-		{ForwardSegmentID: "seg_port_n", ForwardSegmentName: "Port Tunnel Northbound", ReverseSegmentID: "seg_port_s", ReverseSegmentName: "Port Tunnel Southbound", Region: "east", FromNodeID: "east", ToNodeID: "airport", TraversalTimeMinutes: 20},
-		{ForwardSegmentID: "seg_n11", ForwardSegmentName: "N11 Stillorgan Road", ReverseSegmentID: "seg_n11", ReverseSegmentName: "N11 Stillorgan Road", Region: "south", FromNodeID: "city", ToNodeID: "riverside", TraversalTimeMinutes: 5},
-		{ForwardSegmentID: "seg_m50_s", ForwardSegmentName: "M50 South (Sandyford Junction)", ReverseSegmentID: "seg_m50_s", ReverseSegmentName: "M50 South (Sandyford Junction)", Region: "south", FromNodeID: "riverside", ToNodeID: "south", TraversalTimeMinutes: 7},
-		{ForwardSegmentID: "seg_m8", ForwardSegmentName: "M8 Cork Road", ReverseSegmentID: "seg_m8", ReverseSegmentName: "M8 Cork Road", Region: "south", FromNodeID: "south", ToNodeID: "industrial", TraversalTimeMinutes: 6},
-		{ForwardSegmentID: "seg_n7", ForwardSegmentName: "N7 Naas Dual Carriageway", ReverseSegmentID: "seg_n7", ReverseSegmentName: "N7 Naas Dual Carriageway", Region: "west", FromNodeID: "industrial", ToNodeID: "east", TraversalTimeMinutes: 6},
-		{ForwardSegmentID: "seg_n4", ForwardSegmentName: "N4 Galway Road", ReverseSegmentID: "seg_m4", ReverseSegmentName: "M4 Westlink Motorway", Region: "west", FromNodeID: "city", ToNodeID: "west", TraversalTimeMinutes: 9},
-		{ForwardSegmentID: "seg_m7n", ForwardSegmentName: "M7 Naas Road Northbound", ReverseSegmentID: "seg_m7s", ReverseSegmentName: "M7 Naas Road Southbound", Region: "west", FromNodeID: "west", ToNodeID: "port", TraversalTimeMinutes: 8},
-		{ForwardSegmentID: "seg_n81", ForwardSegmentName: "N81 Tallaght Road", ReverseSegmentID: "seg_n81", ReverseSegmentName: "N81 Tallaght Road", Region: "south", FromNodeID: "port", ToNodeID: "south", TraversalTimeMinutes: 7},
-		{ForwardSegmentID: "seg_n3", ForwardSegmentName: "N3 Navan Road", ReverseSegmentID: "seg_n2", ReverseSegmentName: "N2 Finglas Road", Region: "north", FromNodeID: "west", ToNodeID: "northfield", TraversalTimeMinutes: 9},
-		{ForwardSegmentID: "seg_m2", ForwardSegmentName: "M2 Motorway", ReverseSegmentID: "seg_m2", ReverseSegmentName: "M2 Motorway", Region: "north", FromNodeID: "northfield", ToNodeID: "north", TraversalTimeMinutes: 7},
+	nodeLookup := make(map[string]Node, len(hardcodedNodes))
+	for _, node := range hardcodedNodes {
+		nodeLookup[node.NodeID] = node
 	}
 
+	roads := buildHardcodedRoads()
 	edges := make([]graphEdge, 0, len(roads)*2)
 	for _, road := range roads {
 		edges = append(edges,
-			buildGraphEdge(road.ForwardSegmentID, road.ForwardSegmentName, road.Region, road.FromNodeID, road.ToNodeID, road.TraversalTimeMinutes),
-			buildGraphEdge(road.ReverseSegmentID, road.ReverseSegmentName, road.Region, road.ToNodeID, road.FromNodeID, road.TraversalTimeMinutes),
+			buildGraphEdge(nodeLookup, road.SegmentID, road.SegmentName, road.Region, road.FromNodeID, road.ToNodeID, road.TraversalTimeMinutes),
+			buildGraphEdge(nodeLookup, road.SegmentID, road.SegmentName, road.Region, road.ToNodeID, road.FromNodeID, road.TraversalTimeMinutes),
 		)
 	}
 
 	return edges
 }
 
-func buildGraphEdge(segmentID, segmentName, region, fromNodeID, toNodeID string, traversalTimeMinutes int) graphEdge {
-	fromNode, _ := findNode(fromNodeID)
-	toNode, _ := findNode(toNodeID)
+func buildHardcodedRoads() []bidirectionalRoad {
+	return []bidirectionalRoad{
+		{SegmentID: "seg_city_north", SegmentName: "City Centre - North Gate", Region: "central", FromNodeID: "city", ToNodeID: "north", TraversalTimeMinutes: 8},
+		{SegmentID: "seg_north_airport", SegmentName: "North Gate - Airport", Region: "north", FromNodeID: "north", ToNodeID: "airport", TraversalTimeMinutes: 16},
+		{SegmentID: "seg_city_east", SegmentName: "City Centre - East Quay", Region: "central", FromNodeID: "city", ToNodeID: "east", TraversalTimeMinutes: 6},
+		{SegmentID: "seg_east_airport", SegmentName: "East Quay - Airport", Region: "east", FromNodeID: "east", ToNodeID: "airport", TraversalTimeMinutes: 20},
+		{SegmentID: "seg_city_riverside", SegmentName: "City Centre - Riverside", Region: "central", FromNodeID: "city", ToNodeID: "riverside", TraversalTimeMinutes: 5},
+		{SegmentID: "seg_riverside_south", SegmentName: "Riverside - South Terminal", Region: "south", FromNodeID: "riverside", ToNodeID: "south", TraversalTimeMinutes: 7},
+		{SegmentID: "seg_south_industrial", SegmentName: "South Terminal - Industrial Park", Region: "south", FromNodeID: "south", ToNodeID: "industrial", TraversalTimeMinutes: 6},
+		{SegmentID: "seg_industrial_east", SegmentName: "Industrial Park - East Quay", Region: "east", FromNodeID: "industrial", ToNodeID: "east", TraversalTimeMinutes: 6},
+		{SegmentID: "seg_city_west", SegmentName: "City Centre - West Depot", Region: "west", FromNodeID: "city", ToNodeID: "west", TraversalTimeMinutes: 9},
+		{SegmentID: "seg_west_port", SegmentName: "West Depot - Port Terminal", Region: "west", FromNodeID: "west", ToNodeID: "port", TraversalTimeMinutes: 8},
+		{SegmentID: "seg_port_south", SegmentName: "Port Terminal - South Terminal", Region: "south", FromNodeID: "port", ToNodeID: "south", TraversalTimeMinutes: 7},
+		{SegmentID: "seg_west_northfield", SegmentName: "West Depot - Northfield", Region: "north", FromNodeID: "west", ToNodeID: "northfield", TraversalTimeMinutes: 9},
+		{SegmentID: "seg_northfield_north", SegmentName: "Northfield - North Gate", Region: "north", FromNodeID: "northfield", ToNodeID: "north", TraversalTimeMinutes: 7},
+	}
+}
+
+func buildSegmentMetadata() []SegmentMetadata {
+	roads := buildHardcodedRoads()
+	segments := make([]SegmentMetadata, 0, len(roads))
+	for _, road := range roads {
+		segments = append(segments, SegmentMetadata{
+			SegmentID:            road.SegmentID,
+			SegmentName:          road.SegmentName,
+			Region:               road.Region,
+			FromNodeID:           road.FromNodeID,
+			ToNodeID:             road.ToNodeID,
+			TraversalTimeMinutes: road.TraversalTimeMinutes,
+		})
+	}
+
+	return segments
+}
+
+func buildTrafficNodes(nodes []Node) []TrafficNode {
+	trafficNodes := make([]TrafficNode, 0, len(nodes))
+	for _, node := range nodes {
+		if trafficNode, ok := hardcodedNodePositions[node.NodeID]; ok {
+			trafficNode.Label = node.Label
+			trafficNodes = append(trafficNodes, trafficNode)
+			continue
+		}
+
+		trafficNodes = append(trafficNodes, TrafficNode{
+			NodeID: node.NodeID,
+			Label:  node.Label,
+		})
+	}
+
+	return trafficNodes
+}
+
+func normalizeTrafficLevel(raw string, occupancyPct float64) string {
+	switch strings.ToLower(raw) {
+	case "moderate":
+		return "medium"
+	case "medium", "low", "high", "critical":
+		return strings.ToLower(raw)
+	}
+
+	switch {
+	case occupancyPct >= 75:
+		return "critical"
+	case occupancyPct >= 50:
+		return "high"
+	case occupancyPct >= 25:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func buildGraphEdge(nodeLookup map[string]Node, segmentID, segmentName, region, fromNodeID, toNodeID string, traversalTimeMinutes int) graphEdge {
+	fromNode := nodeLookup[fromNodeID]
+	toNode := nodeLookup[toNodeID]
 
 	return graphEdge{
 		SegmentID:            segmentID,
