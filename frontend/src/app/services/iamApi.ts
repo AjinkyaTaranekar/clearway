@@ -12,6 +12,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: 'driver' | 'admin';
   vehicle_type: string;
   license_info?: {
@@ -140,6 +141,7 @@ export async function iamLogout(accessToken: string, refreshToken: string): Prom
 
 export interface UpdateProfileParams {
   name?: string;
+  phone?: string;
   vehicle_type?: string;
   license_info?: {
     license_number?: string;
@@ -149,7 +151,7 @@ export interface UpdateProfileParams {
 
 /**
  * Update the authenticated user's profile on the IAM service.
- * Only name, vehicle_type, and license_info can be changed; email changes
+ * Only name, phone, vehicle_type, and license_info can be changed; email changes
  * are not supported by the IAM service (require a separate verification flow).
  * Requires a valid access token.
  */

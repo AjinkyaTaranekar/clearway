@@ -40,6 +40,7 @@ type authResponse struct {
 		ID          string `json:"id"`
 		Name        string `json:"name"`
 		Email       string `json:"email"`
+		Phone       string `json:"phone,omitempty"`
 		Role        string `json:"role"`
 		VehicleType string `json:"vehicle_type"`
 		LicenseInfo struct {
@@ -326,6 +327,7 @@ func buildAuthResp(result *service.AuthResult) authResponse {
 	resp.User.ID = result.User.ID
 	resp.User.Name = result.User.Name
 	resp.User.Email = result.User.Email
+	resp.User.Phone = result.User.Phone
 	resp.User.Role = string(result.User.Role)
 	resp.User.VehicleType = string(result.User.VehicleType)
 	resp.User.LicenseInfo.LicenseNumber = result.User.LicenseInfo.LicenseNumber

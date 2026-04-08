@@ -24,6 +24,24 @@ function normalizeLicense(licenseNumber: string): string {
   return licenseNumber.trim();
 }
 
+function isValidPhone(phoneNumber: string): boolean {
+  if (phoneNumber === '') return true;
+  if (phoneNumber.length < 7 || phoneNumber.length > 32) return false;
+
+  let digitCount = 0;
+  for (const char of phoneNumber) {
+    if (char >= '0' && char <= '9') {
+      digitCount += 1;
+      continue;
+    }
+    if (char === '+' || char === '-' || char === '(' || char === ')' || char === ' ') {
+      continue;
+    }
+    return false;
+  }
+  return digitCount >= 7;
+}
+
 export default function SettingsPage() {
   const { user, logout, updateProfile } = useApp();
   const navigate = useNavigate();
@@ -91,6 +109,7 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
     const normalizedPrimaryLicense = normalizeLicense(primaryLicenseNumber);
 
     if (!trimmedName) {
@@ -99,6 +118,10 @@ export default function SettingsPage() {
     }
     if (!normalizedPrimaryLicense) {
       setSaveError('Primary vehicle license number is required.');
+      return;
+    }
+    if (!isValidPhone(trimmedPhone)) {
+      setSaveError('Phone number must be empty or valid (7-32 chars, digits and + - ( ) space only).');
       return;
     }
 
@@ -111,8 +134,9 @@ export default function SettingsPage() {
     setSaving(true);
     setSaveError('');
     try {
-      const fields: { name?: string; vehicle_type?: string } = {};
+      const fields: { name?: string; phone?: string; vehicle_type?: string } = {};
       if (trimmedName !== user?.name) fields.name = trimmedName;
+      if (trimmedPhone !== (user?.phone || '')) fields.phone = trimmedPhone;
       if (primaryVehicleType !== user?.vehicle_type) fields.vehicle_type = primaryVehicleType;
 
       if (Object.keys(fields).length > 0) {

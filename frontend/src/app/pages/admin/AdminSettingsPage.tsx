@@ -6,14 +6,34 @@ import {
   AlertTriangle, Activity,
 } from 'lucide-react';
 
+function isValidPhone(phoneNumber: string): boolean {
+  if (phoneNumber === '') return true;
+  if (phoneNumber.length < 7 || phoneNumber.length > 32) return false;
+
+  let digitCount = 0;
+  for (const char of phoneNumber) {
+    if (char >= '0' && char <= '9') {
+      digitCount += 1;
+      continue;
+    }
+    if (char === '+' || char === '-' || char === '(' || char === ')' || char === ' ') {
+      continue;
+    }
+    return false;
+  }
+  return digitCount >= 7;
+}
+
 export default function AdminSettingsPage() {
-  const { user, logout } = useApp();
+  const { user, logout, updateProfile } = useApp();
   const navigate = useNavigate();
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [criticalAlerts, setCriticalAlerts] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
 
   const handleLogout = () => {
     logout();
@@ -21,9 +41,34 @@ export default function AdminSettingsPage() {
   };
 
   const handleSave = async () => {
-    await new Promise((r) => setTimeout(r, 500));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+
+    if (!trimmedName) {
+      setSaveError('Full name is required.');
+      return;
+    }
+    if (!isValidPhone(trimmedPhone)) {
+      setSaveError('Phone number must be empty or valid (7-32 chars, digits and + - ( ) space only).');
+      return;
+    }
+
+    setSaving(true);
+    setSaveError('');
+    try {
+      const fields: { name?: string; phone?: string } = {};
+      if (trimmedName !== (user?.name || '')) fields.name = trimmedName;
+      if (trimmedPhone !== (user?.phone || '')) fields.phone = trimmedPhone;
+      if (Object.keys(fields).length > 0) {
+        await updateProfile(fields);
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err: any) {
+      setSaveError(err.message ?? 'Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const initials = user?.name
@@ -90,8 +135,21 @@ export default function AdminSettingsPage() {
             </label>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={user?.email || ''}
+              readOnly
+              className="w-full px-3.5 py-2.5 rounded-lg outline-none"
+              style={{ border: '1.5px solid var(--border)', background: '#F8F6F2', color: '#4E5953', cursor: 'not-allowed' }}
+              title="Email address cannot be changed here"
+            />
+          </div>
+          <div>
+            <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
+              Phone number <span style={{ color: '#4E5953', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-lg outline-none"
               style={{ border: '1.5px solid var(--border)', background: 'white', color: '#1F2421' }}
               onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
@@ -100,12 +158,24 @@ export default function AdminSettingsPage() {
           </div>
         </div>
 
+        {saveError && (
+          <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: '#FDECEA', color: '#B42318' }}>
+            {saveError}
+          </div>
+        )}
+
         <button
           onClick={handleSave}
+          disabled={saving}
           className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm transition-all"
-          style={{ background: saved ? '#2E7D32' : '#2F6B55', fontWeight: 600 }}
+          style={{
+            background: saved ? '#2E7D32' : '#2F6B55',
+            fontWeight: 600,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            opacity: saving ? 0.7 : 1,
+          }}
         >
-          {saved ? <><Check size={15} /> Saved</> : 'Save changes'}
+          {saved ? <><Check size={15} /> Saved</> : saving ? 'Saving...' : 'Save changes'}
         </button>
       </div>
 

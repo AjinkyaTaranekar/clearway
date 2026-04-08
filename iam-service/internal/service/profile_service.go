@@ -49,6 +49,7 @@ func (s *ProfileService) GetProfile(ctx context.Context, userID string) (*model.
 
 type UpdateProfileInput struct {
 	Name        *string
+	Phone       *string
 	VehicleType *model.VehicleType
 	LicenseInfo *model.LicenseInfo
 }
@@ -59,12 +60,13 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, userID string, in Up
 		Str("service", "ProfileService.UpdateProfile").
 		Str("user_id", userID).
 		Bool("name_updated", in.Name != nil).
+		Bool("phone_updated", in.Phone != nil).
 		Bool("vehicle_type_updated", in.VehicleType != nil).
 		Bool("license_info_updated", in.LicenseInfo != nil).
 		Msg("updating user profile")
 
 	user, err := s.users.UpdateProfile(ctx, userID, repository.UpdateProfileInput{
-		Name: in.Name, VehicleType: in.VehicleType, LicenseInfo: in.LicenseInfo,
+		Name: in.Name, Phone: in.Phone, VehicleType: in.VehicleType, LicenseInfo: in.LicenseInfo,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {

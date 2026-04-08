@@ -102,6 +102,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Name        *string            `json:"name"`
+		Phone       *string            `json:"phone"`
 		VehicleType *string            `json:"vehicle_type"`
 		LicenseInfo *model.LicenseInfo `json:"license_info"`
 	}
@@ -127,6 +128,18 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Name = &name
 	}
+	if req.Phone != nil {
+		phone := strings.TrimSpace(*req.Phone)
+		if !isValidPhone(phone) {
+			log.Warn().
+				Str("handler", "ProfileHandler.UpdateProfile").
+				Str("user_id", claims.Sub).
+				Msg("update profile validation failed: invalid phone")
+			response.Error(w, apperrors.BadRequest("phone must be empty or a valid phone number (7-32 chars, digits and + - ( ) space only)."), traceID)
+			return
+		}
+		in.Phone = &phone
+	}
 	if req.VehicleType != nil {
 		vt := model.VehicleType(strings.ToLower(*req.VehicleType))
 		if !model.ValidVehicleTypes[vt] {
@@ -148,6 +161,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Str("handler", "ProfileHandler.UpdateProfile").
 		Str("user_id", claims.Sub).
 		Bool("name_updated", in.Name != nil).
+		Bool("phone_updated", in.Phone != nil).
 		Bool("vehicle_type_updated", in.VehicleType != nil).
 		Bool("license_info_updated", in.LicenseInfo != nil).
 		Msg("invoking profile service update profile")
@@ -168,4 +182,27 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Str("user_id", user.ID).
 		Msg("update profile request completed")
 	response.Success(w, user, traceID)
+}
+
+func isValidPhone(phone string) bool {
+	if phone == "" {
+		return true
+	}
+	if len(phone) < 7 || len(phone) > 32 {
+		return false
+	}
+	digitCount := 0
+	for _, ch := range phone {
+		if ch >= '0' && ch <= '9' {
+			digitCount++
+			continue
+		}
+		switch ch {
+		case '+', '-', '(', ')', ' ':
+			continue
+		default:
+			return false
+		}
+	}
+	return digitCount >= 7
 }

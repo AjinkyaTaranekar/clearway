@@ -71,7 +71,7 @@ interface AppContextType {
   markNotificationRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   clearBookingResult: () => void;
-  updateProfile: (fields: { name?: string; vehicle_type?: string }) => Promise<void>;
+  updateProfile: (fields: { name?: string; phone?: string; vehicle_type?: string }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -164,6 +164,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: tokens.user.id,
       name: tokens.user.name,
       email: tokens.user.email,
+      phone: tokens.user.phone,
       role: tokens.user.role as UserRole,
       vehicle_type: tokens.user.vehicle_type,
       licenseNumber: tokens.user.license_info?.license_number,
@@ -191,6 +192,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: tokens.user.id,
       name: tokens.user.name,
       email: tokens.user.email,
+      phone: tokens.user.phone,
       role: tokens.user.role as UserRole,
       vehicle_type: tokens.user.vehicle_type,
       licenseNumber: tokens.user.license_info?.license_number,
@@ -339,7 +341,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const clearBookingResult = () => setLastBookingResult(null);
 
-  const updateProfile = async (fields: { name?: string; vehicle_type?: string }): Promise<void> => {
+  const updateProfile = async (fields: { name?: string; phone?: string; vehicle_type?: string }): Promise<void> => {
     const token = getToken();
     if (!token || !user) throw new Error('Not authenticated.');
     await iamUpdateProfile(token, fields);

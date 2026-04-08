@@ -48,7 +48,7 @@ func (r *UserRepo) Create(ctx context.Context, id, name, email, emailLower, pass
 	const query = `
 		INSERT INTO auth.users (id, name, email, email_lower, password_hash, role, vehicle_type, license_info, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-		RETURNING id, name, email, role, vehicle_type, license_info, created_at, updated_at`
+		RETURNING id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at`
 	user, err := scanUser(r.master.QueryRowContext(ctx, query, id, name, email, emailLower, passwordHash, string(role), string(vehicleType), liJSON))
 	if err != nil {
 		log.Error().
@@ -87,7 +87,7 @@ func (r *UserRepo) CreateTx(ctx context.Context, tx *sql.Tx, id, name, email, em
 	const query = `
 		INSERT INTO auth.users (id, name, email, email_lower, password_hash, role, vehicle_type, license_info, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-		RETURNING id, name, email, role, vehicle_type, license_info, created_at, updated_at`
+		RETURNING id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at`
 	user, err := scanUser(tx.QueryRowContext(ctx, query, id, name, email, emailLower, passwordHash, string(role), string(vehicleType), liJSON))
 	if err != nil {
 		log.Error().
@@ -116,13 +116,13 @@ func (r *UserRepo) GetByEmail(ctx context.Context, emailLower string) (*model.Us
 		Msg("querying user by normalized email")
 
 	const query = `
-		SELECT id, name, email, role, vehicle_type, license_info, created_at, updated_at, password_hash
+		SELECT id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at, password_hash
 		FROM auth.users WHERE email_lower = $1`
 	row := r.master.QueryRowContext(ctx, query, emailLower)
 	var u model.User
 	var liRaw []byte
 	var hash string
-	if err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.VehicleType, &liRaw, &u.CreatedAt, &u.UpdatedAt, &hash); err != nil {
+	if err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.Role, &u.VehicleType, &liRaw, &u.CreatedAt, &u.UpdatedAt, &hash); err != nil {
 		if err == sql.ErrNoRows {
 			log.Warn().
 				Str("repository", "UserRepo.GetByEmail").
@@ -163,7 +163,7 @@ func (r *UserRepo) GetByID(ctx context.Context, id string) (*model.User, error) 
 		Msg("querying user by id")
 
 	const query = `
-		SELECT id, name, email, role, vehicle_type, license_info, created_at, updated_at
+		SELECT id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at
 		FROM auth.users WHERE id = $1`
 	user, err := scanUser(r.master.QueryRowContext(ctx, query, id))
 	if err != nil {
@@ -198,7 +198,7 @@ func (r *UserRepo) GetByIDTx(ctx context.Context, tx *sql.Tx, id string) (*model
 		Msg("querying user by id inside transaction")
 
 	const query = `
-		SELECT id, name, email, role, vehicle_type, license_info, created_at, updated_at
+		SELECT id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at
 		FROM auth.users WHERE id = $1`
 	user, err := scanUser(tx.QueryRowContext(ctx, query, id))
 	if err != nil {
@@ -227,6 +227,7 @@ func (r *UserRepo) GetByIDTx(ctx context.Context, tx *sql.Tx, id string) (*model
 // UpdateProfileInput carries optional fields for a partial profile update.
 type UpdateProfileInput struct {
 	Name        *string
+	Phone       *string
 	VehicleType *model.VehicleType
 	LicenseInfo *model.LicenseInfo
 }
@@ -238,6 +239,7 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, userID string, in UpdatePr
 		Str("repository", "UserRepo.UpdateProfile").
 		Str("user_id", userID).
 		Bool("name_updated", in.Name != nil).
+		Bool("phone_updated", in.Phone != nil).
 		Bool("vehicle_type_updated", in.VehicleType != nil).
 		Bool("license_info_updated", in.LicenseInfo != nil).
 		Msg("updating user profile fields")
@@ -248,6 +250,11 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, userID string, in UpdatePr
 	if in.Name != nil {
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", idx))
 		args = append(args, *in.Name)
+		idx++
+	}
+	if in.Phone != nil {
+		setClauses = append(setClauses, fmt.Sprintf("phone = $%d", idx))
+		args = append(args, *in.Phone)
 		idx++
 	}
 	if in.VehicleType != nil {
@@ -277,7 +284,7 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, userID string, in UpdatePr
 	args = append(args, userID)
 	query := fmt.Sprintf(`
 		UPDATE auth.users SET %s WHERE id = $%d
-		RETURNING id, name, email, role, vehicle_type, license_info, created_at, updated_at`,
+		RETURNING id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at`,
 		strings.Join(setClauses, ", "), idx)
 	user, err := scanUser(r.master.QueryRowContext(ctx, query, args...))
 	if err != nil {
@@ -315,7 +322,7 @@ func (r *UserRepo) UpdateRole(ctx context.Context, userID string, role model.Rol
 	const query = `
 		UPDATE auth.users SET role = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, name, email, role, vehicle_type, license_info, created_at, updated_at`
+		RETURNING id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at`
 	user, err := scanUser(r.master.QueryRowContext(ctx, query, string(role), userID))
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -405,7 +412,7 @@ func (r *UserRepo) List(ctx context.Context, roleFilter string, page, limit int)
 
 	args = append(args, limit, offset)
 	rows, err := r.slave.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, name, email, role, vehicle_type, license_info, created_at, updated_at
+		SELECT id, name, email, phone, role, vehicle_type, license_info, created_at, updated_at
 		FROM auth.users %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
 		whereClause, idx, idx+1), args...)
 	if err != nil {
@@ -422,7 +429,7 @@ func (r *UserRepo) List(ctx context.Context, roleFilter string, page, limit int)
 	for rows.Next() {
 		var u model.User
 		var liRaw []byte
-		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.VehicleType, &liRaw, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.Role, &u.VehicleType, &liRaw, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			log.Error().
 				Str("repository", "UserRepo.List").
 				Err(err).
@@ -451,7 +458,7 @@ func (r *UserRepo) List(ctx context.Context, roleFilter string, page, limit int)
 func scanUser(row *sql.Row) (*model.User, error) {
 	var u model.User
 	var liRaw []byte
-	if err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.VehicleType, &liRaw, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Phone, &u.Role, &u.VehicleType, &liRaw, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	var err error
