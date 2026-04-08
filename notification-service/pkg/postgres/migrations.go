@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const migrationNamespace = "map-service"
+const migrationNamespace = "notification-service"
 
 // RunMigrations applies pending *.sql files in lexical order.
 func RunMigrations(db *sql.DB, migrationsDir string) error {

@@ -36,6 +36,7 @@ WORKDIR /app
 # Copy binary and config from builder
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/config.yaml ./config.yaml
+COPY --from=builder /app/migrations ./migrations
 
 # Entrypoint script: bridges Docker secrets to env vars expected by Viper
 RUN printf '#!/bin/sh\n\

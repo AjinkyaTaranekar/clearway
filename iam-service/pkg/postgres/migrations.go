@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const migrationNamespace = "iam-service"
+
 // RunMigrations applies any *.sql files in migrationsDir that have not yet
 // been recorded in the public.schema_migrations tracking table.
 // Files are applied in lexicographic order (001_…, 002_…, …).
@@ -30,8 +32,7 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// No migrations directory — nothing to do.
-			return nil
+			return fmt.Errorf("migrations: dir %q does not exist", migrationsDir)
 		}
 		return fmt.Errorf("migrations: read dir %q: %w", migrationsDir, err)
 	}
@@ -45,10 +46,12 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 	sort.Strings(files)
 
 	for _, filename := range files {
+		migrationKey := migrationNamespace + "/" + filename
+
 		var already int
 		if err := db.QueryRow(
 			`SELECT COUNT(*) FROM public.schema_migrations WHERE filename = $1`,
-			filename,
+			migrationKey,
 		).Scan(&already); err != nil {
 			return fmt.Errorf("migrations: check %s: %w", filename, err)
 		}
@@ -67,7 +70,7 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 
 		if _, err := db.Exec(
 			`INSERT INTO public.schema_migrations (filename) VALUES ($1)`,
-			filename,
+			migrationKey,
 		); err != nil {
 			return fmt.Errorf("migrations: record %s: %w", filename, err)
 		}

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -84,11 +85,13 @@ func main() {
 
 	// Run migrations (all files in order)
 	journeyRepo := repository.NewJourneyRepository(dbPools.Master, dbPools.Slave)
-	for _, mf := range []string{
-		"migrations/001_create_schema.sql",
-		"migrations/002_create_outbox.sql",
-		"migrations/003_admin_actions.sql",
+	migrationsDir := resolveMigrationsDir()
+	for _, filename := range []string{
+		"001_create_schema.sql",
+		"002_create_outbox.sql",
+		"003_admin_actions.sql",
 	} {
+		mf := filepath.Join(migrationsDir, filename)
 		migrationSQL, err := os.ReadFile(mf)
 		if err != nil {
 			log.Fatal().Err(err).Str("file", mf).Msg("failed to read migration file")
@@ -212,6 +215,26 @@ func main() {
 		log.Fatal().Err(err).Msg("server forced to shutdown")
 	}
 	log.Info().Msg("server exited")
+}
+
+func resolveMigrationsDir() string {
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("VCS_MIGRATIONS_DIR")),
+		"migrations",
+		filepath.Join("journey-service", "migrations"),
+	}
+
+	for _, dir := range candidates {
+		if dir == "" {
+			continue
+		}
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
+
+	// Keep default value so startup error clearly reports the attempted path.
+	return "migrations"
 }
 
 func configureSwaggerFromEnv(rawBaseURL string) error {

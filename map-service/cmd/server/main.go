@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -77,10 +78,11 @@ func main() {
 
 	log.Info().Msg("Database connections established")
 
-	if err := postgres.RunMigrations(dbPools.Master, "migrations"); err != nil {
+	migrationsDir := resolveMigrationsDir()
+	if err := postgres.RunMigrations(dbPools.Master, migrationsDir); err != nil {
 		log.Fatal().Err(err).Msg("failed to run database migrations")
 	}
-	log.Info().Msg("database migrations applied")
+	log.Info().Str("dir", migrationsDir).Msg("database migrations applied")
 
 	graphStore := handlers.NewGraphStore(log)
 	if err := graphStore.LoadFromDB(baseCtx, dbPools.Slave); err != nil {
@@ -154,6 +156,26 @@ func main() {
 	}
 
 	log.Info().Msg("server exited")
+}
+
+func resolveMigrationsDir() string {
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("VCS_MIGRATIONS_DIR")),
+		"migrations",
+		filepath.Join("map-service", "migrations"),
+	}
+
+	for _, dir := range candidates {
+		if dir == "" {
+			continue
+		}
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
+
+	// Keep default value so startup error clearly reports the attempted path.
+	return "migrations"
 }
 
 func configureSwaggerFromEnv(rawBaseURL string) error {

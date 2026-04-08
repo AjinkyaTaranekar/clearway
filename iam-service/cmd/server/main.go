@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -68,10 +69,11 @@ func main() {
 	// --- Migrations ---
 	// Apply any pending *.sql files in the migrations/ directory automatically
 	// so a fresh deployment never requires a manual psql step.
-	if err := postgres.RunMigrations(dbPools.Master, "migrations"); err != nil {
+	migrationsDir := resolveMigrationsDir()
+	if err := postgres.RunMigrations(dbPools.Master, migrationsDir); err != nil {
 		log.Fatal().Err(err).Msg("database migration failed")
 	}
-	log.Info().Msg("migrations up to date")
+	log.Info().Str("dir", migrationsDir).Msg("migrations up to date")
 
 	// --- RSA key / JWKS ---
 	jwksSvc, err := service.NewJWKSService(
@@ -146,6 +148,26 @@ func main() {
 		log.Fatal().Err(err).Msg("forced shutdown")
 	}
 	log.Info().Msg("server stopped")
+}
+
+func resolveMigrationsDir() string {
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("VCS_MIGRATIONS_DIR")),
+		"migrations",
+		filepath.Join("iam-service", "migrations"),
+	}
+
+	for _, dir := range candidates {
+		if dir == "" {
+			continue
+		}
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
+
+	// Keep default value so startup error clearly reports the attempted path.
+	return "migrations"
 }
 
 func configureSwaggerFromEnv(rawBaseURL string) error {
