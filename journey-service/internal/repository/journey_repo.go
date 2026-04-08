@@ -673,6 +673,17 @@ func (r *JourneyRepository) enqueueOutboxInTx(ctx context.Context, tx *sql.Tx, e
 	return err
 }
 
+// insertAdminActionInTx writes a durable admin audit record in the same
+// transaction as the journey status change.
+func (r *JourneyRepository) insertAdminActionInTx(ctx context.Context, tx *sql.Tx, journeyID, action, adminID string) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO journey.admin_actions (journey_id, action, admin_id, timestamp)
+		VALUES ($1, $2, $3, NOW())`,
+		journeyID, action, adminID,
+	)
+	return err
+}
+
 // UpdateStatusWithEvent updates a journey's status and atomically enqueues an
 // outbox event in the same DB transaction.  This guarantees that the event is
 // durable even if the process crashes before the OutboxRelay can publish it.
@@ -756,6 +767,103 @@ func (r *JourneyRepository) UpdateStatusWithEvent(
 		Str("journey_id", journeyID).
 		Str("new_status", string(status)).
 		Msg("status+outbox committed")
+	return nil
+}
+
+// UpdateStatusWithEventAndAdminAction performs the same atomic status+outbox
+// write as UpdateStatusWithEvent and additionally records the acting admin in
+// journey.admin_actions.
+func (r *JourneyRepository) UpdateStatusWithEventAndAdminAction(
+	ctx context.Context,
+	journeyID string,
+	status model.JourneyStatus,
+	version int,
+	extra map[string]interface{},
+	eventID, eventType string,
+	payload []byte,
+	adminID string,
+) error {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+		Str("journey_id", journeyID).
+		Str("new_status", string(status)).
+		Str("event_type", eventType).
+		Str("admin_id", adminID).
+		Msg("updating journey status with outbox event and admin audit")
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.DatabaseError("failed to begin tx", err)
+	}
+	defer tx.Rollback()
+
+	setClauses := []string{
+		"status = $1",
+		"version = version + 1",
+		"updated_at = $2",
+	}
+	args := []interface{}{string(status), time.Now()}
+
+	for col, val := range extra {
+		args = append(args, val)
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, len(args)))
+	}
+
+	args = append(args, journeyID, version)
+	query := fmt.Sprintf(
+		"UPDATE journey.journeys SET %s WHERE journey_id = $%d AND version = $%d",
+		strings.Join(setClauses, ", "), len(args)-1, len(args),
+	)
+
+	res, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to update journey status in tx")
+		return apperrors.DatabaseError("failed to update journey status", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		log.Warn().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Str("journey_id", journeyID).
+			Msg("optimistic lock conflict on journey status update")
+		return apperrors.Conflict("journey was modified concurrently, please retry")
+	}
+
+	if err := r.enqueueOutboxInTx(ctx, tx, eventID, eventType, payload); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to enqueue outbox event in tx")
+		return apperrors.DatabaseError("failed to enqueue outbox event", err)
+	}
+
+	if err := r.insertAdminActionInTx(ctx, tx, journeyID, "force_cancel", adminID); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Err(err).Str("journey_id", journeyID).
+			Str("admin_id", adminID).
+			Msg("failed to write admin action audit row")
+		return apperrors.DatabaseError("failed to write admin action audit row", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to commit status+outbox+admin-action transaction")
+		return apperrors.DatabaseError("failed to commit status update", err)
+	}
+
+	log.Info().
+		Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+		Str("journey_id", journeyID).
+		Str("new_status", string(status)).
+		Str("admin_id", adminID).
+		Msg("status+outbox+admin-action committed")
 	return nil
 }
 

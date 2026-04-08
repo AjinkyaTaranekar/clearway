@@ -115,11 +115,17 @@ services:
       VCS_DATABASE_SLAVE_DBNAME: trafficservice
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
-      VCS_SERVICES_TOMTOM_API_KEY: B6eLRq1HJnTAdGD8Zp9DCwLLNK057ol6
+      VCS_SERVICES_CAPACITY_BASE_URL: http://capacity-service:8081
+      VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
+      VCS_SERVICES_TOMTOM_API_KEY: ${TOMTOM_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      capacity-service:
+        condition: service_healthy
+      iam-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8084/health || exit 1"]
@@ -148,7 +154,6 @@ services:
       VCS_SERVICES_CAPACITY_URL: http://capacity-service:8081
       VCS_SERVICES_MAP_URL: http://map-service:8084
       VCS_SERVICES_IAM_URL: http://iam-service:8082
-      VCS_SERVICES_JWT_SECRET: dev-secret
       VCS_LOGGING_LEVEL: info
     depends_on:
       db:
@@ -188,7 +193,7 @@ services:
       VCS_LOGGING_LEVEL: info
       JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       VM_ID: "1"
-      FCM_SERVICE_ACCOUNT_JSON: ""
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
     depends_on:
       db:
         condition: service_healthy

@@ -3,11 +3,14 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/sony/gobreaker"
 )
 
 // MapCoordinates holds lat/lng for route cache key computation.
@@ -73,6 +76,7 @@ type mapRouteData struct {
 type MapClient struct {
 	baseURL    string
 	httpClient *http.Client
+	breaker    *gobreaker.CircuitBreaker
 
 	// nodes cache — avoids fetching /api/v1/map/nodes on every request.
 	nodesMu        sync.RWMutex
@@ -82,47 +86,91 @@ type MapClient struct {
 
 // NewMapClient creates a new Map Service client.
 func NewMapClient(baseURL string) *MapClient {
+	breaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "map-service",
+		MaxRequests: 1,
+		Interval:    30 * time.Second,
+		Timeout:     10 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 5
+		},
+	})
+
 	return &MapClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
+		breaker: breaker,
 	}
+}
+
+func isMapCircuitOpen(err error) bool {
+	return errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests)
 }
 
 // fetchNodes retrieves the node list from GET /api/v1/map/nodes and stores it.
 func (c *MapClient) fetchNodes(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/api/v1/map/nodes", nil)
-	if err != nil {
-		return fmt.Errorf("create nodes request: %w", err)
+	nodesCall := func() ([]mapNode, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+			c.baseURL+"/api/v1/map/nodes", nil)
+		if err != nil {
+			return nil, fmt.Errorf("create nodes request: %w", err)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("fetch nodes: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("map service nodes: unexpected status %d", resp.StatusCode)
+		}
+
+		var envelope mapAPIEnvelope
+		if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+			return nil, fmt.Errorf("decode nodes envelope: %w", err)
+		}
+		if !envelope.Success {
+			return nil, fmt.Errorf("map service nodes: success=false in response")
+		}
+
+		var data mapNodesData
+		if err := json.Unmarshal(envelope.Data, &data); err != nil {
+			return nil, fmt.Errorf("decode nodes data: %w", err)
+		}
+
+		return data.Nodes, nil
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("fetch nodes: %w", err)
-	}
-	defer resp.Body.Close()
+	var nodes []mapNode
+	if c.breaker == nil {
+		resolved, err := nodesCall()
+		if err != nil {
+			return err
+		}
+		nodes = resolved
+	} else {
+		result, err := c.breaker.Execute(func() (interface{}, error) {
+			return nodesCall()
+		})
+		if err != nil {
+			if isMapCircuitOpen(err) {
+				return fmt.Errorf("map service circuit open")
+			}
+			return err
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("map service nodes: unexpected status %d", resp.StatusCode)
-	}
-
-	var envelope mapAPIEnvelope
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return fmt.Errorf("decode nodes envelope: %w", err)
-	}
-	if !envelope.Success {
-		return fmt.Errorf("map service nodes: success=false in response")
-	}
-
-	var data mapNodesData
-	if err := json.Unmarshal(envelope.Data, &data); err != nil {
-		return fmt.Errorf("decode nodes data: %w", err)
+		resolved, ok := result.([]mapNode)
+		if !ok {
+			return fmt.Errorf("map service nodes: unexpected breaker result type %T", result)
+		}
+		nodes = resolved
 	}
 
 	c.nodesMu.Lock()
-	c.nodes = data.Nodes
+	c.nodes = nodes
 	c.nodesFetchedAt = time.Now()
 	c.nodesMu.Unlock()
 	return nil
@@ -196,41 +244,64 @@ func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinate
 	url := fmt.Sprintf("%s/api/v1/map/route?origin_node_id=%s&destination_node_id=%s",
 		c.baseURL, originNodeID, destNodeID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	routeCall := func() (*RouteResponse, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("map service: build request: %w", err)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("map service unreachable: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("map service: unexpected status %d for route %s→%s",
+				resp.StatusCode, originNodeID, destNodeID)
+		}
+
+		var envelope mapAPIEnvelope
+		if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+			return nil, fmt.Errorf("map service: decode route envelope: %w", err)
+		}
+		if !envelope.Success {
+			return nil, fmt.Errorf("map service: success=false for route %s→%s", originNodeID, destNodeID)
+		}
+
+		var data mapRouteData
+		if err := json.Unmarshal(envelope.Data, &data); err != nil {
+			return nil, fmt.Errorf("map service: decode route data: %w", err)
+		}
+
+		if len(data.Segments) == 0 {
+			return nil, fmt.Errorf("map service: no segments returned for route %s→%s", originNodeID, destNodeID)
+		}
+
+		return &RouteResponse{
+			TotalTraversalTimeMinutes: data.TotalTraversalTimeMinutes,
+			Segments:                  data.Segments,
+		}, nil
+	}
+
+	if c.breaker == nil {
+		return routeCall()
+	}
+
+	result, err := c.breaker.Execute(func() (interface{}, error) {
+		return routeCall()
+	})
 	if err != nil {
-		return nil, fmt.Errorf("map service: build request: %w", err)
+		if isMapCircuitOpen(err) {
+			return nil, fmt.Errorf("map service circuit open")
+		}
+		return nil, err
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("map service unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("map service: unexpected status %d for route %s→%s",
-			resp.StatusCode, originNodeID, destNodeID)
+	route, ok := result.(*RouteResponse)
+	if !ok || route == nil {
+		return nil, fmt.Errorf("map service: unexpected breaker result type %T", result)
 	}
 
-	var envelope mapAPIEnvelope
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("map service: decode route envelope: %w", err)
-	}
-	if !envelope.Success {
-		return nil, fmt.Errorf("map service: success=false for route %s→%s", originNodeID, destNodeID)
-	}
-
-	var data mapRouteData
-	if err := json.Unmarshal(envelope.Data, &data); err != nil {
-		return nil, fmt.Errorf("map service: decode route data: %w", err)
-	}
-
-	if len(data.Segments) == 0 {
-		return nil, fmt.Errorf("map service: no segments returned for route %s→%s", originNodeID, destNodeID)
-	}
-
-	return &RouteResponse{
-		TotalTraversalTimeMinutes: data.TotalTraversalTimeMinutes,
-		Segments:                  data.Segments,
-	}, nil
+	return route, nil
 }

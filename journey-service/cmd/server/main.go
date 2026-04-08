@@ -80,6 +80,7 @@ func main() {
 	for _, mf := range []string{
 		"migrations/001_create_schema.sql",
 		"migrations/002_create_outbox.sql",
+		"migrations/003_admin_actions.sql",
 	} {
 		migrationSQL, err := os.ReadFile(mf)
 		if err != nil {

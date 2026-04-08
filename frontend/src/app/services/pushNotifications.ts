@@ -41,6 +41,14 @@ export async function enablePushNotifications(): Promise<void> {
   localStorage.setItem(PUSH_ENABLED_KEY, 'true');
 }
 
+// Re-registers the current browser token after authentication refresh/login
+// when push was previously enabled in this browser.
+export async function syncPushRegistrationIfEnabled(): Promise<void> {
+  if (!isPushEnabled()) return;
+  const token = getConfiguredToken();
+  await registerDeviceToken(token, 'web');
+}
+
 export function disablePushNotifications(): void {
   localStorage.setItem(PUSH_ENABLED_KEY, 'false');
 }

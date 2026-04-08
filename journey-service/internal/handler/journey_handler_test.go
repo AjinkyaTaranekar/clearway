@@ -109,7 +109,7 @@ func TestCreateJourney_DepartureTooSoon(t *testing.T) {
 	// Service with nil deps is safe: departure check fires before any DB/Redis call
 	// and there is no Idempotency-Key header, so the idempotency path is skipped.
 	privateKey, validator := testRSASetup(t)
-	svc := service.NewJourneyService(nil, nil, nil, nil, nil, nil, 60, 30, 30, nil)
+	svc := service.NewJourneyService(nil, nil, nil, nil, nil, 60, 30, 30, nil)
 	h := NewJourneyHandler(svc)
 	router := newTestRouter(h, validator)
 

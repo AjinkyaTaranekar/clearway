@@ -5,6 +5,7 @@ import { clearTokens, getRefreshToken, getToken, storeTokens } from '../services
 import { iamLogin, iamLogout, iamRegister, iamUpdateProfile, RegisterParams } from '../services/iamApi';
 import * as api from '../services/journeyApi';
 import * as notifApi from '../services/notificationApi';
+import { syncPushRegistrationIfEnabled } from '../services/pushNotifications';
 
 export type UserRole = 'driver' | 'admin';
 
@@ -136,6 +137,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     setUser(u);
     localStorage.setItem('cw_user', JSON.stringify(u));
+    void syncPushRegistrationIfEnabled().catch(() => undefined);
     return u.role;
   };
 
@@ -158,6 +160,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     setUser(u);
     localStorage.setItem('cw_user', JSON.stringify(u));
+    void syncPushRegistrationIfEnabled().catch(() => undefined);
     return u.role;
   };
 
@@ -256,39 +259,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addStatusNotification(id, status);
         return;
       }
+
+      throw new Error('Journey status update returned no payload.');
     } catch (err) {
       toast.error('Status update failed', {
         description: err instanceof Error ? err.message : 'Could not update journey status.',
       });
+      return;
     }
-
-    const labelMap: Record<string, string> = {
-      active: 'Journey started',
-      completed: 'Journey completed',
-      cancelled: 'Journey cancelled',
-    };
-    const updateFn = (list: Journey[]) =>
-      list.map((j) => {
-        if (j.id !== id) return j;
-        return {
-          ...j,
-          status,
-          timeline: [
-            ...j.timeline,
-            {
-              id: `T${Date.now()}`,
-              type: status,
-              label: labelMap[status] || `Status changed to ${status}`,
-              timestamp: new Date().toISOString(),
-              by,
-            },
-          ],
-          updatedAt: new Date().toISOString(),
-        };
-      });
-    setJourneys(updateFn);
-    setAdminJourneys(updateFn);
-    addStatusNotification(id, status);
   };
 
   // -------------------------------------------------------------------------

@@ -587,9 +587,10 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID, admi
 		log.Error().Err(err).Str("service", "JourneyService.AdminCancelJourney").Msg("failed to marshal admin cancel event")
 		return nil, err
 	}
-	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusCancelled, j.Version,
+	if err := s.repo.UpdateStatusWithEventAndAdminAction(ctx, journeyID, model.StatusCancelled, j.Version,
 		map[string]interface{}{"cancelled_at": now},
 		evID, event.EventJourneyCancelled, evData,
+		cancelledBy,
 	); err != nil {
 		log.Error().Str("service", "JourneyService.AdminCancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
 		return nil, err

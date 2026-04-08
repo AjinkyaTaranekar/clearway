@@ -2,6 +2,14 @@ import { authHeaders } from './auth';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
+interface ApiEnvelope<T> {
+  success?: boolean;
+  data?: T;
+  error?: {
+    message?: string;
+  };
+}
+
 export interface ApiNotification {
   id: string;
   journey_id: string;
@@ -44,9 +52,11 @@ async function notifFetch<T>(path: string, options: RequestInit = {}): Promise<T
       ...(options.headers ?? {}),
     },
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message ?? json.message ?? `HTTP ${res.status}`);
-  return json as T;
+  const json = await res.json() as ApiEnvelope<T>;
+  if (!res.ok || json.success === false) {
+    throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+  }
+  return (json.data ?? json) as T;
 }
 
 export async function listNotifications(page = 1, limit = 50): Promise<NotificationListResponse> {

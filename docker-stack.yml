@@ -216,6 +216,9 @@ services:
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
+      VCS_SERVICES_CAPACITY_BASE_URL: http://capacity-service:8081
+      VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
+      VCS_SERVICES_TOMTOM_API_KEY: ${TOMTOM_API_KEY:-}
     networks:
       - vcs-internal
     healthcheck:
@@ -345,6 +348,9 @@ services:
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
+      JWKS_URL: http://iam-service:8082/.well-known/jwks.json
+      VM_ID: "1"
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_credentials
     secrets:
       - source: firebase_credentials
