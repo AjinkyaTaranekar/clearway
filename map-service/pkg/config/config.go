@@ -47,9 +47,11 @@ type LoggingConfig struct {
 
 // ServicesConfig holds downstream service configuration.
 type ServicesConfig struct {
-	CapacityBaseURL string `mapstructure:"capacity_base_url"`
-	JWKSURL         string `mapstructure:"jwks_url"`
-	TomTomAPIKey    string `mapstructure:"tomtom_api_key"`
+	CapacityBaseURL  string `mapstructure:"capacity_base_url"`
+	JWKSURL          string `mapstructure:"jwks_url"`
+	NominatimBaseURL string `mapstructure:"nominatim_base_url"`
+	OSRMBaseURL      string `mapstructure:"osrm_base_url"`
+	UserAgent        string `mapstructure:"user_agent"`
 }
 
 // Load loads configuration from file and environment variables
@@ -76,7 +78,8 @@ func Load(configPath string) (*Config, error) {
 		"database.master.password", "database.master.dbname",
 		"database.slave.host", "database.slave.port", "database.slave.user",
 		"database.slave.password", "database.slave.dbname",
-		"services.capacity_base_url", "services.jwks_url", "services.tomtom_api_key",
+		"services.capacity_base_url", "services.jwks_url",
+		"services.nominatim_base_url", "services.osrm_base_url", "services.user_agent",
 	} {
 		_ = v.BindEnv(key)
 	}

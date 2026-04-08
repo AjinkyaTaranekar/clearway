@@ -66,7 +66,7 @@ func (r *Router) Setup() *mux.Router {
 	r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET")
 	r.mux.HandleFunc("/api/v1/routes/compute", r.mapHandler.ComputeRoute).Methods("POST")
 
-	// TomTom proxy — search is unauthenticated so the booking form can call it without a JWT
+	// Geocoding proxy — search is unauthenticated so the booking form can call it without a JWT
 	r.mux.HandleFunc("/api/v1/map/search", r.searchHandler.SearchPlaces).Methods("GET")
 
 	trafficHandler := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.mapHandler.GetTraffic))))

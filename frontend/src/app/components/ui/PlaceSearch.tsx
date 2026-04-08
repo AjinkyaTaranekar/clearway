@@ -1,6 +1,6 @@
 /**
- * PlaceSearch — debounced text input that calls the backend TomTom search proxy.
- * The API key never reaches the browser; all TomTom API calls happen server-side.
+ * PlaceSearch — debounced text input that calls the backend geocoding proxy.
+ * The browser never calls Nominatim/OSRM directly; all provider calls happen server-side.
  */
 
 import { MapPin, X } from 'lucide-react';

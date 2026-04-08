@@ -105,7 +105,19 @@ export async function getTrafficData(): Promise<TrafficData> {
   return mapFetch<TrafficData>('/api/v1/map/traffic');
 }
 
-// searchPlaces calls our backend TomTom proxy — the API key stays server-side.
+// getRegion returns the deployment region from the load balancer (nginx injects REGION env var).
+export async function getRegion(): Promise<string> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/v1/region`);
+    if (!res.ok) return 'local';
+    const json = await res.json() as { region?: string };
+    return json.region ?? 'local';
+  } catch {
+    return 'local';
+  }
+}
+
+// searchPlaces calls our backend geocoding proxy (Nominatim-backed).
 export async function searchPlaces(query: string, limit = 5): Promise<PlaceResult[]> {
   if (!query.trim()) return [];
   const q = new URLSearchParams({ q: query, limit: String(limit) });

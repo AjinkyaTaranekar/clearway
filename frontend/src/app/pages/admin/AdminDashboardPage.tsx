@@ -3,6 +3,7 @@ import {
   AlertCircle,
   BarChart2,
   ChevronRight,
+  Globe,
   List,
   Map,
   TrendingDown,
@@ -14,6 +15,7 @@ import { toast } from 'sonner';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { useApp } from '../../context/AppContext';
 import { AdminAnalyticsResult, adminAnalytics } from '../../services/journeyApi';
+import { getRegion } from '../../services/mapApi';
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
@@ -21,12 +23,14 @@ export default function AdminDashboardPage() {
 
   // U-14: fetch real analytics from backend instead of using hardcoded mock data
   const [analytics, setAnalytics] = useState<AdminAnalyticsResult | null>(null);
+  const [region, setRegion] = useState<string | null>(null);
   useEffect(() => {
     adminAnalytics('24h').then(setAnalytics).catch((err) => {
       toast.error('Analytics unavailable', {
         description: err instanceof Error ? err.message : 'Could not load dashboard stats.',
       });
     });
+    getRegion().then(setRegion);
   }, []);
 
   const activeJourneys = adminJourneys.filter((j) => j.status === 'active');
@@ -70,13 +74,26 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="p-5 lg:p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#1F2421', marginBottom: '4px' }}>
-          Admin dashboard
-        </h1>
-        <p style={{ color: '#4E5953', fontSize: '0.9375rem' }}>
-          Good morning, {user?.name?.split(' ')[0]}. Here's the system overview for today.
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#1F2421', marginBottom: '4px' }}>
+            Admin dashboard
+          </h1>
+          <p style={{ color: '#4E5953', fontSize: '0.9375rem' }}>
+            Good morning, {user?.name?.split(' ')[0]}. Here's the system overview for today.
+          </p>
+        </div>
+        {region && (
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+            style={{ background: '#E3EEFB', border: '1px solid #B8D4F0', flexShrink: 0 }}
+          >
+            <Globe size={13} color="#1A4E80" />
+            <span style={{ color: '#1A4E80', fontSize: '0.8125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {region}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* KPI cards */}

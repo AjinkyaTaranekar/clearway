@@ -218,7 +218,8 @@ services:
       VCS_LOGGING_FORMAT: json
       VCS_SERVICES_CAPACITY_BASE_URL: http://capacity-service:8081
       VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
-      VCS_SERVICES_TOMTOM_API_KEY: ${TOMTOM_API_KEY:-}
+      VCS_SERVICES_NOMINATIM_BASE_URL: ${NOMINATIM_BASE_URL:-https://nominatim.openstreetmap.org}
+      VCS_SERVICES_OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
     networks:
       - vcs-internal
     healthcheck:
@@ -483,6 +484,8 @@ services:
     configs:
       - source: nginx_conf
         target: /etc/nginx/conf.d/vcs.conf
+    environment:
+      REGION: ${REGION:-EU}
     deploy:
       mode: global
       update_config:

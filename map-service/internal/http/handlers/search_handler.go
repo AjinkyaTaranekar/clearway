@@ -11,25 +11,21 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/tracing"
 )
 
-// SearchHandler proxies place searches to TomTom so the API key never reaches
-// the browser.  Results are returned in a normalised PlaceResult shape so the
-// frontend stays decoupled from TomTom's raw JSON schema.
+// SearchHandler proxies place searches to Nominatim so the browser talks to
+// our backend and stays decoupled from provider-specific payloads.
 type SearchHandler struct {
-	tomtom *TomTomClient
-	log    *logger.Logger
+	geo *GeoClient
+	log *logger.Logger
 }
 
 // NewSearchHandler creates a new SearchHandler.
-func NewSearchHandler(tomtom *TomTomClient, log *logger.Logger) *SearchHandler {
-	return &SearchHandler{tomtom: tomtom, log: log}
+func NewSearchHandler(geo *GeoClient, log *logger.Logger) *SearchHandler {
+	return &SearchHandler{geo: geo, log: log}
 }
 
 // SearchPlaces godoc
-// @Summary      Proxy TomTom fuzzy place search
-// @Description  Searches for places matching the query string via TomTom.
-//
-//	The API key is kept server-side.
-//
+// @Summary      Proxy Nominatim place search
+// @Description  Searches for places matching the query string via Nominatim.
 // @Tags         map
 // @Produce      json
 // @Param        q      query  string  true   "Search query"
@@ -67,15 +63,15 @@ func (h *SearchHandler) SearchPlaces(w http.ResponseWriter, r *http.Request) {
 		Str("handler", "SearchHandler.SearchPlaces").
 		Str("query", query).
 		Int("limit", limit).
-		Msg("calling TomTom fuzzy search")
+		Msg("calling geocoding search provider")
 
-	places, err := h.tomtom.FuzzySearch(r.Context(), query, limit)
+	places, err := h.geo.SearchPlaces(r.Context(), query, limit)
 	if err != nil {
 		log.Error().
 			Str("handler", "SearchHandler.SearchPlaces").
 			Err(err).
 			Str("query", query).
-			Msg("TomTom search failed")
+			Msg("search provider request failed")
 		response.Error(w, appErrors.InternalError("place search failed", err), traceID)
 		return
 	}

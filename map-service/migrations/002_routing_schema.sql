@@ -1,9 +1,8 @@
--- TomTom place cache and route-segment persistence
--- Allows the backend to proxy TomTom searches and cache routing results so the
--- API key never reaches the browser and repeated O/D pairs avoid redundant API calls.
+-- Place cache and route-segment persistence for Nominatim + OSRM.
+-- Allows the backend to proxy geocoding/routing and cache repeated O/D pairs.
 
 CREATE TABLE IF NOT EXISTS map.places (
-    place_id     TEXT        PRIMARY KEY,          -- TomTom entity ID (or generated UUID)
+    place_id     TEXT        PRIMARY KEY,          -- OSM/Nominatim place identifier
     name         TEXT        NOT NULL,
     address      TEXT        NOT NULL DEFAULT '',
     lat          DOUBLE PRECISION NOT NULL,
@@ -12,7 +11,7 @@ CREATE TABLE IF NOT EXISTS map.places (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Intercity / motorway segments derived from TomTom road references.
+-- Intercity / motorway segments derived from routed road references.
 -- Segment IDs follow the pattern {COUNTRY_CODE}-{ROAD_REF}, e.g. "IE-M50".
 -- These are SEPARATE from the city-level graph segments in migration 001.
 CREATE TABLE IF NOT EXISTS map.intercity_segments (
@@ -28,7 +27,7 @@ CREATE TABLE IF NOT EXISTS map.intercity_segments (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Cached TomTom routing results keyed by origin/destination place pair.
+-- Cached routing results keyed by origin/destination place pair.
 CREATE TABLE IF NOT EXISTS map.routes (
     route_id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     origin_place_id  TEXT        NOT NULL REFERENCES map.places(place_id),

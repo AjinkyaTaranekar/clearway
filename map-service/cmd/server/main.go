@@ -89,8 +89,13 @@ func main() {
 		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL, log),
 		log,
 	)
-	tomtomClient := handlers.NewTomTomClient(cfg.Services.TomTomAPIKey, log)
-	searchHandler := handlers.NewSearchHandler(tomtomClient, log)
+	geoClient := handlers.NewGeoClient(
+		cfg.Services.NominatimBaseURL,
+		cfg.Services.OSRMBaseURL,
+		cfg.Services.UserAgent,
+		log,
+	)
+	searchHandler := handlers.NewSearchHandler(geoClient, log)
 
 	// Setup router
 	router := httpHandler.NewRouter(

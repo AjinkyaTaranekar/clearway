@@ -27,6 +27,6 @@ logging:
 services:
   capacity_base_url: ""
   jwks_url: ""
-  # TomTom API key — override via VCS_SERVICES_TOMTOM_API_KEY env var in production.
-  # This key is kept server-side; it is never sent to the browser.
-  tomtom_api_key: ""
+  nominatim_base_url: "https://nominatim.openstreetmap.org"
+  osrm_base_url: "https://router.project-osrm.org"
+  user_agent: "vcs-map-service/1.0"

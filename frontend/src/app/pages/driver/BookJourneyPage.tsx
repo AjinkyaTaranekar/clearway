@@ -3,7 +3,7 @@ import { AlertCircle, ChevronRight, Clock, Info } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import PlaceSearch from '../../components/ui/PlaceSearch';
-import TomTomMap, { addMarker, addPolyline } from '../../components/ui/TomTomMap';
+import OSMMap, { addMarker, addPolyline } from '../../components/ui/OSMMap';
 import { useApp } from '../../context/AppContext';
 import { PlaceResult } from '../../services/mapApi';
 
@@ -75,7 +75,7 @@ export default function BookJourneyPage() {
   };
 
   // Draw route preview on step 2 once map is ready
-  const handleMapReady = (map: tt.Map) => {
+  const handleMapReady = (map: MapLibreMap) => {
     mapRef.current = map;
     drawRouteOverlay(map);
   };
@@ -86,9 +86,9 @@ export default function BookJourneyPage() {
     drawRouteOverlay(mapRef.current);
   }, [step, originPlace, destPlace]);
 
-  const drawRouteOverlay = (map: tt.Map) => {
+  const drawRouteOverlay = (map: MapLibreMap) => {
     if (!originPlace || !destPlace) return;
-    // Draw a direct line between O and D — simple preview without calling TomTom routing
+    // Draw a direct line between O and D — simple preview without a route API call
     addPolyline(
       map,
       'route-preview',
@@ -346,9 +346,9 @@ export default function BookJourneyPage() {
               ))}
             </div>
 
-            {/* TomTom route map */}
+            {/* Route map */}
             <div className="rounded-xl overflow-hidden mb-5" style={{ border: '1px solid var(--border)', height: '280px' }}>
-              <TomTomMap
+              <OSMMap
                 center={mapCenter}
                 zoom={originPlace && destPlace ? 7 : 10}
                 onReady={handleMapReady}

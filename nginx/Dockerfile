@@ -12,3 +12,6 @@ EXPOSE 80
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost/nginx-health || exit 1
+
+# Write region.json at startup from REGION env var, then hand off to nginx
+CMD ["/bin/sh", "-c", "echo \"{\\\"region\\\":\\\"${REGION:-local}\\\"}\" > /usr/share/nginx/html/region.json && exec nginx -g 'daemon off;'"]

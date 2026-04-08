@@ -10,7 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import TomTomMap, { addMarker } from '../../components/ui/TomTomMap';
+import OSMMap, { addMarker } from '../../components/ui/OSMMap';
 import { TrafficSegment, getTrafficData } from '../../services/mapApi';
 
 type LevelFilter = 'all' | 'low' | 'medium' | 'high' | 'critical';
@@ -274,7 +274,7 @@ export default function TrafficMapPage() {
 
       {/* Map + sidebar */}
       <div className="flex flex-col lg:flex-row gap-5">
-        {/* TomTom map */}
+        {/* Map */}
         <div className="flex-1 bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', minHeight: '480px' }}>
           <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem' }}>
@@ -283,7 +283,7 @@ export default function TrafficMapPage() {
             <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>Click a segment for details</span>
           </div>
 
-          <TomTomMap
+          <OSMMap
             center={DUBLIN_CENTRE}
             zoom={12}
             onReady={handleMapReady}
