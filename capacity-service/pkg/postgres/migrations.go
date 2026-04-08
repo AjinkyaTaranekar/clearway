@@ -24,7 +24,7 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return fmt.Errorf("migrations: dir %q does not exist", migrationsDir)
 		}
 		return fmt.Errorf("migrations: read dir %q: %w", migrationsDir, err)
 	}
