@@ -36,6 +36,7 @@ func main() {
 		Format: cfg.Logging.Format,
 	})
 	log.Info().Msg("starting vcs-map service")
+	baseCtx := logger.WithContext(context.Background(), log)
 
 	// Initialize database connections
 	dbPools, err := postgres.NewConnectionPools(
@@ -65,15 +66,39 @@ func main() {
 
 	log.Info().Msg("Database connections established")
 
+	if err := postgres.RunMigrations(dbPools.Master, "migrations"); err != nil {
+		log.Fatal().Err(err).Msg("failed to run database migrations")
+	}
+	log.Info().Msg("database migrations applied")
+
+	graphStore := handlers.NewGraphStore(log)
+	if err := graphStore.LoadFromDB(baseCtx, dbPools.Slave); err != nil {
+		graphStore.UseFallback(err)
+	}
+
+	var jwksValidator *httpHandler.JWKSValidator
+	if cfg.Services.JWKSURL != "" {
+		jwksValidator = httpHandler.NewJWKSValidator(cfg.Services.JWKSURL)
+		log.Info().Str("jwks_url", cfg.Services.JWKSURL).Msg("JWKS validator configured")
+	}
+
 	// Initialize HTTP handlers
-	healthHandler := handlers.NewHealthHandler()
-	mapHandler := handlers.NewMapHandler()
+	healthHandler := handlers.NewHealthHandler(graphStore)
+	mapHandler := handlers.NewMapHandler(
+		graphStore,
+		handlers.NewCapacityClient(cfg.Services.CapacityBaseURL, log),
+		log,
+	)
+	tomtomClient := handlers.NewTomTomClient(cfg.Services.TomTomAPIKey, log)
+	searchHandler := handlers.NewSearchHandler(tomtomClient, log)
 
 	// Setup router
 	router := httpHandler.NewRouter(
 		healthHandler,
 		mapHandler,
+		searchHandler,
 		log,
+		jwksValidator,
 	)
 	mux := router.Setup()
 
@@ -105,7 +130,7 @@ func main() {
 	log.Info().Msg("shutting down server...")
 
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {

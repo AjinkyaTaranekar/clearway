@@ -117,6 +117,32 @@ export async function iamLogout(accessToken: string, refreshToken: string): Prom
   });
 }
 
+export interface UpdateProfileParams {
+  name?: string;
+  vehicle_type?: string;
+  license_info?: {
+    license_number?: string;
+    expiry_date?: string;
+  };
+}
+
+/**
+ * Update the authenticated user's profile on the IAM service.
+ * Only name, vehicle_type, and license_info can be changed; email changes
+ * are not supported by the IAM service (require a separate verification flow).
+ * Requires a valid access token.
+ */
+export async function iamUpdateProfile(
+  accessToken: string,
+  params: UpdateProfileParams,
+): Promise<AuthUser> {
+  return iamFetch<AuthUser>('/api/v1/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(params),
+    authToken: accessToken,
+  });
+}
+
 /**
  * Exchange an expiring access token for a fresh pair using the refresh token.
  */

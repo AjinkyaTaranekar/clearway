@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/notification-service/internal/model"
 )
@@ -27,6 +28,9 @@ type NotificationRepository interface {
 	// MarkAllRead marks every unread notification for a driver. Returns the
 	// number of rows updated.
 	MarkAllRead(ctx context.Context, driverID string) (int, error)
+
+	// UpdateDeliveryStatus tracks push-delivery progress for a notification.
+	UpdateDeliveryStatus(ctx context.Context, notificationID, status string, retryCount int, lastError string, sentAt, failedAt *time.Time) error
 }
 
 // DeviceTokenRepository defines the data-access interface for device tokens.

@@ -1,4 +1,4 @@
-import { Journey, JourneyStatus, RouteSegment, VehicleType } from '../data/mockData';
+import { Journey, JourneyStatus, RouteSegment, VehicleType } from '../types';
 import { authHeaders } from './auth';
 import { getCoordinates, getLocationName } from './coordinates';
 
@@ -32,17 +32,65 @@ function toApiVehicleType(frontendType: string): string {
   return map[frontendType] ?? frontendType.toLowerCase();
 }
 
-function mapSegments(apiSegments: any[]): RouteSegment[] {
-  if (!Array.isArray(apiSegments)) return [];
-  return apiSegments.map((s) => ({
-    id: s.segment_id ?? s.id,
-    name: s.segment_name ?? s.name,
-    occupancy: 50,
-    level: 'medium' as const,
-  }));
+// Capacity Service returns 'low' | 'moderate' | 'high' | 'critical'.
+// The frontend occupancyColor() function uses 'low' | 'medium' | 'high' | 'critical'.
+// Map 'moderate' → 'medium' so colour indicators render correctly (U-08 fix).
+function capacityLevelToFrontend(level: string): 'low' | 'medium' | 'high' | 'critical' {
+  const levelMap: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+    low: 'low',
+    moderate: 'medium',
+    high: 'high',
+    critical: 'critical',
+  };
+  return levelMap[level] ?? 'low';
 }
 
-function mapApiJourney(j: any): Journey {
+// Fetches current occupancy for every registered segment from the Capacity Service.
+// Called in parallel with the Journey Service fetch in getJourney() so it adds
+// zero latency to the page load.  Returns an empty Map on any error so the UI
+// degrades gracefully (falls back to neutral 50% / 'medium' values).
+type SegmentOccupancy = { pct: number; level: 'low' | 'medium' | 'high' | 'critical' };
+
+async function fetchSegmentOccupancyMap(): Promise<Map<string, SegmentOccupancy>> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/v1/capacity/segments/occupancy`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return new Map();
+    const data = await res.json();
+    const map = new Map<string, SegmentOccupancy>();
+    (Array.isArray(data) ? data : []).forEach((seg: any) => {
+      map.set(seg.segment_id, {
+        pct: seg.occupancy_pct ?? 0,
+        level: capacityLevelToFrontend(seg.level ?? 'low'),
+      });
+    });
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+function mapSegments(
+  apiSegments: any[],
+  occupancyMap?: Map<string, SegmentOccupancy>,
+): RouteSegment[] {
+  if (!Array.isArray(apiSegments)) return [];
+  return apiSegments.map((s) => {
+    const segId: string = s.segment_id ?? s.id;
+    const occ = occupancyMap?.get(segId);
+    return {
+      id: segId,
+      name: s.segment_name ?? s.name,
+      // U-08: use live occupancy from Capacity Service; fall back to neutral 50%
+      // only when the occupancy fetch failed or this segment_id is unrecognised.
+      occupancy: occ !== undefined ? Math.round(occ.pct) : 50,
+      level: occ !== undefined ? occ.level : ('medium' as const),
+    };
+  });
+}
+
+function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Journey {
   const originName = j.origin
     ? getLocationName(j.origin.lat, j.origin.lng)
     : j.origin_name ?? 'Unknown';
@@ -53,7 +101,7 @@ function mapApiJourney(j: any): Journey {
   return {
     id: j.journey_id,
     driverId: j.driver_id ?? '',
-    driverName: 'Driver',
+    driverName: j.driver_name ?? 'Driver',
     origin: originName,
     destination: destName,
     departureTime: j.departure_time ?? '',
@@ -62,7 +110,7 @@ function mapApiJourney(j: any): Journey {
     status: mapStatus(j.status ?? 'pending'),
     region: 'Central',
     rejectionReason: j.rejection_reason,
-    segments: mapSegments(j.segments ?? []),
+    segments: mapSegments(j.segments ?? [], occupancyMap),
     timeline: [
       {
         id: 'T1',
@@ -156,8 +204,13 @@ export async function listJourneys(
 }
 
 export async function getJourney(id: string): Promise<Journey> {
-  const data = await apiFetch<any>(`/api/v1/journeys/${id}`);
-  return mapApiJourney(data);
+  // Fetch journey data and current segment occupancy in parallel so the
+  // occupancy call adds zero latency to the page load (U-08 fix).
+  const [data, occupancyMap] = await Promise.all([
+    apiFetch<any>(`/api/v1/journeys/${id}`),
+    fetchSegmentOccupancyMap(),
+  ]);
+  return mapApiJourney(data, occupancyMap);
 }
 
 export async function cancelJourney(id: string): Promise<Journey> {
@@ -208,6 +261,25 @@ export interface EnforcementVerifyResult {
   time_window_start?: string;
   time_window_end?: string;
   timestamp: string;
+}
+
+export interface AdminAnalyticsResult {
+  total_journeys: number;
+  approved: number;
+  rejected: number;
+  active: number;
+  completed: number;
+  cancelled: number;
+  expired: number;
+  approval_rate: number;
+  rejection_rate: number;
+  window: string;
+}
+
+// adminAnalytics fetches real journey counts from the backend (U-14).
+// window: '1h' | '24h' | '7d'
+export async function adminAnalytics(window = '24h'): Promise<AdminAnalyticsResult> {
+  return apiFetch<AdminAnalyticsResult>(`/api/v1/admin/analytics?window=${window}`);
 }
 
 export async function enforcementVerify(params: {

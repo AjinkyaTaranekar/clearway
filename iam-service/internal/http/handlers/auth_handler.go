@@ -17,6 +17,10 @@ import (
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
+// licenseRegex permits 2–30 alphanumeric characters with optional hyphens/spaces.
+// This covers common formats: "DL-123456", "AB 1234567", "CDL123456".
+var licenseRegex = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\- ]{0,28}[A-Za-z0-9]$|^[A-Za-z0-9]{1}$`)
+
 type AuthHandler struct{ auth *service.AuthService }
 
 func NewAuthHandler(auth *service.AuthService) *AuthHandler { return &AuthHandler{auth: auth} }
@@ -79,8 +83,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if !model.ValidVehicleTypes[vt] {
 		errs = append(errs, fe{"vehicle_type", "Must be: car, van, motorcycle, or truck."})
 	}
-	if req.LicenseInfo.LicenseNumber == "" {
+	licenseNum := strings.TrimSpace(req.LicenseInfo.LicenseNumber)
+	req.LicenseInfo.LicenseNumber = licenseNum
+	if licenseNum == "" {
 		errs = append(errs, fe{"license_info.license_number", "Required."})
+	} else if len(licenseNum) > 30 || !licenseRegex.MatchString(licenseNum) {
+		errs = append(errs, fe{"license_info.license_number", "Must be 1–30 alphanumeric characters (hyphens and spaces allowed)."})
 	}
 	if len(errs) > 0 {
 		log.Warn().

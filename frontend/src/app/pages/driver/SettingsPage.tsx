@@ -1,17 +1,26 @@
-import { Bell, Check, ChevronRight, HelpCircle, LogOut, Shield } from 'lucide-react';
-import { useState } from 'react';
+import { AlertCircle, Bell, Check, ChevronRight, HelpCircle, LogOut, Shield } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import { disablePushNotifications, enablePushNotifications, isPushEnabled } from '../../services/pushNotifications';
 
 export default function SettingsPage() {
-  const { user, logout } = useApp();
+  const { user, logout, updateProfile } = useApp();
   const navigate = useNavigate();
   const [pushEnabled, setPushEnabled] = useState(false);
   const [emailNotifs, setEmailNotifs] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
   const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [vehicleType, setVehicleType] = useState(user?.vehicle_type || '');
   const [phone, setPhone] = useState(user?.phone || '');
+
+  useEffect(() => {
+    setPushEnabled(isPushEnabled());
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -19,9 +28,43 @@ export default function SettingsPage() {
   };
 
   const handleSave = async () => {
-    await new Promise((r) => setTimeout(r, 500));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    if (!name.trim()) {
+      setSaveError('Full name is required.');
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+    try {
+      const fields: { name?: string; vehicle_type?: string } = { name: name.trim() };
+      if (vehicleType && vehicleType !== user?.vehicle_type) fields.vehicle_type = vehicleType;
+      await updateProfile(fields);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err: any) {
+      setSaveError(err.message ?? 'Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePushToggle = async () => {
+    setPushBusy(true);
+    setPushError('');
+
+    try {
+      if (pushEnabled) {
+        disablePushNotifications();
+        setPushEnabled(false);
+        return;
+      }
+
+      await enablePushNotifications();
+      setPushEnabled(true);
+    } catch (err: any) {
+      setPushError(err.message ?? 'Failed to enable push notifications.');
+    } finally {
+      setPushBusy(false);
+    }
   };
 
   const initials = user?.name
@@ -86,21 +129,40 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
+              Vehicle type
+            </label>
+            <select
+              value={vehicleType}
+              onChange={(e) => setVehicleType(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-lg outline-none appearance-none"
+              style={{ border: '1.5px solid var(--border)', background: 'white', color: '#1F2421' }}
+              onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
+              onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+            >
+              {['car', 'van', 'motorcycle', 'truck'].map((v) => (
+                <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
               Email address
             </label>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={user?.email || ''}
+              readOnly
               className="w-full px-3.5 py-2.5 rounded-lg outline-none"
-              style={{ border: '1.5px solid var(--border)', background: 'white', color: '#1F2421' }}
-              onFocus={(e) => (e.target.style.borderColor = '#2F6B55')}
-              onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+              style={{ border: '1.5px solid var(--border)', background: '#F8F6F2', color: '#4E5953', cursor: 'not-allowed' }}
+              title="Email address cannot be changed here"
             />
+            <p className="mt-1" style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
+              Contact support to change your email address.
+            </p>
           </div>
           <div>
             <label className="block mb-1.5" style={{ color: '#1F2421', fontSize: '0.875rem', fontWeight: 500 }}>
-              Phone number
+              Phone number <span style={{ color: '#4E5953', fontWeight: 400 }}>(optional)</span>
             </label>
             <input
               type="tel"
@@ -114,14 +176,31 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {saveError && (
+          <div
+            className="flex items-center gap-2 mt-4 p-3 rounded-lg text-sm"
+            style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }}
+          >
+            <AlertCircle size={15} />
+            {saveError}
+          </div>
+        )}
+
         <button
           onClick={handleSave}
+          disabled={saving}
           className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm transition-all"
-          style={{ background: saved ? '#2E7D32' : '#2F6B55', fontWeight: 600 }}
-          onMouseEnter={(e) => !saved && (e.currentTarget.style.background = '#245343')}
-          onMouseLeave={(e) => !saved && (e.currentTarget.style.background = '#2F6B55')}
+          style={{ background: saved ? '#2E7D32' : '#2F6B55', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
+          onMouseEnter={(e) => !saved && !saving && (e.currentTarget.style.background = '#245343')}
+          onMouseLeave={(e) => !saved && !saving && (e.currentTarget.style.background = '#2F6B55')}
         >
-          {saved ? <><Check size={15} /> Saved</> : 'Save changes'}
+          {saved ? (
+            <><Check size={15} /> Saved</>
+          ) : saving ? (
+            <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
+          ) : (
+            'Save changes'
+          )}
         </button>
       </div>
 
@@ -143,9 +222,10 @@ export default function SettingsPage() {
               </div>
             </div>
             <button
-              onClick={() => setPushEnabled(!pushEnabled)}
+              onClick={handlePushToggle}
+              disabled={pushBusy}
               className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
-              style={{ background: pushEnabled ? '#2F6B55' : '#D9D2C7' }}
+              style={{ background: pushEnabled ? '#2F6B55' : '#D9D2C7', opacity: pushBusy ? 0.7 : 1, cursor: pushBusy ? 'not-allowed' : 'pointer' }}
               role="switch"
               aria-checked={pushEnabled}
             >
@@ -177,6 +257,16 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {pushError && (
+          <div
+            className="mt-4 p-3 rounded-lg text-sm flex items-center gap-2"
+            style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }}
+          >
+            <AlertCircle size={15} />
+            {pushError}
+          </div>
+        )}
 
         {!pushEnabled && (
           <div

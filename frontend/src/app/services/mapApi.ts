@@ -1,4 +1,24 @@
+import { authHeaders } from './auth';
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
+
+interface ApiError {
+  message?: string;
+}
+
+interface ApiEnvelope<T> {
+  success?: boolean;
+  data?: T;
+  error?: ApiError;
+}
+
+export interface PlaceResult {
+  place_id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
 
 export interface MapNode {
   node_id: string;
@@ -21,11 +41,51 @@ export interface MapRoute {
   }[];
 }
 
-async function mapFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message ?? json.message ?? `HTTP ${res.status}`);
-  return json as T;
+export interface TrafficGraphNode {
+  node_id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+export interface TrafficSegmentNodeRef {
+  node_id: string;
+  label: string;
+  lat: number;
+  lng: number;
+}
+
+export interface TrafficSegment {
+  segment_id: string;
+  name: string;
+  region: string;
+  level: 'low' | 'medium' | 'high' | 'critical';
+  occupancy_pct: number;
+  vehicles: number;
+  capacity: number;
+  trend: 'improving' | 'stable' | 'worsening';
+  from_node: TrafficSegmentNodeRef;
+  to_node: TrafficSegmentNodeRef;
+}
+
+export interface TrafficData {
+  segments: TrafficSegment[];
+  nodes: TrafficGraphNode[];
+}
+
+async function mapFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...authHeaders(),
+      ...(options.headers ?? {}),
+    },
+  });
+  const json = await res.json() as ApiEnvelope<T>;
+  if (!res.ok || json.success === false) {
+    throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+  }
+  return (json.data ?? json) as T;
 }
 
 export async function getMapNodes(): Promise<MapNode[]> {
@@ -39,4 +99,19 @@ export async function getRoute(originNodeId: string, destNodeId: string): Promis
     destination_node_id: destNodeId,
   });
   return mapFetch<MapRoute>(`/api/v1/map/route?${q}`);
+}
+
+export async function getTrafficData(): Promise<TrafficData> {
+  return mapFetch<TrafficData>('/api/v1/map/traffic');
+}
+
+// searchPlaces calls our backend TomTom proxy — the API key stays server-side.
+export async function searchPlaces(query: string, limit = 5): Promise<PlaceResult[]> {
+  if (!query.trim()) return [];
+  const q = new URLSearchParams({ q: query, limit: String(limit) });
+  // Search endpoint is public (no auth required for booking flow)
+  const res = await fetch(`${BASE_URL}/api/v1/map/search?${q}`);
+  const json = (await res.json()) as ApiEnvelope<{ places: PlaceResult[] }>;
+  if (!res.ok || json.success === false) return [];
+  return json.data?.places ?? [];
 }

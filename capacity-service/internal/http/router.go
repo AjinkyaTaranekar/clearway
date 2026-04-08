@@ -59,6 +59,9 @@ func (r *Router) Setup() *mux.Router {
 	api := r.mux.PathPrefix("/api/v1/capacity").Subrouter()
 	api.HandleFunc("/reserve", r.capacityHandler.Reserve).Methods("POST")
 	api.HandleFunc("/check", r.capacityHandler.Check).Methods("GET")
+	// /segments must be registered before /segments/occupancy so gorilla/mux
+	// does not shadow the more-specific path.
+	api.HandleFunc("/segments", r.occupancyHandler.Segments).Methods("GET")
 	api.HandleFunc("/segments/occupancy", r.occupancyHandler.Occupancy).Methods("GET")
 
 	return r.mux

@@ -33,12 +33,22 @@ type HealthResponse struct {
 // @Router /health [get]
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Debug().
+		Str("handler", "HealthHandler.Health").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("health check request received")
 
 	healthResp := HealthResponse{
 		Status:    "healthy",
 		Version:   "1.0.0",
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
+	log.Debug().
+		Str("handler", "HealthHandler.Health").
+		Str("status", healthResp.Status).
+		Msg("health check response ready")
 
 	response.Success(w, healthResp, traceID)
 }
@@ -53,6 +63,12 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 // @Router /ready [get]
 func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Debug().
+		Str("handler", "HealthHandler.Readiness").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("readiness check request received")
 
 	// TODO: Check database connections, external services, etc.
 	healthResp := HealthResponse{
@@ -60,6 +76,10 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
+	log.Debug().
+		Str("handler", "HealthHandler.Readiness").
+		Str("status", healthResp.Status).
+		Msg("readiness check response ready")
 
 	response.Success(w, healthResp, traceID)
 }

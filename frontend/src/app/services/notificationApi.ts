@@ -21,6 +21,20 @@ export interface NotificationListResponse {
   limit: number;
 }
 
+export interface AdminApiNotification extends ApiNotification {
+  driver_id: string;
+  event_id: string;
+  event_type: string;
+  delivery_status: string;
+}
+
+export interface AdminNotificationListResponse {
+  notifications: AdminApiNotification[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 async function notifFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -38,6 +52,11 @@ async function notifFetch<T>(path: string, options: RequestInit = {}): Promise<T
 export async function listNotifications(page = 1, limit = 50): Promise<NotificationListResponse> {
   const q = new URLSearchParams({ page: String(page), limit: String(limit) });
   return notifFetch<NotificationListResponse>(`/api/v1/notifications?${q}`);
+}
+
+export async function listAdminNotifications(page = 1, limit = 50): Promise<AdminNotificationListResponse> {
+  const q = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return notifFetch<AdminNotificationListResponse>(`/api/v1/admin/notifications?${q}`);
 }
 
 export async function markNotificationRead(id: string): Promise<void> {

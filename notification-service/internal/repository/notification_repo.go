@@ -23,6 +23,15 @@ func NewNotificationRepo(master, slave *sql.DB) *NotificationRepo {
 // Insert persists a new notification. Returns an error that callers can check
 // for duplicate event_id (unique constraint violation).
 func (r *NotificationRepo) Insert(ctx context.Context, n *model.Notification) error {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "NotificationRepo.Insert").
+		Str("notification_id", n.ID).
+		Str("event_id", n.EventID).
+		Str("driver_id", n.DriverID).
+		Str("event_type", n.EventType).
+		Msg("inserting notification row")
+
 	const q = `
 		INSERT INTO notification.notifications
 			(notification_id, event_id, driver_id, journey_id, event_type,
@@ -34,13 +43,32 @@ func (r *NotificationRepo) Insert(ctx context.Context, n *model.Notification) er
 		n.Title, n.Message, n.Type, n.DeliveryStatus,
 	)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.Insert").
+			Err(err).
+			Str("notification_id", n.ID).
+			Str("event_id", n.EventID).
+			Msg("failed to insert notification row")
 		return fmt.Errorf("notification_repo.Insert: %w", err)
 	}
+	log.Debug().
+		Str("repository", "NotificationRepo.Insert").
+		Str("notification_id", n.ID).
+		Msg("notification row inserted")
 	return nil
 }
 
 // ListByDriver returns a paginated list plus total and unread counts.
 func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.NotificationFilter) ([]model.Notification, int, int, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "NotificationRepo.ListByDriver").
+		Str("driver_id", f.DriverID).
+		Int("page", f.Page).
+		Int("limit", f.Limit).
+		Str("type_filter", f.TypeFilter).
+		Msg("listing notifications by driver")
+
 	// Build dynamic WHERE clause
 	args := []interface{}{f.DriverID}
 	where := "WHERE driver_id = $1"
@@ -61,6 +89,11 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 	var total int
 	countQ := fmt.Sprintf("SELECT COUNT(*) FROM notification.notifications %s", where)
 	if err := r.slave.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListByDriver").
+			Err(err).
+			Str("driver_id", f.DriverID).
+			Msg("failed to count notifications by driver")
 		return nil, 0, 0, fmt.Errorf("notification_repo.ListByDriver count: %w", err)
 	}
 
@@ -70,6 +103,11 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 		"SELECT COUNT(*) FROM notification.notifications WHERE driver_id = $1 AND is_read = false",
 		f.DriverID,
 	).Scan(&unread); err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListByDriver").
+			Err(err).
+			Str("driver_id", f.DriverID).
+			Msg("failed to count unread notifications")
 		return nil, 0, 0, fmt.Errorf("notification_repo.ListByDriver unread: %w", err)
 	}
 
@@ -88,19 +126,46 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 	args = append(args, f.Limit, offset)
 	rows, err := r.slave.QueryContext(ctx, listQ, args...)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListByDriver").
+			Err(err).
+			Str("driver_id", f.DriverID).
+			Msg("failed to query notifications by driver")
 		return nil, 0, 0, fmt.Errorf("notification_repo.ListByDriver rows: %w", err)
 	}
 	defer rows.Close()
 
 	notifications, err := scanNotifications(rows)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListByDriver").
+			Err(err).
+			Str("driver_id", f.DriverID).
+			Msg("failed to scan notifications by driver")
 		return nil, 0, 0, err
 	}
+	log.Info().
+		Str("repository", "NotificationRepo.ListByDriver").
+		Str("driver_id", f.DriverID).
+		Int("result_count", len(notifications)).
+		Int("total", total).
+		Int("unread", unread).
+		Msg("listed notifications by driver")
 	return notifications, total, unread, nil
 }
 
 // ListAll returns a paginated admin feed.
 func (r *NotificationRepo) ListAll(ctx context.Context, f model.NotificationFilter) ([]model.Notification, int, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "NotificationRepo.ListAll").
+		Str("driver_id_filter", f.DriverID).
+		Str("type_filter", f.TypeFilter).
+		Str("delivery_status_filter", f.DeliveryStatus).
+		Int("page", f.Page).
+		Int("limit", f.Limit).
+		Msg("listing notifications for admin")
+
 	args := []interface{}{}
 	where := "WHERE 1=1"
 	idx := 1
@@ -124,6 +189,10 @@ func (r *NotificationRepo) ListAll(ctx context.Context, f model.NotificationFilt
 	var total int
 	countQ := fmt.Sprintf("SELECT COUNT(*) FROM notification.notifications %s", where)
 	if err := r.slave.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListAll").
+			Err(err).
+			Msg("failed to count admin notification listing")
 		return nil, 0, fmt.Errorf("notification_repo.ListAll count: %w", err)
 	}
 
@@ -141,20 +210,40 @@ func (r *NotificationRepo) ListAll(ctx context.Context, f model.NotificationFilt
 	args = append(args, f.Limit, offset)
 	rows, err := r.slave.QueryContext(ctx, listQ, args...)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListAll").
+			Err(err).
+			Msg("failed to query admin notification listing")
 		return nil, 0, fmt.Errorf("notification_repo.ListAll rows: %w", err)
 	}
 	defer rows.Close()
 
 	notifications, err := scanNotifications(rows)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.ListAll").
+			Err(err).
+			Msg("failed to scan admin notification listing")
 		return nil, 0, err
 	}
+	log.Info().
+		Str("repository", "NotificationRepo.ListAll").
+		Int("result_count", len(notifications)).
+		Int("total", total).
+		Msg("listed notifications for admin")
 	return notifications, total, nil
 }
 
 // MarkRead marks a single notification as read. Returns nil if not found or
 // not owned by the given driver.
 func (r *NotificationRepo) MarkRead(ctx context.Context, notificationID, driverID string) (*model.Notification, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "NotificationRepo.MarkRead").
+		Str("notification_id", notificationID).
+		Str("driver_id", driverID).
+		Msg("marking notification as read")
+
 	const q = `
 		UPDATE notification.notifications
 		SET is_read = true, read_at = NOW(), updated_at = NOW()
@@ -167,16 +256,38 @@ func (r *NotificationRepo) MarkRead(ctx context.Context, notificationID, driverI
 	row := r.master.QueryRowContext(ctx, q, notificationID, driverID)
 	notifications, err := scanNotifications(&singleRow{row})
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.MarkRead").
+			Err(err).
+			Str("notification_id", notificationID).
+			Str("driver_id", driverID).
+			Msg("failed to mark notification as read")
 		return nil, fmt.Errorf("notification_repo.MarkRead: %w", err)
 	}
 	if len(notifications) == 0 {
+		log.Warn().
+			Str("repository", "NotificationRepo.MarkRead").
+			Str("notification_id", notificationID).
+			Str("driver_id", driverID).
+			Msg("notification not found for mark read")
 		return nil, nil
 	}
+	log.Info().
+		Str("repository", "NotificationRepo.MarkRead").
+		Str("notification_id", notifications[0].ID).
+		Str("driver_id", notifications[0].DriverID).
+		Msg("notification marked as read")
 	return &notifications[0], nil
 }
 
 // MarkAllRead marks all unread notifications for a driver as read.
 func (r *NotificationRepo) MarkAllRead(ctx context.Context, driverID string) (int, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "NotificationRepo.MarkAllRead").
+		Str("driver_id", driverID).
+		Msg("marking all notifications as read")
+
 	const q = `
 		UPDATE notification.notifications
 		SET is_read = true, read_at = NOW(), updated_at = NOW()
@@ -184,15 +295,33 @@ func (r *NotificationRepo) MarkAllRead(ctx context.Context, driverID string) (in
 
 	res, err := r.master.ExecContext(ctx, q, driverID)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.MarkAllRead").
+			Err(err).
+			Str("driver_id", driverID).
+			Msg("failed to mark all notifications as read")
 		return 0, fmt.Errorf("notification_repo.MarkAllRead: %w", err)
 	}
 	n, _ := res.RowsAffected()
+	log.Info().
+		Str("repository", "NotificationRepo.MarkAllRead").
+		Str("driver_id", driverID).
+		Int64("rows_affected", n).
+		Msg("marked all notifications as read")
 	return int(n), nil
 }
 
 // UpdateDeliveryStatus updates the delivery_status, retry_count and related
 // timestamps. Called by the retry worker and event consumer.
 func (r *NotificationRepo) UpdateDeliveryStatus(ctx context.Context, notificationID, status string, retryCount int, lastError string, sentAt, failedAt *time.Time) error {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "NotificationRepo.UpdateDeliveryStatus").
+		Str("notification_id", notificationID).
+		Str("status", status).
+		Int("retry_count", retryCount).
+		Msg("updating notification delivery status")
+
 	const q = `
 		UPDATE notification.notifications
 		SET delivery_status = $2,
@@ -205,8 +334,18 @@ func (r *NotificationRepo) UpdateDeliveryStatus(ctx context.Context, notificatio
 
 	_, err := r.master.ExecContext(ctx, q, notificationID, status, retryCount, lastError, sentAt, failedAt)
 	if err != nil {
+		log.Error().
+			Str("repository", "NotificationRepo.UpdateDeliveryStatus").
+			Err(err).
+			Str("notification_id", notificationID).
+			Msg("failed to update notification delivery status")
 		return fmt.Errorf("notification_repo.UpdateDeliveryStatus: %w", err)
 	}
+	log.Info().
+		Str("repository", "NotificationRepo.UpdateDeliveryStatus").
+		Str("notification_id", notificationID).
+		Str("status", status).
+		Msg("notification delivery status updated")
 	return nil
 }
 
@@ -219,9 +358,9 @@ type scanner interface {
 // singleRow adapts *sql.Row to the same Scan interface used by *sql.Rows.
 type singleRow struct{ row *sql.Row }
 
-func (s *singleRow) Scan(dest ...interface{}) error  { return s.row.Scan(dest...) }
-func (s *singleRow) Next() bool                      { return true }
-func (s *singleRow) Close() error                    { return nil }
+func (s *singleRow) Scan(dest ...interface{}) error { return s.row.Scan(dest...) }
+func (s *singleRow) Next() bool                     { return true }
+func (s *singleRow) Close() error                   { return nil }
 
 // rowsIface abstracts *sql.Rows so we can reuse scanNotifications for both
 // multi-row and single-row results.

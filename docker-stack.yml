@@ -345,6 +345,7 @@ services:
       VCS_REDIS_HOST: redis:6379
       VCS_LOGGING_LEVEL: info
       VCS_LOGGING_FORMAT: json
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_credentials
     secrets:
       - source: firebase_credentials
         target: /run/secrets/firebase_credentials

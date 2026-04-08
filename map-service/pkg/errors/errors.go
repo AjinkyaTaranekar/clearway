@@ -29,17 +29,17 @@ func (e *AppError) Unwrap() error {
 
 // Common error codes
 const (
-	CodeNotFound          = "NOT_FOUND"
-	CodeBadRequest        = "BAD_REQUEST"
-	CodeUnauthorized      = "UNAUTHORIZED"
-	CodeForbidden         = "FORBIDDEN"
-	CodeConflict          = "CONFLICT"
-	CodeInternalError     = "INTERNAL_ERROR"
-	CodeValidationFailed  = "VALIDATION_FAILED"
-	CodeDatabaseError     = "DATABASE_ERROR"
-	CodeExternalAPIError  = "EXTERNAL_API_ERROR"
-	CodeAccountLocked     = "ACCOUNT_LOCKED"
-	CodeAccountSuspended  = "ACCOUNT_SUSPENDED"
+	CodeNotFound           = "NOT_FOUND"
+	CodeBadRequest         = "BAD_REQUEST"
+	CodeUnauthorized       = "UNAUTHORIZED"
+	CodeForbidden          = "FORBIDDEN"
+	CodeConflict           = "CONFLICT"
+	CodeInternalError      = "INTERNAL_ERROR"
+	CodeValidationFailed   = "VALIDATION_FAILED"
+	CodeDatabaseError      = "DATABASE_ERROR"
+	CodeExternalAPIError   = "EXTERNAL_API_ERROR"
+	CodeAccountLocked      = "ACCOUNT_LOCKED"
+	CodeAccountSuspended   = "ACCOUNT_SUSPENDED"
 	CodeInvalidCredentials = "INVALID_CREDENTIALS"
 )
 

@@ -24,6 +24,13 @@ func NewDeviceTokenRepo(master, slave *sql.DB) *DeviceTokenRepo {
 // Upsert inserts a new token or updates the existing active one for
 // the same driver+fcm_token combination.
 func (r *DeviceTokenRepo) Upsert(ctx context.Context, t *model.DeviceToken) (*model.DeviceToken, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "DeviceTokenRepo.Upsert").
+		Str("driver_id", t.DriverID).
+		Str("platform", string(t.Platform)).
+		Msg("upserting device token")
+
 	// Deactivate any existing active token with the same fcm_token value
 	// (different driver may have acquired it) then insert fresh.
 	const deactivateQ = `
@@ -35,6 +42,11 @@ func (r *DeviceTokenRepo) Upsert(ctx context.Context, t *model.DeviceToken) (*mo
 		WHERE fcm_token = $1 AND is_active = true AND driver_id != $2`
 
 	if _, err := r.master.ExecContext(ctx, deactivateQ, t.FCMToken, t.DriverID); err != nil {
+		log.Error().
+			Str("repository", "DeviceTokenRepo.Upsert").
+			Err(err).
+			Str("driver_id", t.DriverID).
+			Msg("failed to deactivate existing active token")
 		return nil, fmt.Errorf("device_token_repo.Upsert deactivate old: %w", err)
 	}
 
@@ -61,13 +73,29 @@ func (r *DeviceTokenRepo) Upsert(ctx context.Context, t *model.DeviceToken) (*mo
 		&saved.CreatedAt, &saved.UpdatedAt,
 	)
 	if err != nil {
+		log.Error().
+			Str("repository", "DeviceTokenRepo.Upsert").
+			Err(err).
+			Str("driver_id", t.DriverID).
+			Msg("failed to scan upserted token")
 		return nil, fmt.Errorf("device_token_repo.Upsert scan: %w", err)
 	}
+	log.Info().
+		Str("repository", "DeviceTokenRepo.Upsert").
+		Str("driver_id", saved.DriverID).
+		Str("device_token_id", saved.ID).
+		Msg("device token upsert completed")
 	return &saved, nil
 }
 
 // FindActiveByDriver returns all active FCM tokens for a driver.
 func (r *DeviceTokenRepo) FindActiveByDriver(ctx context.Context, driverID string) ([]model.DeviceToken, error) {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "DeviceTokenRepo.FindActiveByDriver").
+		Str("driver_id", driverID).
+		Msg("querying active device tokens")
+
 	const q = `
 		SELECT device_token_id, driver_id, fcm_token, platform, is_active,
 		       last_seen_at, invalidated_at, invalidation_reason, created_at, updated_at
@@ -77,6 +105,11 @@ func (r *DeviceTokenRepo) FindActiveByDriver(ctx context.Context, driverID strin
 
 	rows, err := r.slave.QueryContext(ctx, q, driverID)
 	if err != nil {
+		log.Error().
+			Str("repository", "DeviceTokenRepo.FindActiveByDriver").
+			Err(err).
+			Str("driver_id", driverID).
+			Msg("failed to query active device tokens")
 		return nil, fmt.Errorf("device_token_repo.FindActiveByDriver: %w", err)
 	}
 	defer rows.Close()
@@ -89,15 +122,32 @@ func (r *DeviceTokenRepo) FindActiveByDriver(ctx context.Context, driverID strin
 			&t.LastSeenAt, &t.InvalidatedAt, &t.InvalidationReason,
 			&t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
+			log.Error().
+				Str("repository", "DeviceTokenRepo.FindActiveByDriver").
+				Err(err).
+				Str("driver_id", driverID).
+				Msg("failed to scan active device token row")
 			return nil, fmt.Errorf("device_token_repo.FindActiveByDriver scan: %w", err)
 		}
 		tokens = append(tokens, t)
 	}
+	log.Debug().
+		Str("repository", "DeviceTokenRepo.FindActiveByDriver").
+		Str("driver_id", driverID).
+		Int("token_count", len(tokens)).
+		Msg("loaded active device tokens")
 	return tokens, nil
 }
 
 // Deactivate marks a token as inactive and records the reason.
 func (r *DeviceTokenRepo) Deactivate(ctx context.Context, tokenID, reason string) error {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "DeviceTokenRepo.Deactivate").
+		Str("device_token_id", tokenID).
+		Str("reason", reason).
+		Msg("deactivating device token")
+
 	now := time.Now().UTC()
 	const q = `
 		UPDATE notification.device_tokens
@@ -109,7 +159,16 @@ func (r *DeviceTokenRepo) Deactivate(ctx context.Context, tokenID, reason string
 
 	_, err := r.master.ExecContext(ctx, q, tokenID, now, reason)
 	if err != nil {
+		log.Error().
+			Str("repository", "DeviceTokenRepo.Deactivate").
+			Err(err).
+			Str("device_token_id", tokenID).
+			Msg("failed to deactivate device token")
 		return fmt.Errorf("device_token_repo.Deactivate: %w", err)
 	}
+	log.Info().
+		Str("repository", "DeviceTokenRepo.Deactivate").
+		Str("device_token_id", tokenID).
+		Msg("device token deactivated")
 	return nil
 }

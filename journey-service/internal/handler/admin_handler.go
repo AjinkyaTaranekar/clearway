@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/middleware"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/service"
 	apperrors "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/errors"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/pkg/response"
@@ -169,6 +170,47 @@ func (h *AdminHandler) EnforcementVerify(w http.ResponseWriter, r *http.Request)
 	response.Success(w, result, traceID)
 }
 
+// Analytics godoc
+// @Summary Admin analytics
+// @Description Returns aggregated journey counts for the last 1h, 24h, or 7d. Fixes U-14 (admin dashboard mock data).
+// @Tags Admin
+// @Produce json
+// @Security BearerAuth
+// @Param window query string false "Time window: 1h | 24h | 7d (default 24h)"
+// @Success 200 {object} service.AnalyticsResult
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Failure 403 {object} response.Response "Admin role required"
+// @Router /api/v1/admin/analytics [get]
+func (h *AdminHandler) Analytics(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	window := r.URL.Query().Get("window")
+	if window == "" {
+		window = "24h"
+	}
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "AdminHandler.Analytics").
+		Str("window", window).
+		Msg("admin analytics request received")
+
+	result, err := h.svc.AdminAnalytics(r.Context(), window)
+	if err != nil {
+		log.Error().
+			Str("handler", "AdminHandler.Analytics").
+			Err(err).
+			Msg("admin analytics service failed")
+		response.Error(w, err, traceID)
+		return
+	}
+
+	log.Info().
+		Str("handler", "AdminHandler.Analytics").
+		Str("window", window).
+		Int64("total_journeys", result.TotalJourneys).
+		Msg("admin analytics request completed")
+	response.Success(w, result, traceID)
+}
+
 // CancelJourney godoc
 // @Summary Force-cancel a journey (admin)
 // @Description Force-cancels any APPROVED or ACTIVE journey. No 30-minute time restriction. Requires admin role.
@@ -200,12 +242,15 @@ func (h *AdminHandler) CancelJourney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	journey, err := h.svc.AdminCancelJourney(r.Context(), journeyID)
+	// Extract the admin's own user ID from the JWT for audit trail (F-10/F-19).
+	adminID := middleware.GetDriverID(r.Context())
+	journey, err := h.svc.AdminCancelJourney(r.Context(), journeyID, adminID)
 	if err != nil {
 		log.Error().
 			Str("handler", "AdminHandler.CancelJourney").
 			Err(err).
 			Str("journey_id", journeyID).
+			Str("admin_id", adminID).
 			Msg("admin cancel journey service failed")
 		response.Error(w, err, traceID)
 		return

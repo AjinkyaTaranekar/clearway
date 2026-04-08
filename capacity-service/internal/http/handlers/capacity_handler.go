@@ -36,16 +36,39 @@ func NewCapacityHandler(svc *service.ReservationService, log *logger.Logger) *Ca
 // @Router       /api/v1/capacity/reserve [post]
 func (h *CapacityHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "CapacityHandler.Reserve").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("reserve request received")
 
 	var req model.ReserveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Warn().
+			Str("handler", "CapacityHandler.Reserve").
+			Err(err).
+			Msg("reserve request validation failed: invalid body")
 		h.writeError(w, http.StatusBadRequest, "invalid request body", traceID)
 		return
 	}
 
+	log.Info().
+		Str("handler", "CapacityHandler.Reserve").
+		Str("journey_id", req.JourneyID).
+		Str("idempotency_key", req.IdempotencyKey).
+		Str("vehicle_type", string(req.VehicleType)).
+		Int("segment_count", len(req.Reservations)).
+		Msg("invoking reservation service reserve")
+
 	result, statusCode, err := h.svc.Reserve(r.Context(), &req)
 	if err != nil {
-		h.log.Error().Err(err).Str("trace_id", traceID).Msg("reserve: service error")
+		log.Error().
+			Str("handler", "CapacityHandler.Reserve").
+			Err(err).
+			Str("journey_id", req.JourneyID).
+			Int("status_code", statusCode).
+			Msg("reservation service reserve failed")
 		if statusCode == 400 {
 			h.writeError(w, http.StatusBadRequest, err.Error(), traceID)
 		} else {
@@ -53,6 +76,12 @@ func (h *CapacityHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	log.Info().
+		Str("handler", "CapacityHandler.Reserve").
+		Str("journey_id", req.JourneyID).
+		Int("status_code", statusCode).
+		Msg("reserve request completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Trace-ID", traceID)
@@ -74,37 +103,87 @@ func (h *CapacityHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 // @Router       /api/v1/capacity/check [get]
 func (h *CapacityHandler) Check(w http.ResponseWriter, r *http.Request) {
 	traceID := tracing.GetTraceID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "CapacityHandler.Check").
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Msg("check availability request received")
 
 	segmentID := r.URL.Query().Get("segment_id")
 	startStr := r.URL.Query().Get("time_window_start")
 	endStr := r.URL.Query().Get("time_window_end")
 
 	if segmentID == "" || startStr == "" || endStr == "" {
+		log.Warn().
+			Str("handler", "CapacityHandler.Check").
+			Str("segment_id", segmentID).
+			Str("time_window_start", startStr).
+			Str("time_window_end", endStr).
+			Msg("check validation failed: missing required query parameters")
 		h.writeError(w, http.StatusBadRequest, "segment_id, time_window_start, and time_window_end are required", traceID)
 		return
 	}
 
 	windowStart, err := time.Parse(time.RFC3339, startStr)
 	if err != nil {
+		log.Warn().
+			Str("handler", "CapacityHandler.Check").
+			Err(err).
+			Str("segment_id", segmentID).
+			Str("time_window_start", startStr).
+			Msg("check validation failed: invalid window start")
 		h.writeError(w, http.StatusBadRequest, "time_window_start must be RFC3339 format", traceID)
 		return
 	}
 	windowEnd, err := time.Parse(time.RFC3339, endStr)
 	if err != nil {
+		log.Warn().
+			Str("handler", "CapacityHandler.Check").
+			Err(err).
+			Str("segment_id", segmentID).
+			Str("time_window_end", endStr).
+			Msg("check validation failed: invalid window end")
 		h.writeError(w, http.StatusBadRequest, "time_window_end must be RFC3339 format", traceID)
 		return
 	}
 	if !windowEnd.After(windowStart) {
+		log.Warn().
+			Str("handler", "CapacityHandler.Check").
+			Str("segment_id", segmentID).
+			Time("window_start", windowStart).
+			Time("window_end", windowEnd).
+			Msg("check validation failed: window end is not after start")
 		h.writeError(w, http.StatusBadRequest, "time_window_end must be after time_window_start", traceID)
 		return
 	}
 
+	log.Info().
+		Str("handler", "CapacityHandler.Check").
+		Str("segment_id", segmentID).
+		Time("window_start", windowStart).
+		Time("window_end", windowEnd).
+		Msg("invoking reservation service availability check")
+
 	resp, err := h.svc.CheckAvailability(r.Context(), segmentID, windowStart, windowEnd)
 	if err != nil {
-		h.log.Error().Err(err).Str("segment_id", segmentID).Str("trace_id", traceID).Msg("check: service error")
+		log.Error().
+			Str("handler", "CapacityHandler.Check").
+			Err(err).
+			Str("segment_id", segmentID).
+			Msg("reservation service availability check failed")
 		h.writeError(w, http.StatusNotFound, err.Error(), traceID)
 		return
 	}
+
+	log.Info().
+		Str("handler", "CapacityHandler.Check").
+		Str("segment_id", segmentID).
+		Float64("available_slots", resp.AvailableSlots).
+		Float64("reserved_slots", resp.ReservedSlots).
+		Float64("max_capacity", resp.MaxCapacity).
+		Bool("can_reserve", resp.CanReserve).
+		Msg("check availability request completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Trace-ID", traceID)

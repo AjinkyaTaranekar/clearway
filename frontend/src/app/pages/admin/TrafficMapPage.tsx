@@ -1,11 +1,19 @@
-import { useState, useCallback } from 'react';
-import { mapNodes, trafficSegments, TrafficSegment, Region } from '../../data/mockData';
+import { Map as MapLibreMap } from 'maplibre-gl';
+import { toast } from 'sonner';
 import {
-  TrendingUp, TrendingDown, Minus, X, RefreshCw, AlertTriangle, Info,
+  AlertTriangle,
+  Info,
+  Minus,
+  RefreshCw,
+  TrendingDown,
+  TrendingUp,
+  X,
 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import TomTomMap, { addMarker } from '../../components/ui/TomTomMap';
+import { TrafficSegment, getTrafficData } from '../../services/mapApi';
 
 type LevelFilter = 'all' | 'low' | 'medium' | 'high' | 'critical';
-type RegionFilter = Region | 'all';
 
 const LEVEL_COLOR: Record<string, string> = {
   low: '#7FB069',
@@ -40,15 +48,6 @@ const TREND_LABEL: Record<string, string> = {
   worsening: 'Worsening',
 };
 
-const REGION_OPTS: { label: string; value: RegionFilter }[] = [
-  { label: 'All regions', value: 'all' },
-  { label: 'North', value: 'North' },
-  { label: 'South', value: 'South' },
-  { label: 'East', value: 'East' },
-  { label: 'West', value: 'West' },
-  { label: 'Central', value: 'Central' },
-];
-
 const LEVEL_OPTS: { label: string; value: LevelFilter }[] = [
   { label: 'All', value: 'all' },
   { label: 'Low', value: 'low' },
@@ -57,34 +56,140 @@ const LEVEL_OPTS: { label: string; value: LevelFilter }[] = [
   { label: 'Critical', value: 'critical' },
 ];
 
-const SVG_W = 600;
-const SVG_H = 460;
-
-function getNodePos(nodeId: string) {
-  const n = mapNodes.find((m) => m.id === nodeId);
-  return n ? { x: n.x, y: n.y } : { x: 0, y: 0 };
-}
+// Dublin city centre default
+const DUBLIN_CENTRE: [number, number] = [53.3498, -6.2603];
 
 export default function TrafficMapPage() {
-  const [regionFilter, setRegionFilter] = useState<RegionFilter>('all');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const [selected, setSelected] = useState<TrafficSegment | null>(null);
-  const [lastRefresh] = useState(() => new Date());
+  const [segments, setSegments] = useState<TrafficSegment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  const filtered = trafficSegments.filter((s) => {
-    const matchRegion = regionFilter === 'all' || s.region === regionFilter;
-    const matchLevel = levelFilter === 'all' || s.level === levelFilter;
-    return matchRegion && matchLevel;
-  });
+  const mapRef = useRef<MapLibreMap | null>(null);
+  // Track drawn segment layer IDs so we can update them on refresh
+  const drawnLayersRef = useRef<Set<string>>(new Set());
 
-  const visibleIds = new Set(filtered.map((s) => s.id));
-
-  const criticalCount = trafficSegments.filter((s) => s.level === 'critical').length;
-  const highCount = trafficSegments.filter((s) => s.level === 'high').length;
-
-  const handleSegmentClick = useCallback((seg: TrafficSegment) => {
-    setSelected((prev) => (prev?.id === seg.id ? null : seg));
+  const fetchTraffic = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getTrafficData();
+      setSegments(data.segments);
+      setLastRefresh(new Date());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to load traffic data.';
+      setError(`${msg} Retrying in 60 s.`);
+      toast.error('Traffic data unavailable', { description: msg });
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchTraffic();
+    const timer = setInterval(fetchTraffic, 60_000);
+    return () => clearInterval(timer);
+  }, [fetchTraffic]);
+
+  // Draw/update segment overlays whenever segments or filter changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || segments.length === 0) return;
+    drawSegments(map, segments, levelFilter, selected?.segment_id ?? null);
+  }, [segments, levelFilter, selected]);
+
+  const drawSegments = (
+    map: MapLibreMap,
+    segs: TrafficSegment[],
+    filter: LevelFilter,
+    selectedId: string | null,
+  ) => {
+    segs.forEach((seg) => {
+      const sourceId = `seg-${seg.segment_id}`;
+      const layerId = `seg-layer-${seg.segment_id}`;
+      const isVisible = filter === 'all' || seg.level === filter;
+      const isSelected = seg.segment_id === selectedId;
+      const color = LEVEL_COLOR[seg.level] ?? '#4E5953';
+      const width = isSelected ? 8 : 5;
+      const opacity = isVisible ? 1 : 0.2;
+
+      const from = seg.from_node;
+      const to = seg.to_node;
+      if (!from || !to) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geojson: any = {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [from.lng, from.lat],
+            [to.lng, to.lat],
+          ],
+        },
+        properties: {},
+      };
+
+      if (map.getSource(sourceId)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (map.getSource(sourceId) as any).setData(geojson);
+        map.setPaintProperty(layerId, 'line-color', color);
+        map.setPaintProperty(layerId, 'line-width', width);
+        map.setPaintProperty(layerId, 'line-opacity', opacity);
+      } else {
+        map.addSource(sourceId, { type: 'geojson', data: geojson });
+        map.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': color, 'line-width': width, 'line-opacity': opacity },
+        });
+
+        // Click to select segment
+        map.on('click', layerId, () => {
+          setSelected((prev) => (prev?.segment_id === seg.segment_id ? null : seg));
+        });
+        map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+        drawnLayersRef.current.add(layerId);
+      }
+    });
+  };
+
+  const handleMapReady = (map: MapLibreMap) => {
+    mapRef.current = map;
+    if (segments.length > 0) {
+      drawSegments(map, segments, levelFilter, selected?.segment_id ?? null);
+    }
+  };
+
+  const filtered = segments.filter(
+    (s) => levelFilter === 'all' || s.level === levelFilter,
+  );
+
+  const criticalCount = segments.filter((s) => s.level === 'critical').length;
+  const highCount = segments.filter((s) => s.level === 'high').length;
+
+  // Add node markers after map ready
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || segments.length === 0) return;
+    // Add unique node markers
+    const seen = new Set<string>();
+    segments.forEach((seg) => {
+      if (seg.from_node && !seen.has(seg.from_node.node_id)) {
+        seen.add(seg.from_node.node_id);
+        addMarker(map, seg.from_node.lat, seg.from_node.lng, '#4E5953');
+      }
+      if (seg.to_node && !seen.has(seg.to_node.node_id)) {
+        seen.add(seg.to_node.node_id);
+        addMarker(map, seg.to_node.lat, seg.to_node.lng, '#4E5953');
+      }
+    });
+  }, [segments]);
 
   return (
     <div className="p-5 lg:p-8 max-w-7xl mx-auto">
@@ -98,10 +203,17 @@ export default function TrafficMapPage() {
             Road segment occupancy and congestion trends in real time.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm" style={{ color: '#4E5953' }}>
-          <RefreshCw size={13} />
-          <span>Updated {lastRefresh.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
+        <button
+          onClick={fetchTraffic}
+          disabled={loading}
+          className="flex items-center gap-2 text-sm"
+          style={{ color: '#4E5953' }}
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <span>
+            {loading ? 'Refreshing…' : `Updated ${lastRefresh.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+          </span>
+        </button>
       </div>
 
       {/* Alert bar */}
@@ -112,24 +224,29 @@ export default function TrafficMapPage() {
         >
           <AlertTriangle size={16} color="#B42318" className="flex-shrink-0" />
           <p style={{ color: '#8E1B13', fontSize: '0.875rem', flex: 1 }}>
-            {criticalCount > 0 && <><strong>{criticalCount} critical segment{criticalCount > 1 ? 's' : ''}</strong> at full capacity. </>}
-            {highCount > 0 && <><strong>{highCount} segment{highCount > 1 ? 's' : ''}</strong> at high load. </>}
+            {criticalCount > 0 && (
+              <><strong>{criticalCount} critical segment{criticalCount > 1 ? 's' : ''}</strong> at full capacity. </>
+            )}
+            {highCount > 0 && (
+              <><strong>{highCount} segment{highCount > 1 ? 's' : ''}</strong> at high load. </>
+            )}
             New bookings on affected routes may be rejected.
           </p>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-5 flex-wrap">
-        <select
-          value={regionFilter}
-          onChange={(e) => setRegionFilter(e.target.value as RegionFilter)}
-          className="px-3 py-2 rounded-lg outline-none appearance-none cursor-pointer text-sm"
-          style={{ border: '1.5px solid var(--border)', color: '#1F2421', background: 'white' }}
+      {error && (
+        <div
+          className="flex items-center gap-3 p-3.5 rounded-xl mb-5"
+          style={{ background: '#FEF3F2', border: '1px solid #FECACA' }}
         >
-          {REGION_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+          <AlertTriangle size={16} color="#B42318" />
+          <p style={{ color: '#B42318', fontSize: '0.875rem' }}>{error}</p>
+        </div>
+      )}
 
+      {/* Level filter */}
+      <div className="flex gap-3 mb-5 flex-wrap">
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1.5px solid var(--border)' }}>
           {LEVEL_OPTS.map((o) => (
             <button
@@ -144,124 +261,34 @@ export default function TrafficMapPage() {
               }}
             >
               {o.value !== 'all' && (
-                <span
-                  className="inline-block w-2 h-2 rounded-full mr-1.5"
-                  style={{ background: LEVEL_COLOR[o.value] }}
-                />
+                <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: LEVEL_COLOR[o.value] }} />
               )}
               {o.label}
             </button>
           ))}
         </div>
+        <span style={{ color: '#4E5953', fontSize: '0.875rem', alignSelf: 'center' }}>
+          {filtered.length} of {segments.length} segments shown
+        </span>
       </div>
 
-      {/* Map + Detail panel */}
+      {/* Map + sidebar */}
       <div className="flex flex-col lg:flex-row gap-5">
-        {/* SVG Map */}
-        <div className="flex-1 bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {/* Map header */}
+        {/* TomTom map */}
+        <div className="flex-1 bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', minHeight: '480px' }}>
           <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem' }}>
-              City road network
+              Live road network
             </span>
-            <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
-              {filtered.length} of {trafficSegments.length} segments shown
-            </span>
+            <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>Click a segment for details</span>
           </div>
 
-          <div className="relative">
-            <svg
-              viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-              className="w-full"
-              style={{ display: 'block', background: '#F8F6F2' }}
-              aria-label="City road traffic map"
-            >
-              {/* Background grid */}
-              <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E8E4DE" strokeWidth="0.5" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
-
-              {/* City blocks hint */}
-              {[
-                [160, 130, 120, 90], [310, 130, 120, 90],
-                [160, 280, 120, 90], [310, 280, 120, 90],
-              ].map(([x, y, w, h], i) => (
-                <rect key={i} x={x} y={y} width={w} height={h} rx="4" fill="#EDE9E2" stroke="#D9D2C7" strokeWidth="0.5" />
-              ))}
-
-              {/* Road segments */}
-              {trafficSegments.map((seg) => {
-                const from = getNodePos(seg.fromNode);
-                const to = getNodePos(seg.toNode);
-                const isVisible = visibleIds.has(seg.id);
-                const isSelected = selected?.id === seg.id;
-                const color = isVisible ? LEVEL_COLOR[seg.level] : '#E0DAD3';
-
-                return (
-                  <g key={seg.id}>
-                    {/* Shadow/glow for selected */}
-                    {isSelected && (
-                      <line
-                        x1={from.x} y1={from.y}
-                        x2={to.x} y2={to.y}
-                        stroke={color}
-                        strokeWidth="14"
-                        strokeLinecap="round"
-                        opacity={0.25}
-                      />
-                    )}
-                    {/* Main segment line */}
-                    <line
-                      x1={from.x} y1={from.y}
-                      x2={to.x} y2={to.y}
-                      stroke={color}
-                      strokeWidth={isSelected ? 7 : 5}
-                      strokeLinecap="round"
-                      opacity={isVisible ? 1 : 0.25}
-                      style={{ cursor: 'pointer', transition: 'stroke-width 0.15s, opacity 0.15s' }}
-                      onClick={() => isVisible && handleSegmentClick(seg)}
-                      aria-label={`${seg.name}: ${LEVEL_LABEL[seg.level]} traffic`}
-                      role="button"
-                      tabIndex={isVisible ? 0 : -1}
-                      onKeyDown={(e) => e.key === 'Enter' && isVisible && handleSegmentClick(seg)}
-                    />
-                    {/* Direction arrow midpoint indicator */}
-                    {isVisible && (
-                      <circle
-                        cx={(from.x + to.x) / 2}
-                        cy={(from.y + to.y) / 2}
-                        r="4"
-                        fill="white"
-                        stroke={color}
-                        strokeWidth="2"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    )}
-                  </g>
-                );
-              })}
-
-              {/* Nodes */}
-              {mapNodes.map((node) => (
-                <g key={node.id}>
-                  <circle cx={node.x} cy={node.y} r="10" fill="white" stroke="#D9D2C7" strokeWidth="1.5" />
-                  <circle cx={node.x} cy={node.y} r="4" fill="#4E5953" />
-                  {/* Label */}
-                  <text
-                    x={node.x}
-                    y={node.y + 22}
-                    textAnchor="middle"
-                    style={{ fontSize: '10px', fill: '#1F2421', fontFamily: 'var(--font-body)', fontWeight: 600 }}
-                  >
-                    {node.label}
-                  </text>
-                </g>
-              ))}
-            </svg>
-          </div>
+          <TomTomMap
+            center={DUBLIN_CENTRE}
+            zoom={12}
+            onReady={handleMapReady}
+            style={{ height: '420px' }}
+          />
 
           {/* Legend */}
           <div className="px-5 py-4 flex items-center gap-5 flex-wrap" style={{ borderTop: '1px solid var(--border)' }}>
@@ -272,17 +299,10 @@ export default function TrafficMapPage() {
                 <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>{LEVEL_LABEL[level]}</span>
               </div>
             ))}
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-white" style={{ border: '2px solid #4E5953' }} />
-              <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>Junction</span>
-            </div>
-            <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
-              <strong>Tip:</strong> Click a segment to see details.
-            </div>
           </div>
         </div>
 
-        {/* Detail Panel / Segment list */}
+        {/* Sidebar */}
         <div className="lg:w-80 flex-shrink-0 space-y-3">
           {/* Selected segment detail */}
           {selected && (
@@ -297,17 +317,12 @@ export default function TrafficMapPage() {
                   </div>
                   <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>{selected.region} region</div>
                 </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="p-1 rounded-lg hover:bg-black/5 transition-colors"
-                  aria-label="Close detail"
-                >
+                <button onClick={() => setSelected(null)} className="p-1 rounded-lg hover:bg-black/5 transition-colors" aria-label="Close">
                   <X size={16} color="#4E5953" />
                 </button>
               </div>
 
               <div className="p-4 space-y-4">
-                {/* Level */}
                 <div className="flex items-center justify-between">
                   <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>Traffic level</span>
                   <span
@@ -318,18 +333,17 @@ export default function TrafficMapPage() {
                   </span>
                 </div>
 
-                {/* Occupancy bar */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>Occupancy</span>
                     <span style={{ fontWeight: 700, color: '#1F2421', fontFamily: 'var(--font-heading)' }}>
-                      {selected.occupancy}%
+                      {selected.occupancy_pct}%
                     </span>
                   </div>
                   <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: '#F0EDE7' }}>
                     <div
                       className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${selected.occupancy}%`, background: LEVEL_COLOR[selected.level] }}
+                      style={{ width: `${selected.occupancy_pct}%`, background: LEVEL_COLOR[selected.level] }}
                     />
                   </div>
                   <div className="flex justify-between mt-1">
@@ -338,7 +352,6 @@ export default function TrafficMapPage() {
                   </div>
                 </div>
 
-                {/* Stats */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 rounded-lg" style={{ background: '#F8F6F2' }}>
                     <div style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '2px' }}>Vehicles</div>
@@ -350,7 +363,6 @@ export default function TrafficMapPage() {
                   </div>
                 </div>
 
-                {/* Trend */}
                 <div className="flex items-center justify-between">
                   <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>Trend</span>
                   <div className="flex items-center gap-1.5">
@@ -386,32 +398,31 @@ export default function TrafficMapPage() {
                 Segment list
               </span>
             </div>
-            <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-              {filtered.length === 0 ? (
+            <div className="divide-y" style={{ borderColor: 'var(--border)', maxHeight: '340px', overflowY: 'auto' }}>
+              {loading && segments.length === 0 ? (
+                <div className="p-5 text-center">
+                  <p style={{ color: '#4E5953', fontSize: '0.875rem' }}>Loading segments…</p>
+                </div>
+              ) : filtered.length === 0 ? (
                 <div className="p-5 text-center">
                   <p style={{ color: '#4E5953', fontSize: '0.875rem' }}>No segments match filters.</p>
                 </div>
               ) : (
                 filtered.map((seg) => (
                   <button
-                    key={seg.id}
-                    onClick={() => handleSegmentClick(seg)}
+                    key={seg.segment_id}
+                    onClick={() => setSelected((prev) => (prev?.segment_id === seg.segment_id ? null : seg))}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors"
-                    style={{ background: selected?.id === seg.id ? '#F8F6F2' : 'transparent' }}
+                    style={{ background: selected?.segment_id === seg.segment_id ? '#F8F6F2' : 'transparent' }}
                   >
-                    <div
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ background: LEVEL_COLOR[seg.level] }}
-                    />
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: LEVEL_COLOR[seg.level] }} />
                     <div className="flex-1 min-w-0">
                       <div style={{ color: '#1F2421', fontWeight: 500, fontSize: '0.875rem' }} className="truncate">
                         {seg.name}
                       </div>
-                      <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>{seg.region} · {seg.occupancy}%</div>
+                      <div style={{ color: '#4E5953', fontSize: '0.75rem' }}>{seg.region} · {seg.occupancy_pct}%</div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {TREND_ICON(seg.trend)}
-                    </div>
+                    <div className="flex items-center gap-1">{TREND_ICON(seg.trend)}</div>
                   </button>
                 ))
               )}

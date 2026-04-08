@@ -79,6 +79,7 @@ func (r *Router) Setup() *mux.Router {
 	// Admin subrouter — requires admin role
 	admin := api.PathPrefix("/admin").Subrouter()
 	admin.Use(middleware.AdminOnly)
+	admin.HandleFunc("/analytics", r.adminHandler.Analytics).Methods("GET")
 	admin.HandleFunc("/journeys", r.adminHandler.ListJourneys).Methods("GET")
 	admin.HandleFunc("/journeys/{id}/cancel", r.adminHandler.CancelJourney).Methods("PUT", "OPTIONS")
 

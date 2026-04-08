@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { useApp } from '../../context/AppContext';
-import { JourneyStatus } from '../../data/mockData';
+import { JourneyStatus } from '../../types';
 
 const STATUS_FILTERS: { label: string; value: JourneyStatus | 'all' }[] = [
   { label: 'All', value: 'all' },

@@ -1,6 +1,8 @@
 package http
 
 import (
+	"net/http"
+
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/internal/http/handlers"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/tracing"
@@ -17,20 +19,26 @@ type Router struct {
 	mux           *mux.Router
 	healthHandler *handlers.HealthHandler
 	mapHandler    *handlers.MapHandler
+	searchHandler *handlers.SearchHandler
 	logger        *logger.Logger
+	jwksValidator *JWKSValidator
 }
 
 // NewRouter creates a new router instance
 func NewRouter(
 	healthHandler *handlers.HealthHandler,
 	mapHandler *handlers.MapHandler,
+	searchHandler *handlers.SearchHandler,
 	log *logger.Logger,
+	jwksValidator *JWKSValidator,
 ) *Router {
 	return &Router{
 		mux:           mux.NewRouter(),
 		healthHandler: healthHandler,
 		mapHandler:    mapHandler,
+		searchHandler: searchHandler,
 		logger:        log,
+		jwksValidator: jwksValidator,
 	}
 }
 
@@ -54,8 +62,15 @@ func (r *Router) Setup() *mux.Router {
 
 	// Map APIs
 	r.mux.HandleFunc("/api/v1/map/nodes", r.mapHandler.GetNodes).Methods("GET")
+	r.mux.HandleFunc("/api/v1/map/segments", r.mapHandler.GetSegments).Methods("GET")
 	r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET")
 	r.mux.HandleFunc("/api/v1/routes/compute", r.mapHandler.ComputeRoute).Methods("POST")
+
+	// TomTom proxy — search is unauthenticated so the booking form can call it without a JWT
+	r.mux.HandleFunc("/api/v1/map/search", r.searchHandler.SearchPlaces).Methods("GET")
+
+	trafficHandler := JWTAuth(r.jwksValidator)(AdminOnly(http.Handler(http.HandlerFunc(r.mapHandler.GetTraffic))))
+	r.mux.Handle("/api/v1/map/traffic", trafficHandler).Methods("GET")
 
 	return r.mux
 }

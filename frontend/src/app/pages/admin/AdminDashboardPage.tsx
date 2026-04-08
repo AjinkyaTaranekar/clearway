@@ -8,15 +8,26 @@ import {
   TrendingDown,
   TrendingUp
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { useApp } from '../../context/AppContext';
-import { analyticsData } from '../../data/mockData';
+import { AdminAnalyticsResult, adminAnalytics } from '../../services/journeyApi';
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { adminJourneys, user } = useApp();
-  const { kpis } = analyticsData;
+
+  // U-14: fetch real analytics from backend instead of using hardcoded mock data
+  const [analytics, setAnalytics] = useState<AdminAnalyticsResult | null>(null);
+  useEffect(() => {
+    adminAnalytics('24h').then(setAnalytics).catch((err) => {
+      toast.error('Analytics unavailable', {
+        description: err instanceof Error ? err.message : 'Could not load dashboard stats.',
+      });
+    });
+  }, []);
 
   const activeJourneys = adminJourneys.filter((j) => j.status === 'active');
   const pendingJourneys = adminJourneys.filter((j) => j.status === 'pending');
@@ -25,23 +36,23 @@ export default function AdminDashboardPage() {
   const stats = [
     {
       label: 'Total bookings',
-      value: kpis.totalBookings,
-      sub: 'All time',
+      value: analytics ? analytics.total_journeys : '—',
+      sub: 'Last 24 h',
       icon: List,
       color: '#2F6B55',
       bg: '#E8F4ED',
     },
     {
       label: 'Approval rate',
-      value: `${kpis.approvalRate}%`,
-      sub: 'This week',
+      value: analytics ? `${analytics.approval_rate.toFixed(1)}%` : '—',
+      sub: 'Last 24 h',
       icon: TrendingUp,
       color: '#2E7D32',
       bg: '#E8F4ED',
     },
     {
       label: 'Active now',
-      value: kpis.activeJourneys,
+      value: analytics ? analytics.active : '—',
       sub: 'On road',
       icon: Activity,
       color: '#1A4E80',
@@ -49,8 +60,8 @@ export default function AdminDashboardPage() {
     },
     {
       label: 'Rejection rate',
-      value: `${kpis.rejectionRate}%`,
-      sub: 'This week',
+      value: analytics ? `${analytics.rejection_rate.toFixed(1)}%` : '—',
+      sub: 'Last 24 h',
       icon: TrendingDown,
       color: '#B42318',
       bg: '#FDECEA',

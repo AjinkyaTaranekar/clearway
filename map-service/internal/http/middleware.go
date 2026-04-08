@@ -7,6 +7,7 @@ import (
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/logger"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/metrics"
+	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/tracing"
 )
 
 // LoggingMiddleware logs HTTP requests
@@ -14,22 +15,38 @@ func LoggingMiddleware(log *logger.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-
-			if r.URL.Path != "/health" && r.URL.Path != "/ready" {
-				log.Info().
-					Str("method", r.Method).
-					Str("path", r.URL.Path).
-					Str("remote_addr", r.RemoteAddr).
-					Msg("Request started")
+			baseLog := log
+			if baseLog == nil {
+				baseLog = logger.Global()
 			}
-			next.ServeHTTP(w, r)
 
-			if r.URL.Path != "/health" && r.URL.Path != "/ready" {
-				log.Info().
-					Str("method", r.Method).
-					Str("path", r.URL.Path).
+			if traceID := tracing.GetTraceID(r.Context()); traceID != "" {
+				baseLog = baseLog.WithTraceID(traceID)
+			}
+
+			requestLogger := baseLog
+			requestLogCore := requestLogger.With().
+				Str("method", r.Method).
+				Str("path", r.URL.Path).
+				Str("remote_addr", r.RemoteAddr).
+				Str("user_agent", r.UserAgent()).
+				Logger()
+			requestLogger = &logger.Logger{Logger: &requestLogCore}
+
+			r = r.WithContext(logger.WithContext(r.Context(), requestLogger))
+			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+			if r.URL.Path != "/health" && r.URL.Path != "/ready" && r.URL.Path != "/metrics" {
+				requestLogger.Info().Msg("http request received")
+			}
+			next.ServeHTTP(rec, r)
+
+			if r.URL.Path != "/health" && r.URL.Path != "/ready" && r.URL.Path != "/metrics" {
+				requestLogger.Info().
+					Int("status_code", rec.status).
+					Int("response_bytes", rec.bytes).
 					Dur("duration", time.Since(start)).
-					Msg("Request completed")
+					Msg("http request completed")
 			}
 		})
 	}
@@ -55,11 +72,18 @@ func CORSMiddleware(next http.Handler) http.Handler {
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	bytes  int
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += n
+	return n, err
 }
 
 // MetricsMiddleware records HTTP request counts and latency for Prometheus.
