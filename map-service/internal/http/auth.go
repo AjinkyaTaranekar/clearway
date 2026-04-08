@@ -146,7 +146,7 @@ func JWTAuth(validator *JWKSValidator) func(http.Handler) http.Handler {
 			traceID := tracing.GetTraceID(r.Context())
 
 			if validator == nil {
-				response.Error(w, appErrors.Internal("jwt validation not configured"), traceID)
+				response.Error(w, appErrors.InternalError("jwt validation not configured", nil), traceID)
 				return
 			}
 

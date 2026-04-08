@@ -1,4 +1,4 @@
-import tt from '@tomtom-international/web-sdk-maps';
+import { LngLatBounds, Map as MapLibreMap } from 'maplibre-gl';
 import { AlertCircle, ChevronRight, Clock, Info } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -48,8 +48,7 @@ export default function BookJourneyPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // Map instance ref so we can draw overlays after the map loads
-  const mapRef = useRef<tt.Map | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
 
   const minTime = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
 
@@ -101,7 +100,7 @@ export default function BookJourneyPage() {
     addMarker(map, destPlace.lat, destPlace.lng, '#B65C3A');
 
     // Fit map to show both points
-    const bounds = new tt.LngLatBounds(
+    const bounds = new LngLatBounds(
       [originPlace.lng, originPlace.lat],
       [destPlace.lng, destPlace.lat],
     );

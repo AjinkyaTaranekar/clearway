@@ -1,17 +1,17 @@
 /**
- * TomTomMap — thin React wrapper around the TomTom Maps Web SDK.
+ * TomTomMap — thin React wrapper around the @tomtom-org/maps-sdk TomTomMap class.
  *
  * Key design decisions:
  *  - Map tiles use VITE_TOMTOM_MAPS_KEY (browser-safe, referrer-locked).
  *  - Search and routing are never called from this component; the server proxy
  *    handles those so the full API key stays server-side.
- *  - The component is deliberately minimal: it just renders a tile map and
- *    exposes an `onReady` callback so parent components can draw their own
- *    overlays (markers, polylines).
+ *  - The component exposes the underlying MapLibre map via `onReady` so parents
+ *    can add custom sources, layers, and markers.
  */
 
-import tt from '@tomtom-international/web-sdk-maps';
-import '@tomtom-international/web-sdk-maps/dist/maps.css';
+import { TomTomMap as TTMap } from '@tomtom-org/maps-sdk/map';
+import { Map as MapLibreMap, Marker } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
 
 const MAPS_KEY = import.meta.env.VITE_TOMTOM_MAPS_KEY ?? '';
@@ -20,39 +20,45 @@ export interface TomTomMapProps {
   /** Initial centre [lat, lng] */
   center: [number, number];
   zoom?: number;
-  /** Called once when the map has loaded, passes the map instance */
-  onReady?: (map: tt.Map) => void;
+  /** Called once the underlying MapLibre map has loaded */
+  onReady?: (map: MapLibreMap) => void;
   style?: React.CSSProperties;
   className?: string;
 }
 
 export default function TomTomMap({ center, zoom = 10, onReady, style, className }: TomTomMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<tt.Map | null>(null);
+  const sdkMapRef = useRef<TTMap | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const map = tt.map({
+    const sdkMap = new TTMap({
       key: MAPS_KEY,
-      container: containerRef.current,
-      center: { lat: center[0], lng: center[1] },
-      zoom,
-      stylesVisibility: {
-        trafficIncidents: false,
-        trafficFlow: false,
+      mapLibre: {
+        container: containerRef.current,
+        center: [center[1], center[0]], // MapLibre uses [lng, lat]
+        zoom,
       },
     });
 
-    mapRef.current = map;
+    sdkMapRef.current = sdkMap;
 
-    map.on('load', () => {
-      onReady?.(map);
-    });
+    const mlMap = sdkMap.mapLibreMap;
+
+    const onLoad = () => {
+      onReady?.(mlMap);
+    };
+
+    if (mlMap.loaded()) {
+      onLoad();
+    } else {
+      mlMap.once('load', onLoad);
+    }
 
     return () => {
-      map.remove();
-      mapRef.current = null;
+      mlMap.remove();
+      sdkMapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -68,9 +74,9 @@ export default function TomTomMap({ center, zoom = 10, onReady, style, className
 
 // ── Utility helpers for parent components ──────────────────────────────────
 
-/** Draw a polyline on a map. Returns the layer + source IDs so they can be removed. */
+/** Draw or update a polyline on a MapLibre map. */
 export function addPolyline(
-  map: tt.Map,
+  map: MapLibreMap,
   id: string,
   coords: [number, number][],
   color = '#2F6B55',
@@ -81,13 +87,15 @@ export function addPolyline(
     type: 'Feature',
     geometry: {
       type: 'LineString',
+      // MapLibre expects [lng, lat]
       coordinates: coords.map(([lat, lng]) => [lng, lat]),
     },
     properties: {},
   };
 
   if (map.getSource(id)) {
-    (map.getSource(id) as tt.GeoJSONSource).setData(geojson);
+    (map.getSource(id) as ReturnType<typeof map.getSource> & { setData: (d: unknown) => void })
+      ?.setData(geojson);
   } else {
     map.addSource(id, { type: 'geojson', data: geojson });
     map.addLayer({
@@ -100,13 +108,14 @@ export function addPolyline(
   }
 }
 
-/** Add a pin marker to the map. */
-export function addMarker(map: tt.Map, lat: number, lng: number, color = '#2F6B55'): tt.Marker {
+/** Add a circle marker pin to a MapLibre map. */
+export function addMarker(map: MapLibreMap, lat: number, lng: number, color = '#2F6B55'): Marker {
   const el = document.createElement('div');
   el.style.cssText = `
     width: 16px; height: 16px; border-radius: 50%;
     background: ${color}; border: 3px solid white;
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    cursor: pointer;
   `;
-  return new tt.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+  return new Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
 }

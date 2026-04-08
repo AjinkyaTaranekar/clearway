@@ -1,4 +1,4 @@
-import tt from '@tomtom-international/web-sdk-maps';
+import { Map as MapLibreMap } from 'maplibre-gl';
 import {
   AlertTriangle,
   Info,
@@ -66,7 +66,7 @@ export default function TrafficMapPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  const mapRef = useRef<tt.Map | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
   // Track drawn segment layer IDs so we can update them on refresh
   const drawnLayersRef = useRef<Set<string>>(new Set());
 
@@ -98,7 +98,7 @@ export default function TrafficMapPage() {
   }, [segments, levelFilter, selected]);
 
   const drawSegments = (
-    map: tt.Map,
+    map: MapLibreMap,
     segs: TrafficSegment[],
     filter: LevelFilter,
     selectedId: string | null,
@@ -130,7 +130,8 @@ export default function TrafficMapPage() {
       };
 
       if (map.getSource(sourceId)) {
-        (map.getSource(sourceId) as tt.GeoJSONSource).setData(geojson);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (map.getSource(sourceId) as any).setData(geojson);
         map.setPaintProperty(layerId, 'line-color', color);
         map.setPaintProperty(layerId, 'line-width', width);
         map.setPaintProperty(layerId, 'line-opacity', opacity);
@@ -155,7 +156,7 @@ export default function TrafficMapPage() {
     });
   };
 
-  const handleMapReady = (map: tt.Map) => {
+  const handleMapReady = (map: MapLibreMap) => {
     mapRef.current = map;
     if (segments.length > 0) {
       drawSegments(map, segments, levelFilter, selected?.segment_id ?? null);
