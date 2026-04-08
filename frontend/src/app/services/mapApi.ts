@@ -107,14 +107,32 @@ export async function getTrafficData(): Promise<TrafficData> {
 
 // getRegion returns the deployment region from the load balancer (nginx injects REGION env var).
 export async function getRegion(): Promise<string> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/v1/region`);
-    if (!res.ok) return 'local';
-    const json = await res.json() as { region?: string };
-    return json.region ?? 'local';
-  } catch {
-    return 'local';
+  const candidates = new Set<string>();
+  const regionPaths = ['/api/v1/region', '/region.json'];
+
+  regionPaths.forEach((path) => {
+    if (BASE_URL) {
+      candidates.add(`${BASE_URL}${path}`);
+    }
+    candidates.add(path);
+  });
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) continue;
+
+      const json = await res.json() as { region?: string };
+      const region = json.region?.trim();
+      if (region) {
+        return region;
+      }
+    } catch {
+      // Try the next candidate URL.
+    }
   }
+
+  return 'local';
 }
 
 // searchPlaces calls our backend geocoding proxy (Nominatim-backed).

@@ -201,7 +201,19 @@ export default function BookJourneyPage() {
     () => formatDateInput(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)),
     [],
   );
-  const daySlots = useMemo(() => buildDaySlots(selectedDate), [selectedDate]);
+  const daySlots = useMemo(() => {
+    const slots = buildDaySlots(selectedDate);
+    const today = formatDateInput(new Date());
+    if (selectedDate !== today) {
+      return slots;
+    }
+
+    const now = Date.now();
+    return slots.filter((slot) => {
+      const slotTime = new Date(slot.value).getTime();
+      return !Number.isNaN(slotTime) && slotTime >= now;
+    });
+  }, [selectedDate]);
   const selectedVehicle = useMemo(
     () => availableVehicles.find((vehicle) => vehicle.id === selectedVehicleID) ?? null,
     [availableVehicles, selectedVehicleID],
@@ -875,6 +887,12 @@ export default function BookJourneyPage() {
                     );
                   })}
                 </div>
+
+                {daySlots.length === 0 && (
+                  <p className="mt-2" style={{ color: '#4E5953', fontSize: '0.75rem' }}>
+                    No departure slots remain for today. Please choose another date.
+                  </p>
+                )}
 
                 <p className="mt-2" style={{ color: '#4E5953', fontSize: '0.75rem' }}>
                   Tap a selected slot again to unselect it.
