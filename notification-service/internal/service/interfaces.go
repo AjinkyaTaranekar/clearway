@@ -38,4 +38,5 @@ type DeviceTokenRepository interface {
 	Upsert(ctx context.Context, t *model.DeviceToken) (*model.DeviceToken, error)
 	FindActiveByDriver(ctx context.Context, driverID string) ([]model.DeviceToken, error)
 	Deactivate(ctx context.Context, tokenID, reason string) error
+	DeactivateByDriverAndFCMToken(ctx context.Context, driverID, fcmToken, reason string) error
 }

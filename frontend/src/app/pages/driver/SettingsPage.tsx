@@ -216,7 +216,7 @@ export default function SettingsPage() {
 
     try {
       if (pushEnabled) {
-        disablePushNotifications();
+        await disablePushNotifications();
         setPushEnabled(false);
         return;
       }

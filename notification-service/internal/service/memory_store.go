@@ -213,3 +213,19 @@ func (m *MemoryDeviceTokenRepo) Deactivate(_ context.Context, tokenID, reason st
 	}
 	return nil
 }
+
+func (m *MemoryDeviceTokenRepo) DeactivateByDriverAndFCMToken(_ context.Context, driverID, fcmToken, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now().UTC()
+	for i := range m.records {
+		if m.records[i].DriverID == driverID && m.records[i].FCMToken == fcmToken && m.records[i].IsActive {
+			m.records[i].IsActive = false
+			m.records[i].InvalidatedAt = &now
+			m.records[i].InvalidationReason = reason
+			m.records[i].UpdatedAt = now
+		}
+	}
+	return nil
+}

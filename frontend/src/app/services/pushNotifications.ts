@@ -1,4 +1,4 @@
-import { registerDeviceToken } from './notificationApi';
+import { deactivateDeviceToken, registerDeviceToken } from './notificationApi';
 
 const PUSH_ENABLED_KEY = 'cw_push_enabled';
 const PUSH_TOKEN_KEY = 'cw_push_token';
@@ -14,6 +14,14 @@ function getConfiguredToken(): string {
 
   localStorage.setItem(PUSH_TOKEN_KEY, configured);
   return configured;
+}
+
+function tryGetConfiguredToken(): string | null {
+  try {
+    return getConfiguredToken();
+  } catch {
+    return null;
+  }
 }
 
 export function isPushEnabled(): boolean {
@@ -41,14 +49,19 @@ export async function enablePushNotifications(): Promise<void> {
   localStorage.setItem(PUSH_ENABLED_KEY, 'true');
 }
 
+export async function disablePushNotifications(): Promise<void> {
+  const token = tryGetConfiguredToken();
+  if (token) {
+    await deactivateDeviceToken(token);
+  }
+  localStorage.setItem(PUSH_ENABLED_KEY, 'false');
+}
+
 // Re-registers the current browser token after authentication refresh/login
 // when push was previously enabled in this browser.
 export async function syncPushRegistrationIfEnabled(): Promise<void> {
   if (!isPushEnabled()) return;
-  const token = getConfiguredToken();
+  const token = tryGetConfiguredToken();
+  if (!token) return;
   await registerDeviceToken(token, 'web');
-}
-
-export function disablePushNotifications(): void {
-  localStorage.setItem(PUSH_ENABLED_KEY, 'false');
 }

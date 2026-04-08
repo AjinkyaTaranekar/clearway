@@ -67,6 +67,7 @@ func (r *Router) Setup() *mux.Router {
 	api.HandleFunc("/notifications/read-all", r.notificationHandler.MarkAllRead).Methods("PUT")
 	api.HandleFunc("/notifications/{id}/read", r.notificationHandler.MarkRead).Methods("PUT")
 	api.HandleFunc("/notifications/device-token", r.notificationHandler.RegisterDeviceToken).Methods("POST")
+	api.HandleFunc("/notifications/device-token", r.notificationHandler.DeactivateDeviceToken).Methods("DELETE")
 
 	// Admin endpoints
 	api.HandleFunc("/admin/notifications", r.adminHandler.ListAll).Methods("GET")

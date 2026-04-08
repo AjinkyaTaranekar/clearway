@@ -172,3 +172,23 @@ func (r *DeviceTokenRepo) Deactivate(ctx context.Context, tokenID, reason string
 		Msg("device token deactivated")
 	return nil
 }
+
+// DeactivateByDriverAndFCMToken marks matching active token rows as inactive.
+func (r *DeviceTokenRepo) DeactivateByDriverAndFCMToken(ctx context.Context, driverID, fcmToken, reason string) error {
+	now := time.Now().UTC()
+	const q = `
+		UPDATE notification.device_tokens
+		SET is_active = false,
+		    invalidated_at = $3,
+		    invalidation_reason = $4,
+		    updated_at = NOW()
+		WHERE driver_id = $1
+		  AND fcm_token = $2
+		  AND is_active = true`
+
+	_, err := r.master.ExecContext(ctx, q, driverID, fcmToken, now, reason)
+	if err != nil {
+		return fmt.Errorf("device_token_repo.DeactivateByDriverAndFCMToken: %w", err)
+	}
+	return nil
+}

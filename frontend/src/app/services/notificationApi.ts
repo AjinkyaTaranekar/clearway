@@ -86,3 +86,13 @@ export async function registerDeviceToken(
     body: JSON.stringify({ fcm_token: fcmToken, platform }),
   });
 }
+
+export async function deactivateDeviceToken(
+  fcmToken: string,
+  reason = 'driver_disabled',
+): Promise<void> {
+  await notifFetch('/api/v1/notifications/device-token', {
+    method: 'DELETE',
+    body: JSON.stringify({ fcm_token: fcmToken, reason }),
+  });
+}

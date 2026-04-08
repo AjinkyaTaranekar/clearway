@@ -38,6 +38,20 @@ type RegisterTokenResponse struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// DeactivateTokenRequest is the body of DELETE /api/v1/notifications/device-token.
+type DeactivateTokenRequest struct {
+	DriverID string `json:"driver_id"`
+	FCMToken string `json:"fcm_token"`
+	Reason   string `json:"reason"`
+}
+
+// DeactivateTokenResponse is returned after token deactivation.
+type DeactivateTokenResponse struct {
+	Status    string    `json:"status"`
+	DriverID  string    `json:"driver_id"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // ValidPlatform checks whether the given platform string is supported.
 func ValidPlatform(p string) bool {
 	switch p {

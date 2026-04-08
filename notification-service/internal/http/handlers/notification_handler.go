@@ -360,6 +360,60 @@ func (h *NotificationHandler) RegisterDeviceToken(w http.ResponseWriter, r *http
 	response.Success(w, resp, traceID)
 }
 
+// DeactivateDeviceToken godoc
+// @Summary Deactivate an FCM device token
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Param body body model.DeactivateTokenRequest true "Device token"
+// @Success 200 {object} model.DeactivateTokenResponse
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Router /api/v1/notifications/device-token [delete]
+func (h *NotificationHandler) DeactivateDeviceToken(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	callerID := GetUserID(r.Context())
+	callerRole := GetUserRole(r.Context())
+	if callerID == "" {
+		response.Error(w, errors.Unauthorized("Authentication required"), traceID)
+		return
+	}
+
+	var req model.DeactivateTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, errors.BadRequest("Invalid request body"), traceID)
+		return
+	}
+	if req.FCMToken == "" {
+		response.Error(w, errors.BadRequest("fcm_token is required"), traceID)
+		return
+	}
+	if req.DriverID == "" {
+		req.DriverID = callerID
+	}
+	if req.DriverID != callerID && callerRole != "admin" {
+		response.Error(w, errors.Forbidden("Cannot deactivate token for another driver"), traceID)
+		return
+	}
+	if req.Reason == "" {
+		req.Reason = "driver_disabled"
+	}
+
+	if err := h.tokenRepo.DeactivateByDriverAndFCMToken(r.Context(), req.DriverID, req.FCMToken, req.Reason); err != nil {
+		h.logger.Error().Err(err).Str("driver_id", req.DriverID).Msg("failed to deactivate device token")
+		response.Error(w, errors.InternalError("Failed to deactivate device token", err), traceID)
+		return
+	}
+
+	resp := model.DeactivateTokenResponse{
+		Status:    "deactivated",
+		DriverID:  req.DriverID,
+		UpdatedAt: time.Now().UTC(),
+	}
+	response.Success(w, resp, traceID)
+}
+
 // intQuery parses an integer query parameter with a default.
 func intQuery(r *http.Request, key string, defaultVal int) int {
 	s := r.URL.Query().Get(key)
