@@ -1,0 +1,642 @@
+{
+  "run_id": "e2e-20260408-1775676005",
+  "started_at": "2026-04-08T19:20:05.2360208Z",
+  "completed_at": "2026-04-08T19:20:10.7616669Z",
+  "duration_ms": 5525,
+  "base_urls": [
+    "http://35.187.121.12"
+  ],
+  "regions_by_url": {
+    "http://35.187.121.12": "unknown"
+  },
+  "scenarios": [
+    {
+      "name": "00-preflight",
+      "started_at": "2026-04-08T19:20:05.2360208Z",
+      "completed_at": "2026-04-08T19:20:05.3551556Z",
+      "duration_ms": 119,
+      "passed": true,
+      "steps": [
+        {
+          "name": "health-check http://35.187.121.12",
+          "started_at": "2026-04-08T19:20:05.2360208Z",
+          "completed_at": "2026-04-08T19:20:05.3080319Z",
+          "duration_ms": 72,
+          "passed": true,
+          "details": "gateway is reachable",
+          "http": {
+            "request_name": "nginx-health",
+            "method": "GET",
+            "url": "http://35.187.121.12/nginx-health",
+            "status_code": 200,
+            "duration_ms": 72,
+            "used_auth_token": false,
+            "response_body": "ok"
+          }
+        },
+        {
+          "name": "region-detection http://35.187.121.12",
+          "started_at": "2026-04-08T19:20:05.3080319Z",
+          "completed_at": "2026-04-08T19:20:05.3551556Z",
+          "duration_ms": 47,
+          "passed": true,
+          "details": "region JSON parse failed; defaulting to unknown",
+          "http": {
+            "request_name": "region",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/region",
+            "status_code": 200,
+            "duration_ms": 46,
+            "used_auth_token": false,
+            "response_body": "\u003c!DOCTYPE html\u003e\n  \u003chtml lang=\"en\"\u003e\n    \u003chead\u003e\n      \u003cmeta charset=\"UTF-8\" /\u003e\n      \u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /\u003e\n      \u003ctitle\u003eClearway\u003c/title\u003e\n      \u003cscript type=\"module\" crossorigin src=\"/assets/index-C0WZvXB_.js\"\u003e\u003c/script\u003e\n      \u003clink rel=\"stylesheet\" crossorigin href=\"/assets/index-CBIeSRpM.css\"\u003e\n    \u003c/head\u003e\n\n    \u003cbody\u003e\n      \u003cdiv id=\"root\"\u003e\u003c/div\u003e\n    \u003c/body\u003e\n  \u003c/html\u003e"
+          }
+        }
+      ],
+      "metadata": {
+        "healthy_gateways": [
+          {
+            "BaseURL": "http://35.187.121.12",
+            "Region": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "name": "01-auth-lifecycle",
+      "started_at": "2026-04-08T19:20:05.3551556Z",
+      "completed_at": "2026-04-08T19:20:05.972807Z",
+      "duration_ms": 617,
+      "passed": true,
+      "steps": [
+        {
+          "name": "auth-primary register-attempt",
+          "started_at": "2026-04-08T19:20:05.3551556Z",
+          "completed_at": "2026-04-08T19:20:05.77433Z",
+          "duration_ms": 419,
+          "passed": true,
+          "details": "registered new dummy user",
+          "http": {
+            "request_name": "register",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/register",
+            "status_code": 201,
+            "duration_ms": 419,
+            "trace_id": "e64bfd45-1c5f-4d5b-8eb4-98a6590b5ecc",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-auth-primary-20260408@example.com\",\"license_info\":{\"license_number\":\"DL-B67ADF910B02\"},\"name\":\"E2E auth-primary\",\"password\":\"E2Epass123\",\"vehicle_type\":\"car\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfMWU0MGE1ZmUzMTEyNDE4MSIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1hdXRoLXByaW1hcnktMjAyNjA0MDhAZXhhbXBsZS5jb20iLCJpc3MiOiJ0cmFmZmljLWlhbSIsImV4cCI6MTc3NTY3OTYwNiwiaWF0IjoxNzc1Njc2MDA2fQ.n2B_2MOEZmi7VG-RR24AdIB6fGS8nsQ4wdMipZ4X2whBwdyyrTyT2pe21YFRRSIaXYmZ_Cvvm5IyoGR9I5nk2XFNLnNY01BMKoDVa0riTroNxufQCWCMkW6_jE06LJsDGjjkfGCW2xef8HqxQTWwgamdVCj6e34ARWhJ53aPrdCd623RoW4m-rDsC5IcBWAPiOYTW2MW4__QPgXET9ieSGbOIIwE0jJljKYmZK-2uRKqa8VQww-geSC6YTEqZhn7RMakq3FiDsfw3d9y7xvWQkJFwlQ-BLd-H9zKmznkiLt2XqqlbjKh5KDG5ildG1AW8oGEq2zNK0c3mbpC4NJp4Q\",\"refresh_token\":\"04f5b9c77b1c72e744fe717e980f7a693f0c789b5fa3811a20e6227c0c185aaf\",\"user\":{\"id\":\"usr_1e40a5fe31124181\",\"name\":\"E2E auth-primary\",\"email\":\"e2e-auth-primary-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\"}},\"trace_id\":\"e64bfd45-1c5f-4d5b-8eb4-98a6590b5ecc\"}"
+          }
+        },
+        {
+          "name": "auth-primary token-profile-verification",
+          "started_at": "2026-04-08T19:20:05.7753301Z",
+          "completed_at": "2026-04-08T19:20:05.8173186Z",
+          "duration_ms": 41,
+          "passed": true,
+          "details": "bearer token is active and profile assertion passed",
+          "http": {
+            "request_name": "profile",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 40,
+            "trace_id": "63cbf17b-d382-4701-ae6a-d5ab582e89b7",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_1e40a5fe31124181\",\"name\":\"E2E auth-primary\",\"email\":\"e2e-auth-primary-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\",\"license_info\":{\"license_number\":\"DL-B67ADF910B02\"},\"created_at\":\"2026-04-08T19:20:06.671764Z\",\"updated_at\":\"2026-04-08T19:20:06.671764Z\"},\"trace_id\":\"63cbf17b-d382-4701-ae6a-d5ab582e89b7\"}"
+          }
+        },
+        {
+          "name": "refresh-access-token",
+          "started_at": "2026-04-08T19:20:05.8173186Z",
+          "completed_at": "2026-04-08T19:20:05.889223Z",
+          "duration_ms": 71,
+          "passed": true,
+          "details": "access and refresh tokens rotated successfully",
+          "http": {
+            "request_name": "refresh-token",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/refresh",
+            "status_code": 200,
+            "duration_ms": 71,
+            "trace_id": "dcc5720a-34dd-4e1b-bde1-90c2c6257868",
+            "used_auth_token": false,
+            "request_body": "{\"refresh_token\":\"04f5b9c77b1c72e744fe717e980f7a693f0c789b5fa3811a20e6227c0c185aaf\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfMWU0MGE1ZmUzMTEyNDE4MSIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1hdXRoLXByaW1hcnktMjAyNjA0MDhAZXhhbXBsZS5jb20iLCJpc3MiOiJ0cmFmZmljLWlhbSIsImV4cCI6MTc3NTY3OTYwNiwiaWF0IjoxNzc1Njc2MDA2fQ.n2B_2MOEZmi7VG-RR24AdIB6fGS8nsQ4wdMipZ4X2whBwdyyrTyT2pe21YFRRSIaXYmZ_Cvvm5IyoGR9I5nk2XFNLnNY01BMKoDVa0riTroNxufQCWCMkW6_jE06LJsDGjjkfGCW2xef8HqxQTWwgamdVCj6e34ARWhJ53aPrdCd623RoW4m-rDsC5IcBWAPiOYTW2MW4__QPgXET9ieSGbOIIwE0jJljKYmZK-2uRKqa8VQww-geSC6YTEqZhn7RMakq3FiDsfw3d9y7xvWQkJFwlQ-BLd-H9zKmznkiLt2XqqlbjKh5KDG5ildG1AW8oGEq2zNK0c3mbpC4NJp4Q\",\"refresh_token\":\"739da3c24be92f42822f3519fc0f1cdefa52f90e964e9608e2293678d441ca2e\"},\"trace_id\":\"dcc5720a-34dd-4e1b-bde1-90c2c6257868\"}"
+          }
+        },
+        {
+          "name": "profile-read-after-refresh",
+          "started_at": "2026-04-08T19:20:05.889223Z",
+          "completed_at": "2026-04-08T19:20:05.9203777Z",
+          "duration_ms": 31,
+          "passed": true,
+          "details": "profile fetched with refreshed bearer token",
+          "http": {
+            "request_name": "profile-after-refresh",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 30,
+            "trace_id": "ca00fa66-33ad-49b6-8f45-eb90276ec420",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_1e40a5fe31124181\",\"name\":\"E2E auth-primary\",\"email\":\"e2e-auth-primary-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\",\"license_info\":{\"license_number\":\"DL-B67ADF910B02\"},\"created_at\":\"2026-04-08T19:20:06.671764Z\",\"updated_at\":\"2026-04-08T19:20:06.671764Z\"},\"trace_id\":\"ca00fa66-33ad-49b6-8f45-eb90276ec420\"}"
+          }
+        },
+        {
+          "name": "cross-service-token-propagation-smoke",
+          "started_at": "2026-04-08T19:20:05.9203777Z",
+          "completed_at": "2026-04-08T19:20:05.972807Z",
+          "duration_ms": 52,
+          "passed": true,
+          "details": "bearer token propagated; map returned 10 nodes",
+          "http": {
+            "request_name": "map-nodes-with-auth",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/map/nodes",
+            "status_code": 200,
+            "duration_ms": 52,
+            "trace_id": "98715389-f5de-47c7-b72f-ed45f6a045fc",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"nodes\":[{\"node_id\":\"city\",\"label\":\"City Centre\",\"lat\":53.3498,\"lng\":-6.2603},{\"node_id\":\"north\",\"label\":\"North Gate\",\"lat\":53.42,\"lng\":-6.2603},{\"node_id\":\"airport\",\"label\":\"Airport\",\"lat\":53.4264,\"lng\":-6.2499},{\"node_id\":\"east\",\"label\":\"East Quay\",\"lat\":53.3498,\"lng\":-6.21},{\"node_id\":\"south\",\"label\":\"South Terminal\",\"lat\":53.31,\"lng\":-6.2603},{\"node_id\":\"industrial\",\"label\":\"Industrial Park\",\"lat\":53.315,\"lng\":-6.21},{\"node_id\":\"west\",\"label\":\"West Depot\",\"lat\":53.3498,\"lng\":-6.32},{\"node_id\":\"port\",\"label\":\"Port Terminal\",\"lat\":53.31,\"lng\":-6.32},{\"node_id\":\"northfield\",\"label\":\"Northfield\",\"lat\":53.4,\"lng\":-6.3},{\"node_id\":\"riverside\",\"label\":\"Riverside\",\"lat\":53.335,\"lng\":-6.27}]},\"trace_id\":\"98715389-f5de-47c7-b72f-ed45f6a045fc\"}"
+          }
+        }
+      ],
+      "metadata": {
+        "user": {
+          "alias": "auth-primary",
+          "email": "e2e-auth-primary-20260408@example.com",
+          "gateway_region": "unknown",
+          "user_id": "usr_1e40a5fe31124181"
+        }
+      }
+    },
+    {
+      "name": "02-happy-path-booking-and-final-state",
+      "started_at": "2026-04-08T19:20:05.972807Z",
+      "completed_at": "2026-04-08T19:20:06.6903202Z",
+      "duration_ms": 717,
+      "passed": false,
+      "steps": [
+        {
+          "name": "happy-driver register-attempt",
+          "started_at": "2026-04-08T19:20:05.972807Z",
+          "completed_at": "2026-04-08T19:20:06.4057411Z",
+          "duration_ms": 432,
+          "passed": true,
+          "details": "registered new dummy user",
+          "http": {
+            "request_name": "register",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/register",
+            "status_code": 201,
+            "duration_ms": 432,
+            "trace_id": "be32a8d7-6813-49b3-8bcb-8512cf6bd74c",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-happy-driver-20260408@example.com\",\"license_info\":{\"license_number\":\"DL-7F413D0E8083\"},\"name\":\"E2E happy-driver\",\"password\":\"E2Epass123\",\"vehicle_type\":\"car\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfZWRkYjBhMjg0ZjQwNDVmZCIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1oYXBweS1kcml2ZXItMjAyNjA0MDhAZXhhbXBsZS5jb20iLCJpc3MiOiJ0cmFmZmljLWlhbSIsImV4cCI6MTc3NTY3OTYwNywiaWF0IjoxNzc1Njc2MDA3fQ.PZuKpqMMgKJIHMXe9NwEGaWL3GFR8QFydm7I4dgQgPSgrT88B5uaiPZIIVhSnQ4HcnVqtbyDjcSyzfJz_F8JYg7nHKpudASjmiT7zlbj-iLqmZbof6r3xiwfGaNmCpD953Y61CjVmiDsr_BfEi3g5z-XKortNnW-CQEuUJHBiCmsTFuLL2LcUSuDjdfsco1HAwsBovTmDzo8M1-HIQX03foxNGk7xAs-CLiSutC2r3e1kRfJltf2POSFeBD9RTWa6u9tnhC5XJ82zq-JwwGj_e1nFBoS2jBNucA3Uzsd0TzNz-eRLhmiWA6VSrSS8N8OylT4AgFOw7FlElN2w_ebUA\",\"refresh_token\":\"52776c42c924ccc7ba051af72e2622a37982e7f3b216e15d6264520b78d92177\",\"user\":{\"id\":\"usr_eddb0a284f4045fd\",\"name\":\"E2E happy-driver\",\"email\":\"e2e-happy-driver-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\"}},\"trace_id\":\"be32a8d7-6813-49b3-8bcb-8512cf6bd74c\"}"
+          }
+        },
+        {
+          "name": "happy-driver token-profile-verification",
+          "started_at": "2026-04-08T19:20:06.4057411Z",
+          "completed_at": "2026-04-08T19:20:06.4413088Z",
+          "duration_ms": 35,
+          "passed": true,
+          "details": "bearer token is active and profile assertion passed",
+          "http": {
+            "request_name": "profile",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 34,
+            "trace_id": "b207887b-23ee-4c60-9aa0-e841d916e8d2",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_eddb0a284f4045fd\",\"name\":\"E2E happy-driver\",\"email\":\"e2e-happy-driver-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\",\"license_info\":{\"license_number\":\"DL-7F413D0E8083\"},\"created_at\":\"2026-04-08T19:20:07.297855Z\",\"updated_at\":\"2026-04-08T19:20:07.297855Z\"},\"trace_id\":\"b207887b-23ee-4c60-9aa0-e841d916e8d2\"}"
+          }
+        },
+        {
+          "name": "happy-driver cleanup-open-journeys",
+          "started_at": "2026-04-08T19:20:06.4413088Z",
+          "completed_at": "2026-04-08T19:20:06.555806Z",
+          "duration_ms": 114,
+          "passed": true,
+          "details": "cleanup completed: cancelled=0 completed=0",
+          "http": {
+            "request_name": "list-journeys",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/journeys?limit=50\u0026page=1\u0026status=ACTIVE",
+            "status_code": 200,
+            "duration_ms": 59,
+            "trace_id": "f5c11232-f86c-4445-9582-4fa178b4df4c",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"journeys\":[],\"limit\":50,\"page\":1,\"total\":0},\"trace_id\":\"f5c11232-f86c-4445-9582-4fa178b4df4c\"}"
+          }
+        },
+        {
+          "name": "load-map-nodes",
+          "started_at": "2026-04-08T19:20:06.555806Z",
+          "completed_at": "2026-04-08T19:20:06.591344Z",
+          "duration_ms": 35,
+          "passed": true,
+          "details": "loaded 10 selectable map nodes",
+          "http": {
+            "request_name": "map-nodes",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/map/nodes",
+            "status_code": 200,
+            "duration_ms": 35,
+            "trace_id": "2fa03bf2-6936-40ce-8205-655ee5058b32",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"nodes\":[{\"node_id\":\"city\",\"label\":\"City Centre\",\"lat\":53.3498,\"lng\":-6.2603},{\"node_id\":\"north\",\"label\":\"North Gate\",\"lat\":53.42,\"lng\":-6.2603},{\"node_id\":\"airport\",\"label\":\"Airport\",\"lat\":53.4264,\"lng\":-6.2499},{\"node_id\":\"east\",\"label\":\"East Quay\",\"lat\":53.3498,\"lng\":-6.21},{\"node_id\":\"south\",\"label\":\"South Terminal\",\"lat\":53.31,\"lng\":-6.2603},{\"node_id\":\"industrial\",\"label\":\"Industrial Park\",\"lat\":53.315,\"lng\":-6.21},{\"node_id\":\"west\",\"label\":\"West Depot\",\"lat\":53.3498,\"lng\":-6.32},{\"node_id\":\"port\",\"label\":\"Port Terminal\",\"lat\":53.31,\"lng\":-6.32},{\"node_id\":\"northfield\",\"label\":\"Northfield\",\"lat\":53.4,\"lng\":-6.3},{\"node_id\":\"riverside\",\"label\":\"Riverside\",\"lat\":53.335,\"lng\":-6.27}]},\"trace_id\":\"2fa03bf2-6936-40ce-8205-655ee5058b32\"}"
+          }
+        },
+        {
+          "name": "resolve-route-city-to-airport",
+          "started_at": "2026-04-08T19:20:06.591344Z",
+          "completed_at": "2026-04-08T19:20:06.6259039Z",
+          "duration_ms": 34,
+          "passed": true,
+          "details": "route has 2 segments and 24 total minutes",
+          "http": {
+            "request_name": "map-route",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/map/route?destination_node_id=airport\u0026origin_node_id=city",
+            "status_code": 200,
+            "duration_ms": 31,
+            "trace_id": "b4106059-fca9-470f-b5e4-c420c4f4a3a2",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"origin\":{\"node_id\":\"city\",\"label\":\"City Centre\",\"lat\":53.3498,\"lng\":-6.2603},\"destination\":{\"node_id\":\"airport\",\"label\":\"Airport\",\"lat\":53.4264,\"lng\":-6.2499},\"total_traversal_time_minutes\":24,\"segments\":[{\"sequence\":1,\"sequence_order\":1,\"segment_id\":\"seg_city_north\",\"segment_name\":\"City Centre - North Gate\",\"from_node_id\":\"city\",\"to_node_id\":\"north\",\"traversal_time_minutes\":8,\"region\":\"central\"},{\"sequence\":2,\"sequence_order\":2,\"segment_id\":\"seg_north_airport\",\"segment_name\":\"North Gate - Airport\",\"from_node_id\":\"north\",\"to_node_id\":\"airport\",\"traversal_time_minutes\":16,\"region\":\"north\"}]},\"trace_id\":\"b4106059-fca9-470f-b5e4-c420c4f4a3a2\"}"
+          }
+        },
+        {
+          "name": "pre-flight-capacity-checks-for-route",
+          "started_at": "2026-04-08T19:20:06.6259039Z",
+          "completed_at": "2026-04-08T19:20:06.6903202Z",
+          "duration_ms": 64,
+          "passed": false,
+          "error": "capacity check failed with 404 for segment seg_city_north",
+          "http": {
+            "request_name": "capacity-check-1",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/capacity/check?segment_id=seg_city_north\u0026time_window_end=2026-04-08T21%3A38%3A00Z\u0026time_window_start=2026-04-08T21%3A30%3A00Z",
+            "status_code": 404,
+            "duration_ms": 64,
+            "trace_id": "885bd326-4117-4252-ad95-843feb534a90",
+            "used_auth_token": true,
+            "response_body": "{\"error\":\"closure_repo.FindActiveOverlap(seg_city_north): pq: relation \\\"capacity.segment_closures\\\" does not exist\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03-sad-path-validation-and-state-guardrails",
+      "started_at": "2026-04-08T19:20:06.6903202Z",
+      "completed_at": "2026-04-08T19:20:08.4075629Z",
+      "duration_ms": 1717,
+      "passed": false,
+      "steps": [
+        {
+          "name": "sad-driver register-attempt",
+          "started_at": "2026-04-08T19:20:06.6903202Z",
+          "completed_at": "2026-04-08T19:20:07.1259947Z",
+          "duration_ms": 435,
+          "passed": true,
+          "details": "registered new dummy user",
+          "http": {
+            "request_name": "register",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/register",
+            "status_code": 201,
+            "duration_ms": 435,
+            "trace_id": "8a3aacb5-5ae7-4410-824a-73cb9ce8e129",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-sad-driver-20260408@example.com\",\"license_info\":{\"license_number\":\"DL-6F5241525EB1\"},\"name\":\"E2E sad-driver\",\"password\":\"E2Epass123\",\"vehicle_type\":\"van\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfZWE4YTc4NTdiZGM0NDYyMCIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1zYWQtZHJpdmVyLTIwMjYwNDA4QGV4YW1wbGUuY29tIiwiaXNzIjoidHJhZmZpYy1pYW0iLCJleHAiOjE3NzU2Nzk2MDgsImlhdCI6MTc3NTY3NjAwOH0.FcUGCTjS9z0D_1PCA5duue1BT1gA2ApIez1zx4e1iFBxcaEqzoQbF8IukPR-OMWqSk8AHpZTMXeSQAPnuN-cLQaiJ2gp5yvEe6bOu6eaIsP1Lt2clYC3QmFWdlYANAvY5Ht9x7Tj70fH2oG36jjJ5sLreUa3OySXKX7SjbK5k82sg3x_eYuJ__KqJtIJGGLf4X1ILTSFgY5NaPa-iCg5t_MGGh9-lqmOV2qFTXgZQGYAwnJj3LVgVIHUg7mEluDOqYIoFGDYl2eOD0GtSUT4h9S2bKL-SEsxLW-tf4BxU_L6oMWKsKHkDMh2iRYR-AM2H7EG2IbNdVnIiV-HM6_JeA\",\"refresh_token\":\"0fd97d1b032a8d1ea8ce7bcb52963eaf513efc23f6bdb63b6b0a1468c856a8a2\",\"user\":{\"id\":\"usr_ea8a7857bdc44620\",\"name\":\"E2E sad-driver\",\"email\":\"e2e-sad-driver-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"van\"}},\"trace_id\":\"8a3aacb5-5ae7-4410-824a-73cb9ce8e129\"}"
+          }
+        },
+        {
+          "name": "sad-driver token-profile-verification",
+          "started_at": "2026-04-08T19:20:07.1259947Z",
+          "completed_at": "2026-04-08T19:20:07.1586336Z",
+          "duration_ms": 32,
+          "passed": true,
+          "details": "bearer token is active and profile assertion passed",
+          "http": {
+            "request_name": "profile",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 32,
+            "trace_id": "758370b9-3d7e-4576-bcfc-5e510883f53c",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_ea8a7857bdc44620\",\"name\":\"E2E sad-driver\",\"email\":\"e2e-sad-driver-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"van\",\"license_info\":{\"license_number\":\"DL-6F5241525EB1\"},\"created_at\":\"2026-04-08T19:20:08.012718Z\",\"updated_at\":\"2026-04-08T19:20:08.012718Z\"},\"trace_id\":\"758370b9-3d7e-4576-bcfc-5e510883f53c\"}"
+          }
+        },
+        {
+          "name": "sad-driver cleanup-open-journeys",
+          "started_at": "2026-04-08T19:20:07.1586336Z",
+          "completed_at": "2026-04-08T19:20:07.2303978Z",
+          "duration_ms": 71,
+          "passed": true,
+          "details": "cleanup completed: cancelled=0 completed=0",
+          "http": {
+            "request_name": "list-journeys",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/journeys?limit=50\u0026page=1\u0026status=ACTIVE",
+            "status_code": 200,
+            "duration_ms": 38,
+            "trace_id": "606c4693-f3a3-45e3-934e-3be1a519eb7f",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"journeys\":[],\"limit\":50,\"page\":1,\"total\":0},\"trace_id\":\"606c4693-f3a3-45e3-934e-3be1a519eb7f\"}"
+          }
+        },
+        {
+          "name": "sad-invalid-login-password",
+          "started_at": "2026-04-08T19:20:07.2303978Z",
+          "completed_at": "2026-04-08T19:20:07.6292182Z",
+          "duration_ms": 398,
+          "passed": true,
+          "details": "invalid login correctly rejected",
+          "http": {
+            "request_name": "invalid-login",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/login",
+            "status_code": 401,
+            "duration_ms": 398,
+            "trace_id": "b6822557-3569-4c40-a609-84c54c621c58",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-sad-driver-20260408@example.com\",\"password\":\"WrongPassword123\"}",
+            "response_body": "{\"success\":false,\"error\":{\"code\":\"INVALID_CREDENTIALS\",\"message\":\"Email or password is incorrect.\"},\"trace_id\":\"b6822557-3569-4c40-a609-84c54c621c58\"}"
+          }
+        },
+        {
+          "name": "sad-missing-token-unauthorized",
+          "started_at": "2026-04-08T19:20:07.6292182Z",
+          "completed_at": "2026-04-08T19:20:07.6498835Z",
+          "duration_ms": 20,
+          "passed": true,
+          "details": "unauthenticated access blocked",
+          "http": {
+            "request_name": "journeys-without-auth",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/journeys",
+            "status_code": 401,
+            "duration_ms": 20,
+            "trace_id": "8bc9f9e4-a3b1-4a82-9bb8-13fcb9ae4b4d",
+            "used_auth_token": false,
+            "response_body": "{\"success\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"missing or invalid authorization header\"},\"trace_id\":\"8bc9f9e4-a3b1-4a82-9bb8-13fcb9ae4b4d\"}"
+          }
+        },
+        {
+          "name": "sad-invalid-capacity-window",
+          "started_at": "2026-04-08T19:20:07.6498835Z",
+          "completed_at": "2026-04-08T19:20:07.6782898Z",
+          "duration_ms": 28,
+          "passed": true,
+          "details": "capacity window validation triggered correctly",
+          "http": {
+            "request_name": "capacity-invalid-window",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/capacity/check?segment_id=seg_city_north\u0026time_window_end=2026-04-08T19%3A10%3A07Z\u0026time_window_start=2026-04-08T19%3A20%3A07Z",
+            "status_code": 400,
+            "duration_ms": 28,
+            "trace_id": "ac000d89-83da-4b05-ab80-42507348aac7",
+            "used_auth_token": true,
+            "response_body": "{\"error\":\"time_window_end must be after time_window_start\"}"
+          }
+        },
+        {
+          "name": "sad-malformed-create-journey",
+          "started_at": "2026-04-08T19:20:07.6782898Z",
+          "completed_at": "2026-04-08T19:20:07.707143Z",
+          "duration_ms": 28,
+          "passed": true,
+          "details": "journey input validation guards required fields",
+          "http": {
+            "request_name": "journey-malformed",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/journeys",
+            "status_code": 400,
+            "duration_ms": 28,
+            "trace_id": "d60d625e-6ac7-44f2-8a5c-244046ef9069",
+            "used_auth_token": true,
+            "request_body": "{\"vehicle_type\":\"car\"}",
+            "response_body": "{\"success\":false,\"error\":{\"code\":\"BAD_REQUEST\",\"message\":\"origin coordinates required\"},\"trace_id\":\"d60d625e-6ac7-44f2-8a5c-244046ef9069\"}"
+          }
+        },
+        {
+          "name": "sad-departure-too-soon",
+          "started_at": "2026-04-08T19:20:07.707143Z",
+          "completed_at": "2026-04-08T19:20:07.7547262Z",
+          "duration_ms": 47,
+          "passed": true,
+          "details": "1-hour advance booking rule enforced",
+          "http": {
+            "request_name": "create-journey",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/journeys",
+            "status_code": 422,
+            "duration_ms": 47,
+            "trace_id": "9122e2be-fb24-4394-bea5-b88340ae847c",
+            "used_auth_token": true,
+            "request_body": "{\"departure_time\":\"2026-04-08T19:50:07Z\",\"destination\":{\"lat\":53.4264,\"lng\":-6.2499},\"origin\":{\"lat\":53.3498,\"lng\":-6.2603},\"priority_level\":\"normal\",\"vehicle_type\":\"van\"}",
+            "response_body": "{\"success\":false,\"error\":{\"code\":\"DEPARTURE_TOO_SOON\",\"message\":\"departure time must be at least 1 hour from now\"},\"trace_id\":\"9122e2be-fb24-4394-bea5-b88340ae847c\"}"
+          }
+        },
+        {
+          "name": "sad-setup-approved-fixture",
+          "started_at": "2026-04-08T19:20:07.7547262Z",
+          "completed_at": "2026-04-08T19:20:08.4075629Z",
+          "duration_ms": 652,
+          "passed": false,
+          "error": "unexpected create journey status 502 (capacity service unavailable)"
+        }
+      ]
+    },
+    {
+      "name": "04-concurrency-simulation-multi-user-regional",
+      "started_at": "2026-04-08T19:20:08.4075629Z",
+      "completed_at": "2026-04-08T19:20:10.7616669Z",
+      "duration_ms": 2354,
+      "passed": false,
+      "steps": [
+        {
+          "name": "conc-user-1 register-attempt",
+          "started_at": "2026-04-08T19:20:08.4075629Z",
+          "completed_at": "2026-04-08T19:20:08.8721982Z",
+          "duration_ms": 464,
+          "passed": true,
+          "details": "registered new dummy user",
+          "http": {
+            "request_name": "register",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/register",
+            "status_code": 201,
+            "duration_ms": 464,
+            "trace_id": "c8c9d333-13ce-4f6c-9a17-47a7a45df6b1",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-conc-user-1-20260408@example.com\",\"license_info\":{\"license_number\":\"DL-3E05B0A5A08A\"},\"name\":\"E2E conc-user-1\",\"password\":\"E2Epass123\",\"vehicle_type\":\"car\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfNzllZGExZTZkYzNmNDdlYiIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1jb25jLXVzZXItMS0yMDI2MDQwOEBleGFtcGxlLmNvbSIsImlzcyI6InRyYWZmaWMtaWFtIiwiZXhwIjoxNzc1Njc5NjA5LCJpYXQiOjE3NzU2NzYwMDl9.XKolJw3ZRl42GmII8KZ4lpR1grNOoLW5x_9gWPV5u_QlYxQRaoBtfWPNZPH7rT-lWMHnBqxmG5co8m-XLYJNViryEoXTqxf0oIlaawJ7lGpJ4dXPDCWsR5-qcb5EE38_u94yifjZoujnpvhPjrgHziNU5TOKPT79AN-gXYozrgwKWyu91pXSBaNbBPbd1Gwl_EyBQ-Y3qZJECm1IPib6hzjd08bi9W-0wUpGmkrHDQQMcMCLcwu33hvI8HiahinNCJxEZjhksJXfZZ3un30Q4wxQCxVez1MxqYcKpMZd80RTDsFQY96d9Re5QEIZ07pDI9aQehHwkjHd98pHwV6b-A\",\"refresh_token\":\"40e728a87f98fbe031bb069a6106deff7c3dab42afa2c1a6ad9900f4814e46f4\",\"user\":{\"id\":\"usr_79eda1e6dc3f47eb\",\"name\":\"E2E conc-user-1\",\"email\":\"e2e-conc-user-1-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\"}},\"trace_id\":\"c8c9d333-13ce-4f6c-9a17-47a7a45df6b1\"}"
+          }
+        },
+        {
+          "name": "conc-user-1 token-profile-verification",
+          "started_at": "2026-04-08T19:20:08.8721982Z",
+          "completed_at": "2026-04-08T19:20:08.9346454Z",
+          "duration_ms": 62,
+          "passed": true,
+          "details": "bearer token is active and profile assertion passed",
+          "http": {
+            "request_name": "profile",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 62,
+            "trace_id": "7f48af0e-0269-4262-912f-ff2620118a60",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_79eda1e6dc3f47eb\",\"name\":\"E2E conc-user-1\",\"email\":\"e2e-conc-user-1-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"car\",\"license_info\":{\"license_number\":\"DL-3E05B0A5A08A\"},\"created_at\":\"2026-04-08T19:20:09.787076Z\",\"updated_at\":\"2026-04-08T19:20:09.787076Z\"},\"trace_id\":\"7f48af0e-0269-4262-912f-ff2620118a60\"}"
+          }
+        },
+        {
+          "name": "conc-user-1 cleanup-open-journeys",
+          "started_at": "2026-04-08T19:20:08.9346454Z",
+          "completed_at": "2026-04-08T19:20:09.0323119Z",
+          "duration_ms": 97,
+          "passed": true,
+          "details": "cleanup completed: cancelled=0 completed=0",
+          "http": {
+            "request_name": "list-journeys",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/journeys?limit=50\u0026page=1\u0026status=ACTIVE",
+            "status_code": 200,
+            "duration_ms": 40,
+            "trace_id": "50707df2-0eb9-4c35-9bed-89fa112ff37c",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"journeys\":[],\"limit\":50,\"page\":1,\"total\":0},\"trace_id\":\"50707df2-0eb9-4c35-9bed-89fa112ff37c\"}"
+          }
+        },
+        {
+          "name": "conc-user-2 register-attempt",
+          "started_at": "2026-04-08T19:20:09.0323119Z",
+          "completed_at": "2026-04-08T19:20:09.4618366Z",
+          "duration_ms": 429,
+          "passed": true,
+          "details": "registered new dummy user",
+          "http": {
+            "request_name": "register",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/register",
+            "status_code": 201,
+            "duration_ms": 428,
+            "trace_id": "a784b2f6-85dc-425b-b820-333cc82a73a5",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-conc-user-2-20260408@example.com\",\"license_info\":{\"license_number\":\"DL-15ABCE6A43FA\"},\"name\":\"E2E conc-user-2\",\"password\":\"E2Epass123\",\"vehicle_type\":\"van\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfODM5NzFiMTE4OWUwNGE5NSIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1jb25jLXVzZXItMi0yMDI2MDQwOEBleGFtcGxlLmNvbSIsImlzcyI6InRyYWZmaWMtaWFtIiwiZXhwIjoxNzc1Njc5NjEwLCJpYXQiOjE3NzU2NzYwMTB9.NWd-L1VwNTfQxae9H3ilJN69y8n6gGw5fuKoJRdQ69-f49X5OGBl8tdvwMidFr8FV4iqHINB_gGGe8ncNmswQm-F5_lYq_48HbRQmhZGBIwglV_YaGU_cELjAgxiLc1nrEryAe6DGLL9HVYsD24xnRZ86j_vhpjgGF2oym8vsbe2NNnlUIK1ZV-YcZZYs_wzVqH-I0Td14QjhX_2L3RIyRwBfWE193CSB_0iJ9BomuZHhUPacOugEnBShqakGVxDmz6gYqd7oNiDTZmzs_V4YUtje1P7rdbHUq6H6IAB2yHp_LdRMn-TR0lFKfFiGf_s4Ibk6ogCc0F9avcWttV56Q\",\"refresh_token\":\"48898403cf9708d04b1f8bbb09c0aebaed138e320854c8599f46a110db28920e\",\"user\":{\"id\":\"usr_83971b1189e04a95\",\"name\":\"E2E conc-user-2\",\"email\":\"e2e-conc-user-2-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"van\"}},\"trace_id\":\"a784b2f6-85dc-425b-b820-333cc82a73a5\"}"
+          }
+        },
+        {
+          "name": "conc-user-2 token-profile-verification",
+          "started_at": "2026-04-08T19:20:09.4618366Z",
+          "completed_at": "2026-04-08T19:20:09.4922997Z",
+          "duration_ms": 30,
+          "passed": true,
+          "details": "bearer token is active and profile assertion passed",
+          "http": {
+            "request_name": "profile",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 30,
+            "trace_id": "91a498e6-efc2-40ed-bab3-3f7189c60da0",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_83971b1189e04a95\",\"name\":\"E2E conc-user-2\",\"email\":\"e2e-conc-user-2-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"van\",\"license_info\":{\"license_number\":\"DL-15ABCE6A43FA\"},\"created_at\":\"2026-04-08T19:20:10.363812Z\",\"updated_at\":\"2026-04-08T19:20:10.363812Z\"},\"trace_id\":\"91a498e6-efc2-40ed-bab3-3f7189c60da0\"}"
+          }
+        },
+        {
+          "name": "conc-user-2 cleanup-open-journeys",
+          "started_at": "2026-04-08T19:20:09.4922997Z",
+          "completed_at": "2026-04-08T19:20:09.5630948Z",
+          "duration_ms": 70,
+          "passed": true,
+          "details": "cleanup completed: cancelled=0 completed=0",
+          "http": {
+            "request_name": "list-journeys",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/journeys?limit=50\u0026page=1\u0026status=ACTIVE",
+            "status_code": 200,
+            "duration_ms": 35,
+            "trace_id": "00fa2501-eb55-4540-9f87-ff9ac1ecae05",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"journeys\":[],\"limit\":50,\"page\":1,\"total\":0},\"trace_id\":\"00fa2501-eb55-4540-9f87-ff9ac1ecae05\"}"
+          }
+        },
+        {
+          "name": "conc-user-3 register-attempt",
+          "started_at": "2026-04-08T19:20:09.5630948Z",
+          "completed_at": "2026-04-08T19:20:09.9611315Z",
+          "duration_ms": 398,
+          "passed": true,
+          "details": "registered new dummy user",
+          "http": {
+            "request_name": "register",
+            "method": "POST",
+            "url": "http://35.187.121.12/api/v1/auth/register",
+            "status_code": 201,
+            "duration_ms": 397,
+            "trace_id": "1698d670-bca5-4ed7-b3a5-e7f6757dc660",
+            "used_auth_token": false,
+            "request_body": "{\"email\":\"e2e-conc-user-3-20260408@example.com\",\"license_info\":{\"license_number\":\"DL-A3186E53BEC7\"},\"name\":\"E2E conc-user-3\",\"password\":\"E2Epass123\",\"vehicle_type\":\"truck\"}",
+            "response_body": "{\"success\":true,\"data\":{\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1kZXYtMDAxIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c3JfNjlkZDg2ZjcwYWFhNDQ0OSIsInJvbGUiOiJkcml2ZXIiLCJlbWFpbCI6ImUyZS1jb25jLXVzZXItMy0yMDI2MDQwOEBleGFtcGxlLmNvbSIsImlzcyI6InRyYWZmaWMtaWFtIiwiZXhwIjoxNzc1Njc5NjEwLCJpYXQiOjE3NzU2NzYwMTB9.b6L0VXPL1prY_EagkVWRQ-YIEznhuae5Q76niIVAA0gA3ePfhk8jjhZPU-bzU1G-F3-fefGW_0MCVw7x14snVml7Vw3TEm6lewsqGxHBABUmgmrbgIUWsyRPtICC-Pf_a4-r8CoiCQH0UPtCigP_lCwUmwdL3V2riAwjtBUsJmogisyhgylYVamPNsCqDQzH0pINjp9YdXnSNuEuTQJ61ZUc6CjJ3tmBZTJNeCgFmUQdvDlA--R9_8Ln7JvYxir2dCoVdVq69OisAP7kSb9jMLG-m8c4VetqQV35KmplzL8U_s0KtczVqyQmSgtKj--ydHQd5AAzKZTLFO3m3ta5tg\",\"refresh_token\":\"1cbcec4fd6400c16a2264f04ab36114cd62d44aa3a6733d5183e97d3591784ce\",\"user\":{\"id\":\"usr_69dd86f70aaa4449\",\"name\":\"E2E conc-user-3\",\"email\":\"e2e-conc-user-3-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"truck\"}},\"trace_id\":\"1698d670-bca5-4ed7-b3a5-e7f6757dc660\"}"
+          }
+        },
+        {
+          "name": "conc-user-3 token-profile-verification",
+          "started_at": "2026-04-08T19:20:09.9611315Z",
+          "completed_at": "2026-04-08T19:20:09.9986136Z",
+          "duration_ms": 37,
+          "passed": true,
+          "details": "bearer token is active and profile assertion passed",
+          "http": {
+            "request_name": "profile",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/auth/profile",
+            "status_code": 200,
+            "duration_ms": 37,
+            "trace_id": "fc39db06-cce0-4bb1-9ad9-930a76d62e89",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"id\":\"usr_69dd86f70aaa4449\",\"name\":\"E2E conc-user-3\",\"email\":\"e2e-conc-user-3-20260408@example.com\",\"role\":\"driver\",\"vehicle_type\":\"truck\",\"license_info\":{\"license_number\":\"DL-A3186E53BEC7\"},\"created_at\":\"2026-04-08T19:20:10.875983Z\",\"updated_at\":\"2026-04-08T19:20:10.875983Z\"},\"trace_id\":\"fc39db06-cce0-4bb1-9ad9-930a76d62e89\"}"
+          }
+        },
+        {
+          "name": "conc-user-3 cleanup-open-journeys",
+          "started_at": "2026-04-08T19:20:09.9986136Z",
+          "completed_at": "2026-04-08T19:20:10.0829565Z",
+          "duration_ms": 84,
+          "passed": true,
+          "details": "cleanup completed: cancelled=0 completed=0",
+          "http": {
+            "request_name": "list-journeys",
+            "method": "GET",
+            "url": "http://35.187.121.12/api/v1/journeys?limit=50\u0026page=1\u0026status=ACTIVE",
+            "status_code": 200,
+            "duration_ms": 47,
+            "trace_id": "9407646a-2082-4eb8-a799-8483a948e9e4",
+            "used_auth_token": true,
+            "response_body": "{\"success\":true,\"data\":{\"journeys\":[],\"limit\":50,\"page\":1,\"total\":0},\"trace_id\":\"9407646a-2082-4eb8-a799-8483a948e9e4\"}"
+          }
+        },
+        {
+          "name": "concurrency-phase-1-different-regions",
+          "started_at": "2026-04-08T19:20:10.0829565Z",
+          "completed_at": "2026-04-08T19:20:10.7616669Z",
+          "duration_ms": 678,
+          "passed": false,
+          "error": "conc-user-1 failed: unexpected create journey status 502 (capacity service unavailable)"
+        }
+      ]
+    }
+  ],
+  "total_scenarios": 5,
+  "passed_scenarios": 2,
+  "failed_scenarios": 3
+}

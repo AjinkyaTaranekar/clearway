@@ -1,0 +1,34 @@
+{
+  "run_id": "e2e-20260408-1775675614",
+  "started_at": "2026-04-08T19:13:34.2616375Z",
+  "completed_at": "2026-04-08T19:13:34.3971086Z",
+  "duration_ms": 135,
+  "base_urls": [
+    "http://localhost"
+  ],
+  "scenarios": [
+    {
+      "name": "00-preflight",
+      "started_at": "2026-04-08T19:13:34.2616375Z",
+      "completed_at": "2026-04-08T19:13:34.3971086Z",
+      "duration_ms": 135,
+      "passed": false,
+      "steps": [
+        {
+          "name": "health-check http://localhost",
+          "started_at": "2026-04-08T19:13:34.2616375Z",
+          "completed_at": "2026-04-08T19:13:34.3971086Z",
+          "duration_ms": 135,
+          "passed": false,
+          "error": "health probe transport failure: request failed: Get \"http://localhost/nginx-health\": dial tcp [::1]:80: connectex: No connection could be made because the target machine actively refused it."
+        }
+      ],
+      "metadata": {
+        "healthy_gateways": []
+      }
+    }
+  ],
+  "total_scenarios": 1,
+  "passed_scenarios": 0,
+  "failed_scenarios": 1
+}
