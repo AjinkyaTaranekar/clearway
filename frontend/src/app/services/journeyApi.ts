@@ -9,6 +9,7 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 const JOURNEY_DETAIL_CACHE_TTL_MS = 60_000;
 const JOURNEY_LIST_CACHE_TTL_MS = 30_000;
 const SEGMENT_OCCUPANCY_CACHE_TTL_MS = 15_000;
+const DRIVER_NAME_CACHE_TTL_MS = 5 * 60_000;
 
 type CacheEntry<T> = {
   value: T;
@@ -18,6 +19,7 @@ type CacheEntry<T> = {
 const journeyDetailCache = new Map<string, CacheEntry<Journey>>();
 const journeyListCache = new Map<string, CacheEntry<{ journeys: Journey[]; total: number }>>();
 const adminJourneyListCache = new Map<string, CacheEntry<{ journeys: Journey[]; total: number }>>();
+const driverNameCache = new Map<string, CacheEntry<string>>();
 let occupancyCacheEntry: CacheEntry<Map<string, SegmentOccupancy>> | null = null;
 
 function cacheScope(): string {
@@ -76,7 +78,50 @@ export function clearJourneyReadCache(): void {
   journeyDetailCache.clear();
   journeyListCache.clear();
   adminJourneyListCache.clear();
+  driverNameCache.clear();
   occupancyCacheEntry = null;
+}
+
+function fallbackDriverName(driverID: string): string {
+  const trimmed = (driverID ?? '').trim();
+  if (!trimmed) return 'Driver';
+  if (trimmed.length <= 8) return `Driver ${trimmed}`;
+  return `Driver ${trimmed.slice(0, 8)}`;
+}
+
+async function resolveDriverNames(driverIDs: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const scope = cacheScope();
+  const uniqueIDs = Array.from(new Set(driverIDs.filter((id) => id.trim() !== '')));
+
+  const misses: string[] = [];
+  uniqueIDs.forEach((driverID) => {
+    const key = `${scope}|driver-name:${driverID}`;
+    const cached = readCache(driverNameCache, key);
+    if (cached) {
+      names.set(driverID, cached);
+      return;
+    }
+    misses.push(driverID);
+  });
+
+  if (misses.length === 0) {
+    return names;
+  }
+
+  await Promise.all(misses.map(async (driverID) => {
+    try {
+      const user = await apiFetch<{ id: string; name?: string }>(`/api/v1/admin/auth/users/${encodeURIComponent(driverID)}`);
+      const resolvedName = (user?.name ?? '').trim();
+      if (resolvedName) {
+        names.set(driverID, writeCache(driverNameCache, `${scope}|driver-name:${driverID}`, resolvedName, DRIVER_NAME_CACHE_TTL_MS));
+      }
+    } catch {
+      // Keep fallback name if lookup is unavailable.
+    }
+  }));
+
+  return names;
 }
 
 function generateIdempotencyKey(): string {
@@ -228,10 +273,10 @@ function mapSegments(
     return {
       id: segId,
       name: s.segment_name ?? s.name,
-      // U-08: use live occupancy from Capacity Service; fall back to neutral 50%
-      // only when the occupancy fetch failed or this segment_id is unrecognised.
-      occupancy: occ !== undefined ? Math.round(occ.pct) : 50,
-      level: occ !== undefined ? occ.level : ('medium' as const),
+      // Use live occupancy where available; otherwise mark as unknown.
+      occupancy: occ !== undefined ? Math.round(occ.pct) : 0,
+      occupancyKnown: occ !== undefined,
+      level: occ !== undefined ? occ.level : ('low' as const),
       sequenceOrder: s.sequence_order ?? s.sequence,
       traversalMinutes: s.traversal_minutes ?? s.traversal_time_minutes,
       timeWindowStart: s.time_window_start,
@@ -269,10 +314,13 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
     ? getLocationName(j.destination.lat, j.destination.lng)
     : j.destination_name ?? 'Unknown';
 
+  const driverId = j.driver_id ?? '';
+  const driverName = (j.driver_name ?? '').trim() || fallbackDriverName(driverId);
+
   return {
     id: j.journey_id,
-    driverId: j.driver_id ?? '',
-    driverName: j.driver_name ?? 'Driver',
+    driverId,
+    driverName,
     origin: originName,
     destination: destName,
     departureTime: j.departure_time ?? '',
@@ -396,9 +444,12 @@ export async function listJourneys(
   params.set('page', String(page));
   params.set('limit', String(limit));
 
-  const data = await apiFetch<any>(`/api/v1/journeys?${params}`);
+  const [data, occupancyMap] = await Promise.all([
+    apiFetch<any>(`/api/v1/journeys?${params}`),
+    fetchSegmentOccupancyMap(),
+  ]);
   return writeCache(journeyListCache, key, {
-    journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j)),
+    journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j, occupancyMap)),
     total: data.total ?? 0,
   }, JOURNEY_LIST_CACHE_TTL_MS);
 }
@@ -461,9 +512,29 @@ export async function adminListJourneys(filters?: {
   if (filters?.page) params.set('page', String(filters.page));
   if (filters?.limit) params.set('limit', String(filters.limit));
 
-  const data = await apiFetch<any>(`/api/v1/admin/journeys?${params}`);
+  const [data, occupancyMap] = await Promise.all([
+    apiFetch<any>(`/api/v1/admin/journeys?${params}`),
+    fetchSegmentOccupancyMap(),
+  ]);
+
+  const rawJourneys = Array.isArray(data.journeys) ? data.journeys : [];
+  const missingDriverIDs = rawJourneys
+    .filter((j: any) => !String(j?.driver_name ?? '').trim())
+    .map((j: any) => String(j?.driver_id ?? '').trim())
+    .filter((driverID: string) => driverID !== '');
+  const resolvedNames = await resolveDriverNames(missingDriverIDs);
+
+  const hydratedJourneys = rawJourneys.map((j: any) => {
+    const driverID = String(j?.driver_id ?? '').trim();
+    if (!driverID) return j;
+    if (String(j?.driver_name ?? '').trim()) return j;
+    const resolvedName = resolvedNames.get(driverID);
+    if (!resolvedName) return j;
+    return { ...j, driver_name: resolvedName };
+  });
+
   return writeCache(adminJourneyListCache, key, {
-    journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j)),
+    journeys: hydratedJourneys.map((j: any) => mapApiJourney(j, occupancyMap)),
     total: data.total ?? 0,
   }, JOURNEY_LIST_CACHE_TTL_MS);
 }

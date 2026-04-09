@@ -156,6 +156,11 @@ func notificationPlaceLabel(placeID string, coords model.Coordinates) string {
 	if trimmed == "" || strings.HasPrefix(trimmed, "coord_") {
 		return fmt.Sprintf("%.4f, %.4f", coords.Lat, coords.Lng)
 	}
+	// Older journeys may store raw Nominatim IDs (e.g. osm:relation:12345).
+	// Avoid showing opaque IDs in user notifications.
+	if strings.HasPrefix(strings.ToLower(trimmed), "osm:") {
+		return fmt.Sprintf("%.4f, %.4f", coords.Lat, coords.Lng)
+	}
 	return trimmed
 }
 

@@ -50,6 +50,10 @@ export default function JourneyDetailPage() {
     return '#A61E1E';
   };
 
+  const segmentColor = (known: boolean | undefined, level: string) => {
+    return known === false ? '#9AA19C' : occupancyColor(level);
+  };
+
   const timelineIconColor = (type: string) => {
     if (type === 'approved' || type === 'completed') return '#2E7D32';
     if (type === 'rejected' || type === 'cancelled') return '#B42318';
@@ -182,7 +186,7 @@ export default function JourneyDetailPage() {
                 <div className="flex items-center gap-2.5">
                   <div
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: occupancyColor(seg.level) }}
+                    style={{ background: segmentColor(seg.occupancyKnown, seg.level) }}
                   />
                   <div>
                     <div style={{ color: '#1F2421', fontWeight: 500, fontSize: '0.875rem' }}>
@@ -202,11 +206,11 @@ export default function JourneyDetailPage() {
                   <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
                     <div
                       className="h-full rounded-full"
-                      style={{ width: `${seg.occupancy}%`, background: occupancyColor(seg.level) }}
+                      style={{ width: `${seg.occupancyKnown === false ? 0 : seg.occupancy}%`, background: segmentColor(seg.occupancyKnown, seg.level) }}
                     />
                   </div>
                   <span style={{ color: '#4E5953', fontSize: '0.8125rem', minWidth: '32px', textAlign: 'right' }}>
-                    {seg.occupancy}%
+                    {seg.occupancyKnown === false ? 'N/A' : `${seg.occupancy}%`}
                   </span>
                 </div>
               </div>

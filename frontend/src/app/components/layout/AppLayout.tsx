@@ -1,15 +1,56 @@
 import { Analytics } from '@vercel/analytics/react';
 import { Bell, Menu } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Outlet, useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import {
+  dismissPushPermissionPrompt,
+  enablePushNotifications,
+  shouldShowPushPermissionPrompt,
+} from '../../services/pushNotifications';
 import { MobileNav } from './MobileNav';
 import { Sidebar } from './Sidebar';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [pushPromptBusy, setPushPromptBusy] = useState(false);
   const { unreadCount, user } = useApp();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user?.role !== 'driver') {
+      setShowPushPrompt(false);
+      return;
+    }
+    setShowPushPrompt(shouldShowPushPermissionPrompt());
+  }, [user?.id, user?.role]);
+
+  const handleEnablePushPrompt = async () => {
+    setPushPromptBusy(true);
+    try {
+      await enablePushNotifications();
+      setShowPushPrompt(false);
+      toast.success('Push notifications enabled');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to enable browser notifications.';
+      toast.error('Push setup failed', { description: message });
+
+      const lower = message.toLowerCase();
+      if (lower.includes('not granted') || lower.includes('blocked')) {
+        dismissPushPermissionPrompt();
+        setShowPushPrompt(false);
+      }
+    } finally {
+      setPushPromptBusy(false);
+    }
+  };
+
+  const handleDismissPushPrompt = () => {
+    dismissPushPermissionPrompt();
+    setShowPushPrompt(false);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--background)' }}>
@@ -79,6 +120,40 @@ export function AppLayout() {
 
         {/* Page content - add bottom padding on mobile for the bottom nav */}
         <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
+          {showPushPrompt && (
+            <div
+              className="mx-4 mt-4 lg:mx-6 rounded-lg p-3 flex items-center justify-between gap-3"
+              style={{ border: '1px solid var(--border)', background: '#F0EDE7' }}
+            >
+              <div>
+                <div style={{ color: '#1F2421', fontWeight: 600, fontSize: '0.875rem' }}>
+                  Enable trip alerts
+                </div>
+                <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
+                  Turn on browser notifications to get instant journey updates.
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleDismissPushPrompt}
+                  className="px-3 py-1.5 rounded-lg text-sm"
+                  style={{ border: '1px solid var(--border)', color: '#4E5953', background: 'white' }}
+                >
+                  Not now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleEnablePushPrompt(); }}
+                  disabled={pushPromptBusy}
+                  className="px-3 py-1.5 rounded-lg text-sm text-white"
+                  style={{ background: '#2F6B55', opacity: pushPromptBusy ? 0.7 : 1 }}
+                >
+                  {pushPromptBusy ? 'Enabling...' : 'Enable'}
+                </button>
+              </div>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

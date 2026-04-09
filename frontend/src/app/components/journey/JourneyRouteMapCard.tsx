@@ -1,6 +1,7 @@
 import { LngLatBounds, Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { MapPin } from 'lucide-react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { computeRoute } from '../../services/mapApi';
 import { GeoPoint, Journey } from '../../types';
 import OSMMap, { addMarker, addPolyline } from '../ui/OSMMap';
 
@@ -36,9 +37,16 @@ function midpoint(a: GeoPoint, b: GeoPoint): GeoPoint {
   };
 }
 
+const routePathCache = new Map<string, GeoPoint[]>();
+
+function routePathCacheKey(origin: GeoPoint, destination: GeoPoint): string {
+  return `${origin.lat.toFixed(5)},${origin.lng.toFixed(5)}|${destination.lat.toFixed(5)},${destination.lng.toFixed(5)}`;
+}
+
 export default function JourneyRouteMapCard({ journey, title = 'Route map' }: JourneyRouteMapCardProps) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRefs = useRef<Marker[]>([]);
+  const [computedPath, setComputedPath] = useState<GeoPoint[] | null>(null);
 
   const path = useMemo(() => {
     const points: GeoPoint[] = [];
@@ -78,6 +86,44 @@ export default function JourneyRouteMapCard({ journey, title = 'Route map' }: Jo
 
   const hasRenderableRoute = !!originPoint && !!destinationPoint;
 
+  useEffect(() => {
+    if (!originPoint || !destinationPoint) {
+      setComputedPath(null);
+      return;
+    }
+
+    const key = routePathCacheKey(originPoint, destinationPoint);
+    const cached = routePathCache.get(key);
+    if (cached && cached.length >= 2) {
+      setComputedPath(cached);
+      return;
+    }
+
+    setComputedPath(null);
+
+    let cancelled = false;
+    computeRoute(originPoint, destinationPoint)
+      .then((route) => {
+        if (cancelled) return;
+        const points = (route.path ?? [])
+          .map((point) => ({ lat: point.lat, lng: point.lng }))
+          .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+        if (points.length >= 2) {
+          routePathCache.set(key, points);
+          setComputedPath(points);
+        }
+      })
+      .catch(() => {
+        // Keep segment-geometry fallback when backend route call is unavailable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationPoint, originPoint]);
+
+  const effectivePath = computedPath && computedPath.length >= 2 ? computedPath : path;
+
   const mapCenter: [number, number] = useMemo(() => {
     if (!originPoint || !destinationPoint) {
       return [53.3498, -6.2603];
@@ -92,7 +138,7 @@ export default function JourneyRouteMapCard({ journey, title = 'Route map' }: Jo
     markerRefs.current.forEach((marker) => marker.remove());
     markerRefs.current = [];
 
-    const polyline = path.length >= 2 ? path : [originPoint, destinationPoint];
+    const polyline = effectivePath.length >= 2 ? effectivePath : [originPoint, destinationPoint];
     addPolyline(
       map,
       'journey-route',
@@ -123,7 +169,7 @@ export default function JourneyRouteMapCard({ journey, title = 'Route map' }: Jo
     if (!mapRef.current) return;
     drawOverlay(mapRef.current);
     // The map overlay must refresh when route geometry changes.
-  }, [path, originPoint, destinationPoint]);
+  }, [effectivePath, originPoint, destinationPoint]);
 
   return (
     <div className="bg-white rounded-xl p-5 mb-4" style={{ border: '1px solid var(--border)' }}>

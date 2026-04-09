@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -28,6 +29,16 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 		if err != nil {
 			logWithTrace(ctx).Warn().Err(err).Msg("failed to load cached route; continuing with live route computation")
 		} else if found {
+			if len(cachedRoute.Path) < 2 {
+				if path, pathErr := h.computeLiveRoutePath(ctx, origin, destination); pathErr != nil {
+					logWithTrace(ctx).Warn().Err(pathErr).Str("route_id", cachedRoute.RouteID).Msg("failed to fetch live route path for cached route")
+				} else {
+					cachedRoute.Path = path
+					if persistErr := h.persistCachedRoutePath(ctx, cachedRoute.RouteID, path); persistErr != nil {
+						logWithTrace(ctx).Warn().Err(persistErr).Str("route_id", cachedRoute.RouteID).Msg("failed to persist recovered cached route path")
+					}
+				}
+			}
 			if err := h.ensureCapacitySegments(ctx, cachedRoute.Segments); err != nil {
 				logWithTrace(ctx).Warn().Err(err).Str("route_id", cachedRoute.RouteID).Msg("failed to register cached route segments in capacity service")
 			}
@@ -79,16 +90,44 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 	return response, nil
 }
 
+func (h *MapHandler) computeLiveRoutePath(ctx context.Context, origin, destination RoutePointRequest) ([]RoutePointRequest, error) {
+	routeResult, err := h.geo.GetRoute(ctx,
+		RoutePoint{Lat: origin.Lat, Lng: origin.Lng},
+		RoutePoint{Lat: destination.Lat, Lng: destination.Lng},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("osrm route lookup failed: %w", err)
+	}
+	return mapPathPoints(routeResult.Points), nil
+}
+
+func (h *MapHandler) persistCachedRoutePath(ctx context.Context, routeID string, path []RoutePointRequest) error {
+	if h.db == nil || routeID == "" || len(path) < 2 {
+		return nil
+	}
+
+	pathJSON, err := json.Marshal(path)
+	if err != nil {
+		return fmt.Errorf("marshal cached path: %w", err)
+	}
+
+	if _, err := h.db.ExecContext(ctx, `UPDATE map.routes SET path_geojson = $2, last_used_at = NOW() WHERE route_id = $1`, routeID, pathJSON); err != nil {
+		return fmt.Errorf("update cached path: %w", err)
+	}
+	return nil
+}
+
 func (h *MapHandler) loadCachedDynamicRoute(ctx context.Context, originPlaceID, destinationPlaceID string) (ComputeRouteResponse, bool, error) {
 	const routeQuery = `
-		SELECT route_id, distance_m, duration_s
+		SELECT route_id, distance_m, duration_s, path_geojson
 		FROM map.routes
 		WHERE origin_place_id = $1 AND dest_place_id = $2`
 
 	var routeID string
 	var distanceMeters int
 	var durationSeconds int
-	if err := h.db.QueryRowContext(ctx, routeQuery, originPlaceID, destinationPlaceID).Scan(&routeID, &distanceMeters, &durationSeconds); err != nil {
+	var pathJSON []byte
+	if err := h.db.QueryRowContext(ctx, routeQuery, originPlaceID, destinationPlaceID).Scan(&routeID, &distanceMeters, &durationSeconds, &pathJSON); err != nil {
 		if err == sql.ErrNoRows {
 			return ComputeRouteResponse{}, false, nil
 		}
@@ -167,6 +206,12 @@ func (h *MapHandler) loadCachedDynamicRoute(ctx context.Context, originPlaceID, 
 		TotalDurationMinutes: durationSecondsToMinutes(float64(durationSeconds)),
 		Segments:             segments,
 	}
+	if len(pathJSON) > 0 {
+		var cachedPath []RoutePointRequest
+		if err := json.Unmarshal(pathJSON, &cachedPath); err == nil {
+			resp.Path = cachedPath
+		}
+	}
 	if resp.TotalDurationMinutes <= 0 {
 		resp.TotalDurationMinutes = sumTraversalMinutes(segments)
 	}
@@ -237,14 +282,20 @@ func (h *MapHandler) persistDynamicRoute(
 	}
 
 	const upsertRoute = `
-		INSERT INTO map.routes (origin_place_id, dest_place_id, distance_m, duration_s, last_used_at, created_at)
-		VALUES ($1, $2, $3, $4, NOW(), NOW())
+		INSERT INTO map.routes (origin_place_id, dest_place_id, distance_m, duration_s, path_geojson, last_used_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 		ON CONFLICT (origin_place_id, dest_place_id)
 		DO UPDATE SET
 			distance_m = EXCLUDED.distance_m,
 			duration_s = EXCLUDED.duration_s,
+			path_geojson = EXCLUDED.path_geojson,
 			last_used_at = NOW()
 		RETURNING route_id`
+
+	pathJSON, err := json.Marshal(mapPathPoints(routeResult.Points))
+	if err != nil {
+		return "", fmt.Errorf("marshal route path: %w", err)
+	}
 
 	var routeID string
 	if err := tx.QueryRowContext(
@@ -254,6 +305,7 @@ func (h *MapHandler) persistDynamicRoute(
 		destinationPlaceID,
 		int(math.Round(routeResult.DistanceMeters)),
 		int(math.Round(routeResult.DurationSeconds)),
+		pathJSON,
 	).Scan(&routeID); err != nil {
 		return "", fmt.Errorf("upsert route: %w", err)
 	}

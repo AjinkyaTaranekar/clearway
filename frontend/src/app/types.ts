@@ -12,6 +12,7 @@ export interface RouteSegment {
   id: string;
   name: string;
   occupancy: number;
+  occupancyKnown?: boolean;
   level: TrafficLevel;
   sequenceOrder?: number;
   traversalMinutes?: number;

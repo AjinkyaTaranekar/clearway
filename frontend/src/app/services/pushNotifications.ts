@@ -4,6 +4,7 @@ import { deactivateDeviceToken, registerDeviceToken } from './notificationApi';
 
 const PUSH_ENABLED_KEY = 'cw_push_enabled';
 const PUSH_TOKEN_KEY = 'cw_push_token';
+const PUSH_PROMPT_DISMISSED_KEY = 'cw_push_prompt_dismissed';
 const FCM_SW_PATH = '/firebase-messaging-sw.js';
 
 function getLegacyToken(): string | null {
@@ -82,6 +83,27 @@ export function isPushEnabled(): boolean {
   return localStorage.getItem(PUSH_ENABLED_KEY) === 'true';
 }
 
+export function shouldShowPushPermissionPrompt(): boolean {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return false;
+  }
+
+  if (Notification.permission !== 'default') {
+    return false;
+  }
+
+  // Respect explicit opt-out preference.
+  if (localStorage.getItem(PUSH_ENABLED_KEY) === 'false') {
+    return false;
+  }
+
+  return localStorage.getItem(PUSH_PROMPT_DISMISSED_KEY) !== 'true';
+}
+
+export function dismissPushPermissionPrompt(): void {
+  localStorage.setItem(PUSH_PROMPT_DISMISSED_KEY, 'true');
+}
+
 export async function enablePushNotifications(): Promise<void> {
   if (typeof window === 'undefined' || !('Notification' in window)) {
     throw new Error('This browser does not support notifications.');
@@ -101,6 +123,7 @@ export async function enablePushNotifications(): Promise<void> {
   const token = await getConfiguredToken();
   await registerDeviceToken(token, 'web');
   localStorage.setItem(PUSH_ENABLED_KEY, 'true');
+  localStorage.removeItem(PUSH_PROMPT_DISMISSED_KEY);
 }
 
 export async function disablePushNotifications(): Promise<void> {
@@ -111,6 +134,7 @@ export async function disablePushNotifications(): Promise<void> {
   await revokeFirebaseTokenIfAvailable();
   localStorage.removeItem(PUSH_TOKEN_KEY);
   localStorage.setItem(PUSH_ENABLED_KEY, 'false');
+  localStorage.setItem(PUSH_PROMPT_DISMISSED_KEY, 'true');
 }
 
 // Re-registers the current browser token after authentication refresh/login
