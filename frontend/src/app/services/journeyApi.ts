@@ -104,7 +104,7 @@ function mapSegments(
   if (!Array.isArray(apiSegments)) return [];
   return apiSegments.map((s) => {
     const segId: string = s.segment_id ?? s.id;
-    const occ = occupancyMap?.get(segId);
+    const occ = occupancyMap instanceof Map ? occupancyMap.get(segId) : undefined;
     return {
       id: segId,
       name: s.segment_name ?? s.name,
@@ -231,7 +231,7 @@ export async function listJourneys(
 
   const data = await apiFetch<any>(`/api/v1/journeys?${params}`);
   return {
-    journeys: (data.journeys ?? []).map(mapApiJourney),
+    journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j)),
     total: data.total ?? 0,
   };
 }
@@ -275,7 +275,7 @@ export async function adminListJourneys(filters?: {
 
   const data = await apiFetch<any>(`/api/v1/admin/journeys?${params}`);
   return {
-    journeys: (data.journeys ?? []).map(mapApiJourney),
+    journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j)),
     total: data.total ?? 0,
   };
 }

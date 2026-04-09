@@ -13,7 +13,7 @@ const DEMO_CREDENTIALS = {
   },
   admin: {
     label: 'Sign in as admin',
-    email: 'admin@local.vcs',
+    email: 'admin@vcs.local',
     password: 'admin123',
   },
 } as const;
