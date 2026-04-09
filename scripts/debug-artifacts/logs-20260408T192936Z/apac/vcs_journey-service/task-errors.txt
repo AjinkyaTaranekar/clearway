@@ -1,1 +1,0 @@
-vcs_journey-service.8gnhjyyq4w7r1sca97m39a1q2|vcs-vm-ap1|Shutdown|Failed 3 hours ago|"task: non-zero exit (1)"

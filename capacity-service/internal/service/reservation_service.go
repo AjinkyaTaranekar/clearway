@@ -125,6 +125,43 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		return s.replayFromCache(cached)
 	}
 
+	// --- Transaction with CRDB serialization-error retry ---
+	// CockroachDB may return "restart transaction" (SQLSTATE 40001) when a
+	// serializable transaction hits a read/write conflict. The correct response
+	// is to roll back and retry the entire transaction from scratch.
+	const maxTxRetries = 5
+	var (
+		txResult interface{}
+		txStatus int
+		txErr    error
+	)
+	for attempt := 0; attempt <= maxTxRetries; attempt++ {
+		txResult, txStatus, txErr = s.doReserveTx(ctx, req, reservations, slotsNeeded, priorityLevel)
+		if txErr == nil || !isCRDBRetryError(txErr) {
+			break
+		}
+		log.Warn().
+			Str("service", "ReservationService.Reserve").
+			Str("journey_id", req.JourneyID).
+			Int("attempt", attempt+1).
+			Err(txErr).
+			Msg("retrying reservation transaction due to serialization conflict")
+	}
+	return txResult, txStatus, txErr
+}
+
+// doReserveTx executes the reservation inside a single serializable transaction.
+// It returns the response body, HTTP status, and any error. Callers should retry
+// if isCRDBRetryError(err) is true.
+func (s *ReservationService) doReserveTx(
+	ctx context.Context,
+	req *model.ReserveRequest,
+	reservations []model.SegmentReservation,
+	slotsNeeded float64,
+	priorityLevel string,
+) (interface{}, int, error) {
+	log := s.logWithTrace(ctx)
+
 	// --- Begin serialisable transaction ---
 	// LevelSerializable prevents phantom reads: two concurrent transactions
 	// that both read the same capacity sum (both below the limit) cannot both
@@ -834,6 +871,17 @@ func isUniqueViolation(err error) bool {
 	// to contain the word "unique" (e.g. column names or driver messages).
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
+}
+
+// isCRDBRetryError reports whether err is a CockroachDB serialization error
+// that the application must handle by retrying the entire transaction from scratch.
+// CRDB signals these as SQLSTATE 40001 with a message prefix of "restart transaction".
+func isCRDBRetryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "40001" && strings.HasPrefix(pqErr.Message, "restart transaction")
 }
 
 func normalizePriorityLevel(level string) string {

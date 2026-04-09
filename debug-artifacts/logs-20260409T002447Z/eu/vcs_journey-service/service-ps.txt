@@ -1,0 +1,12 @@
+vcs_journey-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Running|Running 29 minutes ago|
+vcs_journey-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 29 minutes ago|
+vcs_journey-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 31 minutes ago|
+vcs_journey-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown about an hour ago|
+vcs_journey-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 4 hours ago|
+vcs_journey-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 4 hours ago|
+vcs_journey-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Running|Running 29 minutes ago|
+vcs_journey-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 29 minutes ago|
+vcs_journey-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 31 minutes ago|
+vcs_journey-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown about an hour ago|
+vcs_journey-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown about an hour ago|
+vcs_journey-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 4 hours ago|

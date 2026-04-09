@@ -1,6 +1,0 @@
-vcs_capacity-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Running|Running about an hour ago|
-vcs_capacity-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown about an hour ago|
-vcs_capacity-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown about an hour ago|
-vcs_capacity-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 3 hours ago|
-vcs_capacity-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 3 hours ago|
-vcs_capacity-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 9 hours ago|

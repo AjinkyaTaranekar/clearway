@@ -1,2 +1,0 @@
-vcs_cadvisor.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Running|Running 34 hours ago|
-vcs_cadvisor.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Running|Running 34 hours ago|

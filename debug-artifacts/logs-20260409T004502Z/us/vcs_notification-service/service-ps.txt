@@ -1,0 +1,6 @@
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Running|Running 50 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 50 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 52 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 2 hours ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 2 hours ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 5 hours ago|

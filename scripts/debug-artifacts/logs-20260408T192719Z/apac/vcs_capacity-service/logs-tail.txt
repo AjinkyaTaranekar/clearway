@@ -1,2 +1,0 @@
-[log collection failed or timed out]
-region=apac vm=vcs-vm-ap1 service=vcs_capacity-service

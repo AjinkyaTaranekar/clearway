@@ -1,0 +1,1 @@
+2026-04-08T23:54:02.238142937Z vcs_iam-service.0.hm0s97iopq8q@vcs-vm-us1    | {"level":"fatal","error":"migrations: record 005_add_phone_to_users.sql: pq: duplicate key value violates unique constraint \"schema_migrations_pkey\"","time":"2026-04-08T23:54:02Z","caller":"/app/cmd/server/main.go:74","message":"database migration failed"}

@@ -1,0 +1,12 @@
+vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 48 minutes ago|
+vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Failed 48 minutes ago|"task: non-zero exit (1)"
+vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Running|Running 2 hours ago|
+vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 2 hours ago|
+vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 2 hours ago|
+vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan|vcs-vm-eu2|Shutdown|Shutdown 4 hours ago|
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 50 minutes ago|
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Failed 51 minutes ago|"task: non-zero exit (1)"
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Running|Running 2 hours ago|
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 2 hours ago|
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 2 hours ago|
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Shutdown 5 hours ago|

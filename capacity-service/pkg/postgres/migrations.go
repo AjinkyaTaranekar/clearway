@@ -58,15 +58,26 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 			return fmt.Errorf("migrations: read %s: %w", filename, err)
 		}
 
-		if _, err := db.Exec(string(content)); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("migrations: begin tx for %s: %w", filename, err)
+		}
+
+		if _, err := tx.Exec(string(content)); err != nil {
+			_ = tx.Rollback()
 			return fmt.Errorf("migrations: apply %s: %w", filename, err)
 		}
 
-		if _, err := db.Exec(
+		if _, err := tx.Exec(
 			`INSERT INTO public.schema_migrations (filename) VALUES ($1)`,
 			migrationKey,
 		); err != nil {
+			_ = tx.Rollback()
 			return fmt.Errorf("migrations: record %s: %w", filename, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("migrations: commit %s: %w", filename, err)
 		}
 	}
 
