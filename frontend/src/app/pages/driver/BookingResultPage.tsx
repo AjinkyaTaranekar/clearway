@@ -1,5 +1,6 @@
 import { ArrowRight, CheckCircle2, List, RotateCcw, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import CapacityReleaseTimer from '../../components/ui/CapacityReleaseTimer';
 import { useApp } from '../../context/AppContext';
 
 export default function BookingResultPage() {
@@ -154,6 +155,9 @@ export default function BookingResultPage() {
                   <p style={{ color: '#7A4500', fontSize: '0.875rem', lineHeight: 1.6 }}>
                     Another driver may have confirmed the same route and departure slot just before your request (ghost reservation). Choose the next available slot and try again.
                   </p>
+                  <div style={{ marginTop: '10px' }}>
+                    <CapacityReleaseTimer cleanupIntervalMinutes={5} orphanThresholdMinutes={5} mode="compact" />
+                  </div>
                 </div>
               )}
 
