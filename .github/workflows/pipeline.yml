@@ -235,11 +235,13 @@ jobs:
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               echo 'Bootstrapping stack...'
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
+                SWAGGER_PUBLIC_BASE_URL='https://35.244.162.92.nip.io' \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
 
             # Always redeploy to pick up config changes; --prune removes stale services
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
+              SWAGGER_PUBLIC_BASE_URL='https://35.244.162.92.nip.io' \
               docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
 
             # Update only selected app services to the pinned SHA tag
@@ -359,9 +361,11 @@ jobs:
               SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
+                SWAGGER_PUBLIC_BASE_URL='https://35.227.198.68.nip.io' \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
+              SWAGGER_PUBLIC_BASE_URL='https://35.227.198.68.nip.io' \
               docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
@@ -477,9 +481,11 @@ jobs:
               SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
+                SWAGGER_PUBLIC_BASE_URL='https://34.8.134.246.nip.io' \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
+              SWAGGER_PUBLIC_BASE_URL='https://34.8.134.246.nip.io' \
               docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
