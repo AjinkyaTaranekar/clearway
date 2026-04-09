@@ -3,11 +3,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/event"
@@ -65,10 +67,16 @@ func isPQUniqueViolation(err error) bool {
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
-// Create inserts a new journey, its segments, and an outbox event in a single
-// atomic transaction (F-03). eventID, eventType, and payload are the
-// pre-marshalled Envelope bytes from event.MarshalEnvelope.
-func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segments []model.JourneySegment, eventID, eventType string, payload []byte) error {
+// Create inserts a new journey, its segments, outbox event, and timeline events
+// in a single atomic transaction.
+func (r *JourneyRepository) Create(
+	ctx context.Context,
+	j *model.Journey,
+	segments []model.JourneySegment,
+	eventID, eventType string,
+	payload []byte,
+	journeyEvents []model.JourneyEventInput,
+) error {
 	log := logWithTrace(ctx)
 	log.Info().
 		Str("repository", "JourneyRepository.Create").
@@ -156,6 +164,15 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 			Str("journey_id", j.JourneyID).
 			Msg("failed to enqueue outbox event in create transaction")
 		return apperrors.DatabaseError("failed to enqueue outbox event", err)
+	}
+
+	if err := r.insertJourneyEventsInTx(ctx, tx, journeyEvents); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.Create").
+			Err(err).
+			Str("journey_id", j.JourneyID).
+			Msg("failed to insert journey events in create transaction")
+		return apperrors.DatabaseError("failed to insert journey events", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -754,6 +771,49 @@ func (r *JourneyRepository) insertAdminActionInTx(ctx context.Context, tx *sql.T
 	return err
 }
 
+// insertJourneyEventInTx writes a single durable journey event in the same
+// transaction as status changes/outbox writes.
+func (r *JourneyRepository) insertJourneyEventInTx(ctx context.Context, tx *sql.Tx, ev model.JourneyEventInput) error {
+	if ev.EventType == "" {
+		return nil
+	}
+	if ev.EventID == "" {
+		ev.EventID = uuid.NewString()
+	}
+	metadata := ev.Metadata
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO journey.journey_events (
+			event_id, journey_id, event_type, actor_type, actor_id, note, metadata
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (event_id) DO NOTHING`,
+		ev.EventID,
+		ev.JourneyID,
+		ev.EventType,
+		ev.ActorType,
+		ev.ActorID,
+		ev.Note,
+		metadataJSON,
+	)
+	return err
+}
+
+func (r *JourneyRepository) insertJourneyEventsInTx(ctx context.Context, tx *sql.Tx, events []model.JourneyEventInput) error {
+	for _, ev := range events {
+		if err := r.insertJourneyEventInTx(ctx, tx, ev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // UpdateStatusWithEvent updates a journey's status and atomically enqueues an
 // outbox event in the same DB transaction.  This guarantees that the event is
 // durable even if the process crashes before the OutboxRelay can publish it.
@@ -766,6 +826,7 @@ func (r *JourneyRepository) UpdateStatusWithEvent(
 	extra map[string]interface{},
 	eventID, eventType string,
 	payload []byte,
+	journeyEvent model.JourneyEventInput,
 ) error {
 	log := logWithTrace(ctx)
 	log.Info().
@@ -824,6 +885,20 @@ func (r *JourneyRepository) UpdateStatusWithEvent(
 		return apperrors.DatabaseError("failed to enqueue outbox event", err)
 	}
 
+	if journeyEvent.JourneyID == "" {
+		journeyEvent.JourneyID = journeyID
+	}
+	if journeyEvent.EventID == "" {
+		journeyEvent.EventID = eventID
+	}
+	if err := r.insertJourneyEventInTx(ctx, tx, journeyEvent); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to insert journey event in tx")
+		return apperrors.DatabaseError("failed to insert journey event", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		log.Error().
 			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
@@ -852,6 +927,7 @@ func (r *JourneyRepository) UpdateStatusWithEventAndAdminAction(
 	eventID, eventType string,
 	payload []byte,
 	adminID string,
+	journeyEvent model.JourneyEventInput,
 ) error {
 	log := logWithTrace(ctx)
 	log.Info().
@@ -909,6 +985,20 @@ func (r *JourneyRepository) UpdateStatusWithEventAndAdminAction(
 			Err(err).Str("journey_id", journeyID).
 			Msg("failed to enqueue outbox event in tx")
 		return apperrors.DatabaseError("failed to enqueue outbox event", err)
+	}
+
+	if journeyEvent.JourneyID == "" {
+		journeyEvent.JourneyID = journeyID
+	}
+	if journeyEvent.EventID == "" {
+		journeyEvent.EventID = eventID
+	}
+	if err := r.insertJourneyEventInTx(ctx, tx, journeyEvent); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to insert journey event in tx")
+		return apperrors.DatabaseError("failed to insert journey event", err)
 	}
 
 	if err := r.insertAdminActionInTx(ctx, tx, journeyID, "force_cancel", adminID); err != nil {
@@ -1067,4 +1157,90 @@ func (r *JourneyRepository) GetExpiredJourneys(ctx context.Context) ([]model.Jou
 		Int("expired_count", len(journeys)).
 		Msg("expired journeys loaded")
 	return journeys, nil
+}
+
+// ListJourneyEvents returns journey lifecycle/audit events ordered oldest-first.
+func (r *JourneyRepository) ListJourneyEvents(ctx context.Context, journeyID string) ([]model.JourneyEvent, error) {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "JourneyRepository.ListJourneyEvents").
+		Str("journey_id", journeyID).
+		Msg("listing journey events")
+
+	rows, err := r.readDB().QueryContext(ctx, `
+		SELECT event_id, journey_id, event_type, actor_type, actor_id, note, metadata, created_at
+		FROM journey.journey_events
+		WHERE journey_id = $1
+		ORDER BY created_at ASC, id ASC`, journeyID)
+	if err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.ListJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("failed to query journey events")
+		return nil, apperrors.DatabaseError("failed to query journey events", err)
+	}
+	defer rows.Close()
+
+	events := make([]model.JourneyEvent, 0)
+	for rows.Next() {
+		var ev model.JourneyEvent
+		var actorID, note sql.NullString
+		var metadataJSON []byte
+
+		if err := rows.Scan(
+			&ev.EventID,
+			&ev.JourneyID,
+			&ev.EventType,
+			&ev.ActorType,
+			&actorID,
+			&note,
+			&metadataJSON,
+			&ev.CreatedAt,
+		); err != nil {
+			log.Error().
+				Str("repository", "JourneyRepository.ListJourneyEvents").
+				Err(err).
+				Str("journey_id", journeyID).
+				Msg("failed to scan journey event")
+			return nil, apperrors.DatabaseError("failed to scan journey event", err)
+		}
+
+		if actorID.Valid {
+			ev.ActorID = actorID.String
+		}
+		if note.Valid {
+			ev.Note = note.String
+		}
+
+		ev.Metadata = map[string]interface{}{}
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &ev.Metadata); err != nil {
+				log.Warn().
+					Str("repository", "JourneyRepository.ListJourneyEvents").
+					Err(err).
+					Str("journey_id", journeyID).
+					Str("event_id", ev.EventID).
+					Msg("failed to unmarshal journey event metadata")
+				ev.Metadata = map[string]interface{}{}
+			}
+		}
+
+		events = append(events, ev)
+	}
+	if err := rows.Err(); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.ListJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("row iteration failed for journey events")
+		return nil, apperrors.DatabaseError("failed to iterate journey events", err)
+	}
+
+	log.Debug().
+		Str("repository", "JourneyRepository.ListJourneyEvents").
+		Str("journey_id", journeyID).
+		Int("event_count", len(events)).
+		Msg("journey events listed")
+	return events, nil
 }

@@ -316,10 +316,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (updated) {
         setJourneys((prev) =>
-          prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
+          prev.map((j) => (j.id === id ? updated! : j)),
         );
         setAdminJourneys((prev) =>
-          prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
+          prev.map((j) => (j.id === id ? updated! : j)),
         );
         addStatusNotification(id, status);
         return;

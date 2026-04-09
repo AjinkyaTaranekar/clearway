@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '../../context/AppContext';
 import JourneyRouteMapCard from '../../components/journey/JourneyRouteMapCard';
+import { getJourneyEvents } from '../../services/journeyApi';
 import { StatusChip } from '../../components/ui/StatusChip';
 import {
   ArrowLeft, CheckCircle2, XCircle, AlertCircle, Play, Clock,
@@ -19,6 +20,28 @@ export default function AdminJourneyDetailPage() {
   const [cancelled, setCancelled] = useState(false);
 
   const journey = adminJourneys.find((j) => j.id === id);
+  const [timeline, setTimeline] = useState(journey?.timeline ?? []);
+
+  useEffect(() => {
+    setTimeline(journey?.timeline ?? []);
+  }, [journey?.id, journey?.timeline]);
+
+  useEffect(() => {
+    if (!journey?.id) return;
+    let disposed = false;
+    getJourneyEvents(journey.id, true)
+      .then((events) => {
+        if (!disposed) {
+          setTimeline(events);
+        }
+      })
+      .catch(() => {
+        // Keep existing timeline when event endpoint is temporarily unavailable.
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [journey?.id, journey?.updatedAt]);
 
   if (!journey) {
     return (
@@ -243,10 +266,7 @@ export default function AdminJourneyDetailPage() {
           Lifecycle history
         </h4>
         <ol>
-          {(cancelled
-            ? [...journey.timeline, { id: 'TC', type: 'cancelled', label: 'Force cancelled by admin', timestamp: new Date().toISOString(), by: 'Admin' }]
-            : journey.timeline
-          ).map((event, i, arr) => (
+          {timeline.map((event, i, arr) => (
             <li key={event.id} className="flex items-start gap-3 pb-4">
               <div className="flex flex-col items-center">
                 <div
