@@ -48,7 +48,7 @@ func NewGeoClient(nominatimBaseURL, osrmBaseURL, userAgent string, log *logger.L
 		osrmBaseURL:      strings.TrimRight(osrmBaseURL, "/"),
 		userAgent:        userAgent,
 		httpCli: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 55 * time.Second,
 		},
 		log: log,
 	}
