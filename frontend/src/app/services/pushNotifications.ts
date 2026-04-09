@@ -1,97 +1,91 @@
-import { deleteToken, getToken } from 'firebase/messaging';
-import { getFirebaseMessaging } from './firebase';
+import { deleteToken, getMessaging, getToken } from 'firebase/messaging';
+import { firebaseApp } from './firebase';
 import { deactivateDeviceToken, registerDeviceToken } from './notificationApi';
 
 const PUSH_ENABLED_KEY = 'cw_push_enabled';
 const PUSH_TOKEN_KEY = 'cw_push_token';
 const PUSH_PROMPT_DISMISSED_KEY = 'cw_push_prompt_dismissed';
 const FCM_SW_PATH = '/firebase-messaging-sw.js';
+const PUSH_LOG_PREFIX = '[Push]';
 
-async function waitForActiveServiceWorker(registration: ServiceWorkerRegistration): Promise<ServiceWorkerRegistration> {
-  if (registration.active) {
-    return registration;
+function logInfo(message: string, value?: unknown): void {
+  if (value === undefined) {
+    console.info(`${PUSH_LOG_PREFIX} ${message}`);
+    return;
   }
-
-  const pendingWorker = registration.installing ?? registration.waiting;
-  if (pendingWorker) {
-    await new Promise<void>((resolve) => {
-      const onStateChange = () => {
-        if (pendingWorker.state === 'activated') {
-          pendingWorker.removeEventListener('statechange', onStateChange);
-          resolve();
-        }
-      };
-
-      pendingWorker.addEventListener('statechange', onStateChange);
-      setTimeout(() => {
-        pendingWorker.removeEventListener('statechange', onStateChange);
-        resolve();
-      }, 8000);
-    });
-  }
-
-  if (registration.active) {
-    return registration;
-  }
-
-  return navigator.serviceWorker.ready;
+  console.info(`${PUSH_LOG_PREFIX} ${message}`, value);
 }
 
-function getLegacyToken(): string | null {
-  return import.meta.env.VITE_FCM_WEB_TOKEN || null;
+function logWarn(message: string, value?: unknown): void {
+  if (value === undefined) {
+    console.warn(`${PUSH_LOG_PREFIX} ${message}`);
+    return;
+  }
+  console.warn(`${PUSH_LOG_PREFIX} ${message}`, value);
 }
 
-async function getFirebaseWebToken(): Promise<string | null> {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    return null;
+function logError(message: string, value?: unknown): void {
+  if (value === undefined) {
+    console.error(`${PUSH_LOG_PREFIX} ${message}`);
+    return;
   }
+  console.error(`${PUSH_LOG_PREFIX} ${message}`, value);
+}
 
+function ensureBrowserPushSupport(): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    throw new Error('This browser does not support notifications.');
+  }
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('This browser does not support service workers required for push notifications.');
+  }
+}
+
+function getRequiredVapidKey(): string {
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
   if (!vapidKey) {
-    return null;
+    throw new Error('Missing VITE_FIREBASE_VAPID_KEY for Firebase web push.');
+  }
+  return vapidKey;
+}
+
+async function requestPermission(): Promise<void> {
+  logInfo('Requesting notification permission...');
+  const permission = await Notification.requestPermission();
+  logInfo(`Notification permission result: ${permission}`);
+
+  if (permission !== 'granted') {
+    throw new Error('Notification permission was not granted.');
+  }
+}
+
+async function getFirebaseWebToken(): Promise<string> {
+  ensureBrowserPushSupport();
+  const vapidKey = getRequiredVapidKey();
+
+  const registration = await navigator.serviceWorker.register(FCM_SW_PATH, { scope: '/' });
+  const messaging = getMessaging(firebaseApp);
+
+  logInfo('Getting Firebase registration token...');
+  const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
+  if (!token) {
+    throw new Error('No registration token available. Request permission to generate one.');
   }
 
-  const messaging = await getFirebaseMessaging();
-  if (!messaging) {
-    return null;
-  }
-
-  const serviceWorkerRegistration = await navigator.serviceWorker.register(FCM_SW_PATH, { scope: '/' });
-  const activeRegistration = await waitForActiveServiceWorker(serviceWorkerRegistration);
-
-  try {
-    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: activeRegistration });
-    return token || null;
-  } catch (err) {
-    const message = err instanceof Error ? err.message.toLowerCase() : '';
-    if (!message.includes('no active service worker')) {
-      throw err;
-    }
-
-    // Best-effort retry after the browser reports the registration as ready.
-    const readyRegistration = await navigator.serviceWorker.ready;
-    const retryToken = await getToken(messaging, { vapidKey, serviceWorkerRegistration: readyRegistration });
-    return retryToken || null;
-  }
+  logInfo('Firebase registration token acquired:', token);
+  return token;
 }
 
 async function getConfiguredToken(): Promise<string> {
   const stored = localStorage.getItem(PUSH_TOKEN_KEY);
-  if (stored) return stored;
-
-  const firebaseToken = await getFirebaseWebToken();
-  if (firebaseToken) {
-    localStorage.setItem(PUSH_TOKEN_KEY, firebaseToken);
-    return firebaseToken;
+  if (stored) {
+    logInfo('Using cached push token from local storage.');
+    return stored;
   }
 
-  const configured = getLegacyToken();
-  if (!configured) {
-    throw new Error('Push is not configured yet. Set VITE_FIREBASE_VAPID_KEY for Firebase Messaging or provide legacy VITE_FCM_WEB_TOKEN.');
-  }
-
-  localStorage.setItem(PUSH_TOKEN_KEY, configured);
-  return configured;
+  const token = await getFirebaseWebToken();
+  localStorage.setItem(PUSH_TOKEN_KEY, token);
+  return token;
 }
 
 async function tryGetConfiguredToken(): Promise<string | null> {
@@ -107,19 +101,31 @@ async function revokeFirebaseTokenIfAvailable(): Promise<void> {
     return;
   }
 
-  if (!import.meta.env.VITE_FIREBASE_VAPID_KEY) {
+  try {
+    const messaging = getMessaging(firebaseApp);
+    await deleteToken(messaging);
+    logInfo('Firebase token deleted from browser cache.');
+  } catch (err) {
+    logWarn('Failed to delete Firebase token from browser cache (best effort).', err);
+  }
+}
+
+function showLocalTestNotification(): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
     return;
   }
-
-  const messaging = await getFirebaseMessaging();
-  if (!messaging) {
+  if (Notification.permission !== 'granted') {
     return;
   }
 
   try {
-    await deleteToken(messaging);
-  } catch {
-    // best-effort cleanup only
+    new Notification('Clearway test notification', {
+      body: 'Push notifications are enabled on this browser.',
+      tag: 'clearway-push-test',
+    });
+    logInfo('Displayed local test notification.');
+  } catch (err) {
+    logWarn('Could not show local test notification.', err);
   }
 }
 
@@ -149,32 +155,36 @@ export function dismissPushPermissionPrompt(): void {
 }
 
 export async function enablePushNotifications(): Promise<void> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    throw new Error('This browser does not support notifications.');
-  }
+  ensureBrowserPushSupport();
 
   if (Notification.permission === 'denied') {
     throw new Error('Notifications are blocked in this browser. Please re-enable them in site settings.');
   }
 
   if (Notification.permission !== 'granted') {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      throw new Error('Notification permission was not granted.');
-    }
+    await requestPermission();
   }
 
   const token = await getConfiguredToken();
+  logInfo('Sending device token to backend...');
   await registerDeviceToken(token, 'web');
+  logInfo('Device token successfully registered with backend.');
+
   localStorage.setItem(PUSH_ENABLED_KEY, 'true');
   localStorage.removeItem(PUSH_PROMPT_DISMISSED_KEY);
+
+  // Quick browser-side smoke test after successful registration.
+  showLocalTestNotification();
 }
 
 export async function disablePushNotifications(): Promise<void> {
-  const token = await tryGetConfiguredToken();
+  const token = localStorage.getItem(PUSH_TOKEN_KEY);
   if (token) {
+    logInfo('Deactivating push token in backend...');
     await deactivateDeviceToken(token);
+    logInfo('Push token deactivated in backend.');
   }
+
   await revokeFirebaseTokenIfAvailable();
   localStorage.removeItem(PUSH_TOKEN_KEY);
   localStorage.setItem(PUSH_ENABLED_KEY, 'false');
@@ -194,8 +204,16 @@ export async function syncPushRegistrationIfEnabled(): Promise<void> {
   // granted (e.g. cleared local storage), recover token registration.
   if (storedPreference !== 'true' && Notification.permission !== 'granted') return;
 
-  const token = await tryGetConfiguredToken();
-  if (!token) return;
-  await registerDeviceToken(token, 'web');
-  localStorage.setItem(PUSH_ENABLED_KEY, 'true');
+  try {
+    const token = await tryGetConfiguredToken();
+    if (!token) return;
+
+    logInfo('Syncing push token with backend after auth refresh/login...');
+    await registerDeviceToken(token, 'web');
+    localStorage.setItem(PUSH_ENABLED_KEY, 'true');
+    logInfo('Push token sync completed.');
+  } catch (err) {
+    logError('Push token sync failed.', err);
+    throw err;
+  }
 }
