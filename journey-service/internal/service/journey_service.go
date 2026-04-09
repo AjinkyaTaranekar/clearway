@@ -19,13 +19,15 @@ import (
 
 // CreateJourneyRequest is the input for creating a journey
 type CreateJourneyRequest struct {
-	Origin         model.Coordinates `json:"origin"`
-	Destination    model.Coordinates `json:"destination"`
-	DepartureTime  time.Time         `json:"departure_time"`
-	VehicleType    string            `json:"vehicle_type"`
-	PriorityLevel  string            `json:"priority_level,omitempty"`
-	IdempotencyKey string            `json:"-"`
-	DriverID       string            `json:"-"`
+	Origin             model.Coordinates `json:"origin"`
+	Destination        model.Coordinates `json:"destination"`
+	OriginPlaceID      string            `json:"origin_place_id,omitempty"`
+	DestinationPlaceID string            `json:"destination_place_id,omitempty"`
+	DepartureTime      time.Time         `json:"departure_time"`
+	VehicleType        string            `json:"vehicle_type"`
+	PriorityLevel      string            `json:"priority_level,omitempty"`
+	IdempotencyKey     string            `json:"-"`
+	DriverID           string            `json:"-"`
 }
 
 // AdminListFilters holds filters for the admin list endpoint
@@ -139,6 +141,14 @@ func normalizePriorityLevel(level string) (string, error) {
 		return lower, nil
 	}
 	return "", apperrors.BadRequest("priority_level must be either normal or max")
+}
+
+func normalizePlaceID(candidate string, coords model.Coordinates) string {
+	trimmed := strings.TrimSpace(candidate)
+	if trimmed != "" {
+		return trimmed
+	}
+	return fmt.Sprintf("coord_%.4f_%.4f", coords.Lat, coords.Lng)
 }
 
 // CreateJourney orchestrates the full booking flow
@@ -267,6 +277,15 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	}
 
 	segments, estimatedArrival := ComputeTimeWindows(req.DepartureTime, route.Segments)
+	originPlaceID := normalizePlaceID(req.OriginPlaceID, req.Origin)
+	destinationPlaceID := normalizePlaceID(req.DestinationPlaceID, req.Destination)
+	totalDurationMinutes := route.TotalDurationMinutes
+	if totalDurationMinutes <= 0 {
+		totalDurationMinutes = route.TotalTraversalTimeMinutes
+	}
+	if totalDurationMinutes <= 0 {
+		totalDurationMinutes = int(estimatedArrival.Sub(req.DepartureTime).Minutes())
+	}
 	journeyID := generateJourneyID()
 	idempKey := req.IdempotencyKey
 	if idempKey == "" {
@@ -328,20 +347,24 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	}
 
 	journey := &model.Journey{
-		JourneyID:        journeyID,
-		DriverID:         req.DriverID,
-		IdempotencyKey:   idempKey,
-		Origin:           req.Origin,
-		Destination:      req.Destination,
-		DepartureTime:    req.DepartureTime,
-		EstimatedArrival: estimatedArrival,
-		VehicleType:      vehicleType,
-		Status:           status,
-		RejectionReason:  rejectionReason,
-		ReservationID:    reservationID,
-		Version:          1,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		JourneyID:            journeyID,
+		DriverID:             req.DriverID,
+		IdempotencyKey:       idempKey,
+		Origin:               req.Origin,
+		Destination:          req.Destination,
+		OriginPlaceID:        originPlaceID,
+		DestinationPlaceID:   destinationPlaceID,
+		DepartureTime:        req.DepartureTime,
+		EstimatedArrival:     estimatedArrival,
+		VehicleType:          vehicleType,
+		TotalDistanceKm:      route.TotalDistanceKm,
+		TotalDurationMinutes: totalDurationMinutes,
+		Status:               status,
+		RejectionReason:      rejectionReason,
+		ReservationID:        reservationID,
+		Version:              1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 
 	// Build the outbox event before persisting the journey so the eventID is

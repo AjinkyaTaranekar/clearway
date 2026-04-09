@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import JourneyRouteMapCard from '../../components/journey/JourneyRouteMapCard';
 import { StatusChip } from '../../components/ui/StatusChip';
 import {
-  ArrowLeft, CheckCircle2, XCircle, AlertCircle, Play, Square,
-  Clock, MapPin, Navigation, Car,
+  ArrowLeft, CheckCircle2, XCircle, AlertCircle, Play,
+  Clock,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -66,10 +67,6 @@ export default function JourneyDetailPage() {
   const canActivate = journey.status === 'approved';
   const canComplete = journey.status === 'active';
   const canCancel = journey.status === 'approved' || journey.status === 'pending';
-
-  const vehicleIcons: Record<string, string> = {
-    Car: '🚗', Van: '🚐', Motorcycle: '🏍️', HGV: '🚛',
-  };
 
   return (
     <div className="p-5 lg:p-8 max-w-2xl mx-auto">
@@ -153,7 +150,7 @@ export default function JourneyDetailPage() {
           <div className="text-center">
             <div style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '2px' }}>Vehicle</div>
             <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem' }}>
-              {vehicleIcons[journey.vehicleType]} {journey.vehicleType}
+              {journey.vehicleType}
             </div>
           </div>
           <div className="text-center" style={{ borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
@@ -166,6 +163,8 @@ export default function JourneyDetailPage() {
           </div>
         </div>
       </div>
+
+      <JourneyRouteMapCard journey={journey} title="Journey route map" />
 
       {/* Route segments */}
       {journey.segments.length > 0 && (

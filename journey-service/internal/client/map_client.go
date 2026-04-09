@@ -26,16 +26,30 @@ type MapCoordinates struct {
 // MapSegment is a road segment returned by Map Service.
 // JSON tags match the map service's actual response shape.
 type MapSegment struct {
-	SegmentID            string `json:"segment_id"`
-	SegmentName          string `json:"segment_name"`
-	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
-	SequenceOrder        int    `json:"sequence"` // map service returns "sequence"
-	Region               string `json:"region"`   // not in map response; left empty
+	SegmentID            string   `json:"segment_id"`
+	SegmentName          string   `json:"segment_name"`
+	TraversalTimeMinutes int      `json:"traversal_time_minutes"`
+	SequenceOrder        int      `json:"sequence"` // map service returns "sequence"
+	Region               string   `json:"region"`   // not in map response; left empty
+	FromLat              *float64 `json:"from_lat,omitempty"`
+	FromLng              *float64 `json:"from_lng,omitempty"`
+	ToLat                *float64 `json:"to_lat,omitempty"`
+	ToLng                *float64 `json:"to_lng,omitempty"`
+}
+
+type RoutePoint struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
 }
 
 // RouteResponse is the internal representation of a route returned by the Map Service.
 type RouteResponse struct {
 	TotalTraversalTimeMinutes int          `json:"total_traversal_time_minutes"`
+	TotalDurationMinutes      int          `json:"total_duration_minutes"`
+	TotalDistanceKm           float64      `json:"total_distance_km"`
+	OriginPlaceID             string       `json:"origin_place_id,omitempty"`
+	DestinationPlaceID        string       `json:"destination_place_id,omitempty"`
+	Path                      []RoutePoint `json:"path,omitempty"`
 	Segments                  []MapSegment `json:"segments"`
 }
 
@@ -75,7 +89,11 @@ type mapComputeRouteRequest struct {
 }
 
 type mapComputeRouteData struct {
+	OriginPlaceID        string       `json:"origin_place_id"`
+	DestinationPlaceID   string       `json:"destination_place_id"`
+	TotalDistanceKm      float64      `json:"total_distance_km"`
 	TotalDurationMinutes int          `json:"total_duration_minutes"`
+	Path                 []RoutePoint `json:"path"`
 	Segments             []MapSegment `json:"segments"`
 }
 
@@ -280,7 +298,14 @@ func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinate
 			return nil, fmt.Errorf("map service: no segments returned for coordinate route")
 		}
 
-		totalTraversalMinutes := data.TotalDurationMinutes
+		totalDurationMinutes := data.TotalDurationMinutes
+		if totalDurationMinutes <= 0 {
+			for _, segment := range data.Segments {
+				totalDurationMinutes += segment.TraversalTimeMinutes
+			}
+		}
+
+		totalTraversalMinutes := totalDurationMinutes
 		if totalTraversalMinutes <= 0 {
 			for _, segment := range data.Segments {
 				totalTraversalMinutes += segment.TraversalTimeMinutes
@@ -289,6 +314,11 @@ func (c *MapClient) ComputeRoute(ctx context.Context, origin, dest MapCoordinate
 
 		return &RouteResponse{
 			TotalTraversalTimeMinutes: totalTraversalMinutes,
+			TotalDurationMinutes:      totalDurationMinutes,
+			TotalDistanceKm:           data.TotalDistanceKm,
+			OriginPlaceID:             data.OriginPlaceID,
+			DestinationPlaceID:        data.DestinationPlaceID,
+			Path:                      data.Path,
 			Segments:                  data.Segments,
 		}, nil
 	}

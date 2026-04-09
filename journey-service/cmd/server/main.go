@@ -90,6 +90,7 @@ func main() {
 		"001_create_schema.sql",
 		"002_create_outbox.sql",
 		"003_admin_actions.sql",
+		"004_journey_route_metadata.sql",
 	} {
 		mf := filepath.Join(migrationsDir, filename)
 		migrationSQL, err := os.ReadFile(mf)

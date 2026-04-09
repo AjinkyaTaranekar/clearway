@@ -150,13 +150,13 @@ export default function DriverDashboard() {
 
           <div className="flex items-center gap-4">
             <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
-              🚗 {highlightJourney.vehicleType}
+              Vehicle: {highlightJourney.vehicleType}
             </span>
             <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
-              📏 {highlightJourney.distance}
+              Distance: {highlightJourney.distance}
             </span>
             <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
-              ⏱ {highlightJourney.duration}
+              Duration: {highlightJourney.duration}
             </span>
           </div>
         </div>

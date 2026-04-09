@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import JourneyRouteMapCard from '../../components/journey/JourneyRouteMapCard';
 import { StatusChip } from '../../components/ui/StatusChip';
 import {
   ArrowLeft, CheckCircle2, XCircle, AlertCircle, Play, Clock,
-  User, Car, MapPin, Shield,
+  User, MapPin, Shield,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -64,10 +65,6 @@ export default function AdminJourneyDetailPage() {
     if (type === 'rejected' || type === 'cancelled') return '#B42318';
     if (type === 'active') return '#1A4E80';
     return '#4E5953';
-  };
-
-  const vehicleIcons: Record<string, string> = {
-    Car: '🚗', Van: '🚐', Motorcycle: '🏍️', HGV: '🚛',
   };
 
   const handleForceCancel = async () => {
@@ -146,7 +143,7 @@ export default function AdminJourneyDetailPage() {
           <div>
             <div style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '2px' }}>Vehicle</div>
             <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem' }}>
-              {vehicleIcons[journey.vehicleType]} {journey.vehicleType}
+              {journey.vehicleType}
             </div>
           </div>
           <div>
@@ -206,6 +203,8 @@ export default function AdminJourneyDetailPage() {
           </div>
         </div>
       </div>
+
+      <JourneyRouteMapCard journey={journey} title="Journey route map" />
 
       {/* Route segments */}
       {journey.segments.length > 0 && (

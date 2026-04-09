@@ -27,11 +27,13 @@ func NewJourneyHandler(svc *service.JourneyService) *JourneyHandler {
 
 // createJourneyRequest is the request body for POST /api/v1/journeys
 type createJourneyRequest struct {
-	Origin        model.Coordinates `json:"origin"`
-	Destination   model.Coordinates `json:"destination"`
-	DepartureTime jsonTime          `json:"departure_time"`
-	VehicleType   string            `json:"vehicle_type"`
-	PriorityLevel string            `json:"priority_level,omitempty"`
+	Origin             model.Coordinates `json:"origin"`
+	Destination        model.Coordinates `json:"destination"`
+	OriginPlaceID      string            `json:"origin_place_id,omitempty"`
+	DestinationPlaceID string            `json:"destination_place_id,omitempty"`
+	DepartureTime      jsonTime          `json:"departure_time"`
+	VehicleType        string            `json:"vehicle_type"`
+	PriorityLevel      string            `json:"priority_level,omitempty"`
 }
 
 // CreateJourney godoc
@@ -110,13 +112,15 @@ func (h *JourneyHandler) CreateJourney(w http.ResponseWriter, r *http.Request) {
 		Msg("invoking journey service create flow")
 
 	journey, err := h.svc.CreateJourney(r.Context(), service.CreateJourneyRequest{
-		Origin:         req.Origin,
-		Destination:    req.Destination,
-		DepartureTime:  req.DepartureTime.Time,
-		VehicleType:    req.VehicleType,
-		PriorityLevel:  req.PriorityLevel,
-		IdempotencyKey: idempKey,
-		DriverID:       driverID,
+		Origin:             req.Origin,
+		Destination:        req.Destination,
+		OriginPlaceID:      req.OriginPlaceID,
+		DestinationPlaceID: req.DestinationPlaceID,
+		DepartureTime:      req.DepartureTime.Time,
+		VehicleType:        req.VehicleType,
+		PriorityLevel:      req.PriorityLevel,
+		IdempotencyKey:     idempKey,
+		DriverID:           driverID,
 	})
 	if err != nil {
 		log.Error().

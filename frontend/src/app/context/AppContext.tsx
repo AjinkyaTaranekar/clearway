@@ -34,6 +34,8 @@ export interface BookingData {
   destination: string;
   originCoords?: { lat: number; lng: number };
   destCoords?: { lat: number; lng: number };
+  originPlaceId?: string;
+  destinationPlaceId?: string;
   departureTime: string;
   vehicleType: string;
   priorityLevel?: 'normal' | 'max';
@@ -158,6 +160,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // -------------------------------------------------------------------------
 
   const login = async (email: string, password: string): Promise<UserRole> => {
+    api.clearJourneyReadCache();
     const tokens = await iamLogin(email, password);
     storeTokens(tokens.access_token, tokens.refresh_token);
     const u: User = {
@@ -176,6 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (data: RegisterData): Promise<UserRole> => {
+    api.clearJourneyReadCache();
     const params: RegisterParams = {
       name: data.name,
       email: data.email,
@@ -212,6 +216,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAdminJourneys([]);
     setNotifications([]);
     setLastBookingResult(null);
+    api.clearJourneyReadCache();
     localStorage.removeItem('cw_user');
     clearTokens();
 

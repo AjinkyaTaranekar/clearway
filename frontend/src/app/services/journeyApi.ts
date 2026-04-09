@@ -1,10 +1,83 @@
-import { Journey, JourneyStatus, RouteSegment, VehicleType } from '../types';
-import { authHeaders } from './auth';
+import { GeoPoint, Journey, JourneyStatus, RouteSegment, VehicleType } from '../types';
+import { authHeaders, getToken } from './auth';
 import { getCoordinates, getLocationName } from './coordinates';
 
 // Prefer relative URLs (nginx will proxy to the right backend). For local/dev
 // you can set VITE_API_URL to point at a specific gateway or host.
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
+
+const JOURNEY_DETAIL_CACHE_TTL_MS = 60_000;
+const JOURNEY_LIST_CACHE_TTL_MS = 30_000;
+const SEGMENT_OCCUPANCY_CACHE_TTL_MS = 15_000;
+
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+const journeyDetailCache = new Map<string, CacheEntry<Journey>>();
+const journeyListCache = new Map<string, CacheEntry<{ journeys: Journey[]; total: number }>>();
+const adminJourneyListCache = new Map<string, CacheEntry<{ journeys: Journey[]; total: number }>>();
+let occupancyCacheEntry: CacheEntry<Map<string, SegmentOccupancy>> | null = null;
+
+function cacheScope(): string {
+  const token = getToken();
+  if (!token) return 'anon';
+  // Scope caches per logged-in session to avoid cross-user reuse.
+  return token.slice(-20);
+}
+
+function readCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function writeCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number): T {
+  cache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
+  return value;
+}
+
+function invalidateScopedListCaches(scope: string) {
+  for (const key of journeyListCache.keys()) {
+    if (key.startsWith(`${scope}|`)) {
+      journeyListCache.delete(key);
+    }
+  }
+  for (const key of adminJourneyListCache.keys()) {
+    if (key.startsWith(`${scope}|`)) {
+      adminJourneyListCache.delete(key);
+    }
+  }
+}
+
+function invalidateJourneyReadCaches(journeyID?: string) {
+  const scope = cacheScope();
+  if (journeyID) {
+    journeyDetailCache.delete(`${scope}|journey:${journeyID}`);
+  } else {
+    for (const key of journeyDetailCache.keys()) {
+      if (key.startsWith(`${scope}|`)) {
+        journeyDetailCache.delete(key);
+      }
+    }
+  }
+  invalidateScopedListCaches(scope);
+}
+
+export function clearJourneyReadCache(): void {
+  journeyDetailCache.clear();
+  journeyListCache.clear();
+  adminJourneyListCache.clear();
+  occupancyCacheEntry = null;
+}
 
 function generateIdempotencyKey(): string {
   const cryptoApi = globalThis.crypto;
@@ -78,6 +151,10 @@ function capacityLevelToFrontend(level: string): 'low' | 'medium' | 'high' | 'cr
 type SegmentOccupancy = { pct: number; level: 'low' | 'medium' | 'high' | 'critical' };
 
 async function fetchSegmentOccupancyMap(): Promise<Map<string, SegmentOccupancy>> {
+  if (occupancyCacheEntry && occupancyCacheEntry.expiresAt > Date.now()) {
+    return occupancyCacheEntry.value;
+  }
+
   try {
     const res = await fetch(`${BASE_URL}/api/v1/capacity/segments/occupancy`, {
       headers: authHeaders(),
@@ -91,10 +168,53 @@ async function fetchSegmentOccupancyMap(): Promise<Map<string, SegmentOccupancy>
         level: capacityLevelToFrontend(seg.level ?? 'low'),
       });
     });
+    occupancyCacheEntry = {
+      value: map,
+      expiresAt: Date.now() + SEGMENT_OCCUPANCY_CACHE_TTL_MS,
+    };
     return map;
   } catch {
     return new Map();
   }
+}
+
+function parseGeoPoint(value: any): GeoPoint | undefined {
+  const lat = Number(value?.lat);
+  const lng = Number(value?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return undefined;
+  }
+  return { lat, lng };
+}
+
+function appendUniquePoint(points: GeoPoint[], next?: GeoPoint) {
+  if (!next) return;
+  const last = points[points.length - 1];
+  if (last && last.lat === next.lat && last.lng === next.lng) {
+    return;
+  }
+  points.push(next);
+}
+
+function buildJourneyPath(apiSegments: any[], origin?: GeoPoint, destination?: GeoPoint): GeoPoint[] | undefined {
+  const points: GeoPoint[] = [];
+  const sortedSegments = [...apiSegments].sort((a, b) => {
+    const aOrder = Number(a?.sequence_order ?? a?.sequence ?? 0);
+    const bOrder = Number(b?.sequence_order ?? b?.sequence ?? 0);
+    return aOrder - bOrder;
+  });
+
+  sortedSegments.forEach((segment) => {
+    appendUniquePoint(points, parseGeoPoint({ lat: segment?.from_lat, lng: segment?.from_lng }));
+    appendUniquePoint(points, parseGeoPoint({ lat: segment?.to_lat, lng: segment?.to_lng }));
+  });
+
+  if (points.length < 2) {
+    appendUniquePoint(points, origin);
+    appendUniquePoint(points, destination);
+  }
+
+  return points.length >= 2 ? points : undefined;
 }
 
 function mapSegments(
@@ -117,11 +237,31 @@ function mapSegments(
       timeWindowStart: s.time_window_start,
       timeWindowEnd: s.time_window_end,
       region: s.region,
+      fromLat: typeof s.from_lat === 'number' ? s.from_lat : undefined,
+      fromLng: typeof s.from_lng === 'number' ? s.from_lng : undefined,
+      toLat: typeof s.to_lat === 'number' ? s.to_lat : undefined,
+      toLng: typeof s.to_lng === 'number' ? s.to_lng : undefined,
     };
   });
 }
 
 function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Journey {
+  const originCoords = parseGeoPoint(j.origin);
+  const destinationCoords = parseGeoPoint(j.destination);
+  const totalDistanceKm = Number.isFinite(Number(j.total_distance_km)) ? Number(j.total_distance_km) : undefined;
+  const apiDurationMinutes = Number.isFinite(Number(j.total_duration_minutes))
+    ? Number(j.total_duration_minutes)
+    : undefined;
+
+  const segments = mapSegments(j.segments ?? [], occupancyMap);
+  const fallbackDurationMinutes = segments.reduce((total, segment) => {
+    return total + (segment.traversalMinutes ?? 0);
+  }, 0);
+  const totalDurationMinutes = apiDurationMinutes && apiDurationMinutes > 0
+    ? apiDurationMinutes
+    : (fallbackDurationMinutes > 0 ? fallbackDurationMinutes : undefined);
+
+  const mapPath = buildJourneyPath(j.segments ?? [], originCoords, destinationCoords);
   const originName = j.origin
     ? getLocationName(j.origin.lat, j.origin.lng)
     : j.origin_name ?? 'Unknown';
@@ -141,7 +281,14 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
     status: mapStatus(j.status ?? 'pending'),
     region: 'Central',
     rejectionReason: j.rejection_reason,
-    segments: mapSegments(j.segments ?? [], occupancyMap),
+    segments,
+    originCoords,
+    destinationCoords,
+    originPlaceId: j.origin_place_id,
+    destinationPlaceId: j.destination_place_id,
+    totalDistanceKm,
+    totalDurationMinutes,
+    mapPath,
     timeline: [
       {
         id: 'T1',
@@ -160,8 +307,8 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
     ],
     createdAt: j.created_at ?? new Date().toISOString(),
     updatedAt: j.updated_at ?? new Date().toISOString(),
-    distance: '-',
-    duration: '-',
+    distance: totalDistanceKm !== undefined ? `${totalDistanceKm.toFixed(1)} km` : '-',
+    duration: totalDurationMinutes !== undefined ? `${Math.round(totalDurationMinutes)} min` : '-',
   };
 }
 
@@ -189,6 +336,8 @@ export async function createJourney(params: {
   destination: string;
   originCoords?: { lat: number; lng: number };
   destCoords?: { lat: number; lng: number };
+  originPlaceId?: string;
+  destinationPlaceId?: string;
   departureTime: string;
   vehicleType: string;
   priorityLevel?: 'normal' | 'max';
@@ -205,6 +354,8 @@ export async function createJourney(params: {
     body: JSON.stringify({
       origin: originCoords,
       destination: destCoords,
+      origin_place_id: params.originPlaceId,
+      destination_place_id: params.destinationPlaceId,
       departure_time: departureISO,
       vehicle_type: toApiVehicleType(params.vehicleType),
       priority_level: params.priorityLevel ?? 'normal',
@@ -215,6 +366,16 @@ export async function createJourney(params: {
   // Preserve the human-readable names the user entered
   journey.origin = params.origin;
   journey.destination = params.destination;
+  journey.originCoords = originCoords;
+  journey.destinationCoords = destCoords;
+  if (params.originPlaceId) {
+    journey.originPlaceId = params.originPlaceId;
+  }
+  if (params.destinationPlaceId) {
+    journey.destinationPlaceId = params.destinationPlaceId;
+  }
+  invalidateJourneyReadCaches();
+  writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
   return journey;
 }
 
@@ -224,41 +385,62 @@ export async function listJourneys(
   page = 1,
   limit = 20,
 ): Promise<{ journeys: Journey[]; total: number }> {
+  const key = `${cacheScope()}|driver-list|status=${statusFilter ?? ''}|page=${page}|limit=${limit}`;
+  const cached = readCache(journeyListCache, key);
+  if (cached) {
+    return cached;
+  }
+
   const params = new URLSearchParams();
   if (statusFilter) params.set('status', statusFilter);
   params.set('page', String(page));
   params.set('limit', String(limit));
 
   const data = await apiFetch<any>(`/api/v1/journeys?${params}`);
-  return {
+  return writeCache(journeyListCache, key, {
     journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j)),
     total: data.total ?? 0,
-  };
+  }, JOURNEY_LIST_CACHE_TTL_MS);
 }
 
 export async function getJourney(id: string): Promise<Journey> {
+  const key = `${cacheScope()}|journey:${id}`;
+  const cached = readCache(journeyDetailCache, key);
+  if (cached) {
+    return cached;
+  }
+
   // Fetch journey data and current segment occupancy in parallel so the
   // occupancy call adds zero latency to the page load (U-08 fix).
   const [data, occupancyMap] = await Promise.all([
     apiFetch<any>(`/api/v1/journeys/${id}`),
     fetchSegmentOccupancyMap(),
   ]);
-  return mapApiJourney(data, occupancyMap);
+  return writeCache(journeyDetailCache, key, mapApiJourney(data, occupancyMap), JOURNEY_DETAIL_CACHE_TTL_MS);
 }
 
 export async function cancelJourney(id: string): Promise<Journey> {
   const data = await apiFetch<any>(`/api/v1/journeys/${id}/cancel`, { method: 'PUT' });
-  return mapApiJourney(data);
+  const journey = mapApiJourney(data);
+  invalidateJourneyReadCaches(id);
+  writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
+  return journey;
 }
 
 export async function activateJourney(id: string): Promise<Journey> {
   const data = await apiFetch<any>(`/api/v1/journeys/${id}/activate`, { method: 'PUT' });
-  return mapApiJourney(data);
+  const journey = mapApiJourney(data);
+  invalidateJourneyReadCaches(id);
+  writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
+  return journey;
 }
 
 export async function completeJourney(id: string): Promise<Journey> {
   const data = await apiFetch<any>(`/api/v1/journeys/${id}/complete`, { method: 'PUT' });
-  return mapApiJourney(data);
+  const journey = mapApiJourney(data);
+  invalidateJourneyReadCaches(id);
+  writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
+  return journey;
 }
 
 export async function adminListJourneys(filters?: {
@@ -267,6 +449,12 @@ export async function adminListJourneys(filters?: {
   page?: number;
   limit?: number;
 }): Promise<{ journeys: Journey[]; total: number }> {
+  const key = `${cacheScope()}|admin-list|status=${filters?.status ?? ''}|driver=${filters?.driverId ?? ''}|page=${filters?.page ?? 1}|limit=${filters?.limit ?? 20}`;
+  const cached = readCache(adminJourneyListCache, key);
+  if (cached) {
+    return cached;
+  }
+
   const params = new URLSearchParams();
   if (filters?.status) params.set('status', filters.status);
   if (filters?.driverId) params.set('driver_id', filters.driverId);
@@ -274,15 +462,18 @@ export async function adminListJourneys(filters?: {
   if (filters?.limit) params.set('limit', String(filters.limit));
 
   const data = await apiFetch<any>(`/api/v1/admin/journeys?${params}`);
-  return {
+  return writeCache(adminJourneyListCache, key, {
     journeys: (data.journeys ?? []).map((j: any) => mapApiJourney(j)),
     total: data.total ?? 0,
-  };
+  }, JOURNEY_LIST_CACHE_TTL_MS);
 }
 
 export async function adminCancelJourney(id: string): Promise<Journey> {
   const data = await apiFetch<any>(`/api/v1/admin/journeys/${id}/cancel`, { method: 'PUT' });
-  return mapApiJourney(data);
+  const journey = mapApiJourney(data);
+  invalidateJourneyReadCaches(id);
+  writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
+  return journey;
 }
 
 export interface EnforcementVerifyResult {

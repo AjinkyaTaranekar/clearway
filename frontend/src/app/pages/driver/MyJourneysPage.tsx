@@ -37,10 +37,6 @@ export default function MyJourneysPage() {
     try { return format(parseISO(ts), 'HH:mm, EEE d MMM'); } catch { return ts; }
   };
 
-  const vehicleIcons: Record<string, string> = {
-    Car: '🚗', Van: '🚐', Motorcycle: '🏍️', HGV: '🚛',
-  };
-
   return (
     <div className="p-5 lg:p-8 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-7">
@@ -165,7 +161,7 @@ export default function MyJourneysPage() {
 
               <div className="flex items-center gap-3 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
                 <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
-                  {vehicleIcons[journey.vehicleType]} {journey.vehicleType}
+                  Vehicle: {journey.vehicleType}
                 </span>
                 <span style={{ color: '#D9D2C7' }}>·</span>
                 <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>{journey.distance}</span>

@@ -83,6 +83,7 @@ function VehicleTypeIcon({ icon, size = 22, stroke = '#2F6B55' }: { icon: Vehicl
 const DUBLIN: [number, number] = [53.3498, -6.2603];
 
 const SLOT_INTERVAL_MINUTES = 30;
+const SEGMENT_WINDOW_BUFFER_MINUTES = 5;
 
 const VEHICLE_SLOT_WEIGHTS: Record<string, number> = {
   car: 1,
@@ -193,10 +194,13 @@ function buildSegmentWindows(slotValue: string, segments: RouteCapacitySegment[]
   if (Number.isNaN(departure.getTime())) return [];
 
   let cursor = departure;
+  const bufferMs = SEGMENT_WINDOW_BUFFER_MINUTES * 60 * 1000;
   return segments.map((segment) => {
-    const timeWindowStart = new Date(cursor);
-    const timeWindowEnd = new Date(cursor.getTime() + segment.traversalMinutes * 60 * 1000);
-    cursor = timeWindowEnd;
+    const plannedStart = new Date(cursor);
+    const plannedEnd = new Date(cursor.getTime() + segment.traversalMinutes * 60 * 1000);
+    const timeWindowStart = new Date(plannedStart.getTime() - bufferMs);
+    const timeWindowEnd = new Date(plannedEnd.getTime() + bufferMs);
+    cursor = plannedEnd;
     return {
       segment,
       timeWindowStart,
@@ -696,6 +700,8 @@ export default function BookJourneyPage() {
         destination: destPlace.name,
         originCoords: { lat: originPlace.lat, lng: originPlace.lng },
         destCoords: { lat: destPlace.lat, lng: destPlace.lng },
+        originPlaceId: originPlace.place_id,
+        destinationPlaceId: destPlace.place_id,
         departureTime,
         vehicleType: selectedVehicle.vehicleType,
         priorityLevel: selectedVehicle.isEmergencyVehicle ? 'max' : 'normal',

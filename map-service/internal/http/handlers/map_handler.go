@@ -44,14 +44,18 @@ type Node struct {
 
 // RouteSegment represents a segment in an ordered route.
 type RouteSegment struct {
-	Sequence             int    `json:"sequence,omitempty"`
-	SequenceOrder        int    `json:"sequence_order,omitempty"`
-	SegmentID            string `json:"segment_id"`
-	SegmentName          string `json:"segment_name"`
-	FromNodeID           string `json:"from_node_id,omitempty"`
-	ToNodeID             string `json:"to_node_id,omitempty"`
-	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
-	Region               string `json:"region,omitempty"`
+	Sequence             int      `json:"sequence,omitempty"`
+	SequenceOrder        int      `json:"sequence_order,omitempty"`
+	SegmentID            string   `json:"segment_id"`
+	SegmentName          string   `json:"segment_name"`
+	FromNodeID           string   `json:"from_node_id,omitempty"`
+	ToNodeID             string   `json:"to_node_id,omitempty"`
+	TraversalTimeMinutes int      `json:"traversal_time_minutes"`
+	Region               string   `json:"region,omitempty"`
+	FromLat              *float64 `json:"from_lat,omitempty"`
+	FromLng              *float64 `json:"from_lng,omitempty"`
+	ToLat                *float64 `json:"to_lat,omitempty"`
+	ToLng                *float64 `json:"to_lng,omitempty"`
 }
 
 type SegmentMetadata struct {
@@ -117,6 +121,8 @@ type ComputeRouteRequest struct {
 
 type ComputeRouteResponse struct {
 	RouteID              string              `json:"route_id"`
+	OriginPlaceID        string              `json:"origin_place_id,omitempty"`
+	DestinationPlaceID   string              `json:"destination_place_id,omitempty"`
 	TotalDistanceKm      float64             `json:"total_distance_km"`
 	TotalDurationMinutes int                 `json:"total_duration_minutes"`
 	Segments             []RouteSegment      `json:"segments"`

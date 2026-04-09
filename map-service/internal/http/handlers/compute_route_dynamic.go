@@ -46,6 +46,9 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 		return ComputeRouteResponse{}, fmt.Errorf("osrm returned no segments")
 	}
 
+	segmentCoordinates := deriveSegmentCoordinates(origin, destination, routeResult)
+	applySegmentCoordinates(segments, segmentCoordinates)
+
 	if err := h.ensureCapacitySegments(ctx, segments); err != nil {
 		logWithTrace(ctx).Warn().Err(err).Msg("failed to register route segments in capacity service")
 	}
@@ -62,6 +65,8 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 
 	response := ComputeRouteResponse{
 		RouteID:              routeID,
+		OriginPlaceID:        originPlaceID,
+		DestinationPlaceID:   destinationPlaceID,
 		TotalDistanceKm:      roundToTwo(routeResult.DistanceMeters / 1000.0),
 		TotalDurationMinutes: durationSecondsToMinutes(routeResult.DurationSeconds),
 		Segments:             segments,
@@ -95,7 +100,11 @@ func (h *MapHandler) loadCachedDynamicRoute(ctx context.Context, originPlaceID, 
 			rs.sequence,
 			rs.segment_id,
 			COALESCE(seg.segment_name, rs.segment_id) AS segment_name,
-			rs.traversal_time_minutes
+			rs.traversal_time_minutes,
+			seg.from_lat,
+			seg.from_lng,
+			seg.to_lat,
+			seg.to_lng
 		FROM map.route_segments rs
 		LEFT JOIN map.intercity_segments seg ON seg.segment_id = rs.segment_id
 		WHERE rs.route_id = $1
@@ -113,21 +122,35 @@ func (h *MapHandler) loadCachedDynamicRoute(ctx context.Context, originPlaceID, 
 		var segmentID string
 		var segmentName string
 		var traversalMinutes int
-		if err := rows.Scan(&sequence, &segmentID, &segmentName, &traversalMinutes); err != nil {
+		var fromLat, fromLng, toLat, toLng sql.NullFloat64
+		if err := rows.Scan(&sequence, &segmentID, &segmentName, &traversalMinutes, &fromLat, &fromLng, &toLat, &toLng); err != nil {
 			return ComputeRouteResponse{}, false, fmt.Errorf("scan cached route segment: %w", err)
 		}
 
 		if traversalMinutes < 1 {
 			traversalMinutes = 1
 		}
-		segments = append(segments, RouteSegment{
+		segment := RouteSegment{
 			Sequence:             sequence,
 			SequenceOrder:        sequence,
 			SegmentID:            segmentID,
 			SegmentName:          segmentName,
 			TraversalTimeMinutes: traversalMinutes,
 			Region:               "intercity",
-		})
+		}
+		if fromLat.Valid {
+			segment.FromLat = floatPointer(fromLat.Float64)
+		}
+		if fromLng.Valid {
+			segment.FromLng = floatPointer(fromLng.Float64)
+		}
+		if toLat.Valid {
+			segment.ToLat = floatPointer(toLat.Float64)
+		}
+		if toLng.Valid {
+			segment.ToLng = floatPointer(toLng.Float64)
+		}
+		segments = append(segments, segment)
 	}
 	if err := rows.Err(); err != nil {
 		return ComputeRouteResponse{}, false, fmt.Errorf("iterate cached route segments: %w", err)
@@ -138,6 +161,8 @@ func (h *MapHandler) loadCachedDynamicRoute(ctx context.Context, originPlaceID, 
 
 	resp := ComputeRouteResponse{
 		RouteID:              routeID,
+		OriginPlaceID:        originPlaceID,
+		DestinationPlaceID:   destinationPlaceID,
 		TotalDistanceKm:      roundToTwo(float64(distanceMeters) / 1000.0),
 		TotalDurationMinutes: durationSecondsToMinutes(float64(durationSeconds)),
 		Segments:             segments,
@@ -355,6 +380,23 @@ func mapRouteStepsToSegments(steps []RouteStep) []RouteSegment {
 	}
 
 	return segments
+}
+
+func floatPointer(value float64) *float64 {
+	v := value
+	return &v
+}
+
+func applySegmentCoordinates(segments []RouteSegment, coords []segmentCoordinate) {
+	for idx := range segments {
+		if idx >= len(coords) {
+			break
+		}
+		segments[idx].FromLat = floatPointer(coords[idx].FromLat)
+		segments[idx].FromLng = floatPointer(coords[idx].FromLng)
+		segments[idx].ToLat = floatPointer(coords[idx].ToLat)
+		segments[idx].ToLng = floatPointer(coords[idx].ToLng)
+	}
 }
 
 type segmentCoordinate struct {

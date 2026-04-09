@@ -155,10 +155,11 @@ func TestTimeWindows_Concurrent_TwoDriversSameSlot(t *testing.T) {
 	}
 }
 
-// TestTimeWindows_Concurrent_ChainedWindowsNeverGap verifies that no matter
-// how many goroutines compute the same route simultaneously, the end of
-// segment[i] always equals the start of segment[i+1].
-func TestTimeWindows_Concurrent_ChainedWindowsNeverGap(t *testing.T) {
+// TestTimeWindows_Concurrent_ChainedWindowsRespectBuffer verifies that no
+// matter how many goroutines compute the same route simultaneously, adjacent
+// segment windows remain contiguous in planned time and overlap by the
+// configured buffer on each side (2 * segmentWindowBuffer total overlap).
+func TestTimeWindows_Concurrent_ChainedWindowsRespectBuffer(t *testing.T) {
 	const goroutines = 300
 	dep := time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC)
 	route := []client.MapSegment{
@@ -171,7 +172,7 @@ func TestTimeWindows_Concurrent_ChainedWindowsNeverGap(t *testing.T) {
 	ready, go_ := barrier(goroutines)
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	errs := make(chan string, goroutines)
+	errs := make(chan string, goroutines*len(route))
 
 	for i := 0; i < goroutines; i++ {
 		go func(idx int) {
@@ -180,8 +181,22 @@ func TestTimeWindows_Concurrent_ChainedWindowsNeverGap(t *testing.T) {
 			go_()
 			segs, _ := ComputeTimeWindows(dep, route)
 			for j := 0; j < len(segs)-1; j++ {
-				if !segs[j].TimeWindowEnd.Equal(segs[j+1].TimeWindowStart) {
-					errs <- fmt.Sprintf("goroutine %d: gap/overlap between seg[%d] and seg[%d]", idx, j, j+1)
+				if segs[j+1].TimeWindowStart.After(segs[j].TimeWindowEnd) {
+					errs <- fmt.Sprintf("goroutine %d: unexpected gap between seg[%d] and seg[%d]", idx, j, j+1)
+					continue
+				}
+
+				expectedNextStart := segs[j].TimeWindowEnd.Add(-2 * segmentWindowBuffer)
+				if !segs[j+1].TimeWindowStart.Equal(expectedNextStart) {
+					errs <- fmt.Sprintf(
+						"goroutine %d: seg[%d]→seg[%d] expected %s overlap, got end=%v next_start=%v",
+						idx,
+						j,
+						j+1,
+						(2 * segmentWindowBuffer).String(),
+						segs[j].TimeWindowEnd,
+						segs[j+1].TimeWindowStart,
+					)
 				}
 			}
 		}(i)
