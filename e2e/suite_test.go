@@ -190,7 +190,7 @@ func TestProductionGradeE2ESystemFlow(t *testing.T) {
 		t.Fatalf("preflight failed: %v (report: %s)", err, reportPath)
 	}
 
-	scenarioErrors := make([]string, 0, 4)
+	scenarioErrors := make([]string, 0, 12)
 	runScenario := func(name string, fn func(*ScenarioRecorder) error) {
 		sr := reporter.beginScenario(name)
 		err := fn(sr)
@@ -213,6 +213,30 @@ func TestProductionGradeE2ESystemFlow(t *testing.T) {
 	})
 	runScenario("04-concurrency-simulation-multi-user-regional", func(sr *ScenarioRecorder) error {
 		return runConcurrencyScenario(ctx, cfg, logger, sr, targets)
+	})
+	runScenario("05-checklist-gap1-enforcement-interface", func(sr *ScenarioRecorder) error {
+		return runChecklistGap1EnforcementScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("06-checklist-gap2-quantitative-slo", func(sr *ScenarioRecorder) error {
+		return runChecklistGap2QuantitativeScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("07-checklist-gap3-load-pattern", func(sr *ScenarioRecorder) error {
+		return runChecklistGap3LoadPatternScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("08-checklist-gap4-locality-and-sharding-signals", func(sr *ScenarioRecorder) error {
+		return runChecklistGap4LocalityScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("09-checklist-gap5-cache-replacement-observability", func(sr *ScenarioRecorder) error {
+		return runChecklistGap5CacheScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("10-checklist-gap6-transaction-isolation", func(sr *ScenarioRecorder) error {
+		return runChecklistGap6IsolationScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("11-checklist-gap7-partition-merge-resilience", func(sr *ScenarioRecorder) error {
+		return runChecklistGap7PartitionResilienceScenario(ctx, cfg, logger, sr, primary)
+	})
+	runScenario("12-checklist-gap8-testing-framework-contracts", func(sr *ScenarioRecorder) error {
+		return runChecklistGap8FrameworkScenario(ctx, cfg, logger, sr, primary)
 	})
 
 	reportPath, writeErr := reporter.writeJSON()
@@ -1462,6 +1486,836 @@ func hasDuplicateJourneyID(outcomes []bookingOutcome) bool {
 		seen[id] = struct{}{}
 	}
 	return false
+}
+
+func runChecklistGap1EnforcementScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap1-driver", "car")
+	if err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap1-enforcement-unauthenticated-401", func(step *StepContext) error {
+		anonymousClient := newAPIClient(target.BaseURL, cfg.RequestTimeout, logger, sr.record.Name, "gap1-anonymous")
+		query := url.Values{}
+		query.Set("segment_id", "seg_city_north")
+
+		res, err := anonymousClient.do(ctx, RequestSpec{
+			Name:    "enforcement-verify-anon",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/enforcement/verify",
+			Query:   query,
+			UseAuth: false,
+		})
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res)
+		if res.StatusCode != http.StatusUnauthorized {
+			return fmt.Errorf("expected 401 for unauthenticated enforcement verify, got %d (%s)", res.StatusCode, res.errorMessage())
+		}
+		step.SetDetails("enforcement endpoint rejects missing auth token")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap1-enforcement-driver-role-forbidden-403", func(step *StepContext) error {
+		query := url.Values{}
+		query.Set("segment_id", "seg_city_north")
+
+		res, err := session.Client.do(ctx, RequestSpec{
+			Name:    "enforcement-verify-driver",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/enforcement/verify",
+			Query:   query,
+			UseAuth: true,
+		})
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res)
+		if res.StatusCode != http.StatusForbidden {
+			return fmt.Errorf("expected 403 for driver role on enforcement endpoint, got %d (%s)", res.StatusCode, res.errorMessage())
+		}
+		step.SetDetails("enforcement endpoint enforces role separation")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sr.setMetadata("gap_1", "enforcement interface and role guardrails")
+	return nil
+}
+
+func runChecklistGap2QuantitativeScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap2-sla-driver", "car")
+	if err != nil {
+		return err
+	}
+
+	capacityStart := nextHalfHourSlot(2 * time.Hour)
+	capacityEnd := capacityStart.Add(10 * time.Minute)
+	capacityQuery := url.Values{}
+	capacityQuery.Set("segment_id", "seg_city_north")
+	capacityQuery.Set("time_window_start", capacityStart.UTC().Format(time.RFC3339))
+	capacityQuery.Set("time_window_end", capacityEnd.UTC().Format(time.RFC3339))
+
+	routeQuery := url.Values{}
+	routeQuery.Set("origin_node_id", "city")
+	routeQuery.Set("destination_node_id", "airport")
+
+	listQuery := url.Values{}
+	listQuery.Set("page", "1")
+	listQuery.Set("limit", "20")
+
+	type latencyBudgetCase struct {
+		Name           string
+		Spec           RequestSpec
+		ExpectedStatus int
+		BudgetMS       int64
+	}
+
+	cases := []latencyBudgetCase{
+		{
+			Name: "profile",
+			Spec: RequestSpec{Name: "gap2-profile", Method: http.MethodGet, Path: "/api/v1/auth/profile", UseAuth: true},
+			ExpectedStatus: http.StatusOK,
+			BudgetMS:       300,
+		},
+		{
+			Name: "map-nodes",
+			Spec: RequestSpec{Name: "gap2-map-nodes", Method: http.MethodGet, Path: "/api/v1/map/nodes", UseAuth: true},
+			ExpectedStatus: http.StatusOK,
+			BudgetMS:       300,
+		},
+		{
+			Name: "map-route",
+			Spec: RequestSpec{Name: "gap2-map-route", Method: http.MethodGet, Path: "/api/v1/map/route", Query: routeQuery, UseAuth: true},
+			ExpectedStatus: http.StatusOK,
+			BudgetMS:       400,
+		},
+		{
+			Name: "journeys-list",
+			Spec: RequestSpec{Name: "gap2-list-journeys", Method: http.MethodGet, Path: "/api/v1/journeys", Query: listQuery, UseAuth: true},
+			ExpectedStatus: http.StatusOK,
+			BudgetMS:       300,
+		},
+		{
+			Name: "capacity-check",
+			Spec: RequestSpec{Name: "gap2-capacity-check", Method: http.MethodGet, Path: "/api/v1/capacity/check", Query: capacityQuery, UseAuth: true},
+			ExpectedStatus: http.StatusOK,
+			BudgetMS:       200,
+		},
+	}
+
+	if err := runStep(sr, "gap2-slo-budget-smoke", func(step *StepContext) error {
+		failures := make([]string, 0, len(cases))
+		passed := 0
+
+		for _, tc := range cases {
+			res, err := session.Client.do(ctx, tc.Spec)
+			if err != nil {
+				failures = append(failures, fmt.Sprintf("%s transport error: %v", tc.Name, err))
+				continue
+			}
+			step.AttachHTTP(res)
+
+			if res.StatusCode != tc.ExpectedStatus {
+				failures = append(failures, fmt.Sprintf("%s expected status %d got %d (%s)", tc.Name, tc.ExpectedStatus, res.StatusCode, res.errorMessage()))
+				continue
+			}
+
+			if res.Duration.Milliseconds() > tc.BudgetMS {
+				failures = append(failures, fmt.Sprintf("%s latency %dms exceeded budget %dms", tc.Name, res.Duration.Milliseconds(), tc.BudgetMS))
+				continue
+			}
+
+			passed++
+		}
+
+		step.SetDetails(fmt.Sprintf("quantitative latency checks passed %d/%d", passed, len(cases)))
+		if len(failures) > 0 {
+			return fmt.Errorf(strings.Join(failures, " | "))
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sr.setMetadata("gap_2", map[string]interface{}{
+		"profile_ms":        300,
+		"map_nodes_ms":      300,
+		"map_route_ms":      400,
+		"journeys_list_ms":  300,
+		"capacity_check_ms": 200,
+	})
+	return nil
+}
+
+func runChecklistGap3LoadPatternScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap3-load-driver", "car")
+	if err != nil {
+		return err
+	}
+
+	type burstOutcome struct {
+		Kind       string
+		Name       string
+		StatusCode int
+		DurationMS int64
+		Err        string
+	}
+
+	if err := runStep(sr, "gap3-load-pattern-burst-10-read-1-write", func(step *StepContext) error {
+		const reads = 10
+		outcomesCh := make(chan burstOutcome, reads+1)
+		start := time.Now()
+
+		var wg sync.WaitGroup
+		for i := 0; i < reads; i++ {
+			i := i
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				var spec RequestSpec
+				if i%2 == 0 {
+					spec = RequestSpec{
+						Name:    fmt.Sprintf("gap3-read-map-nodes-%02d", i+1),
+						Method:  http.MethodGet,
+						Path:    "/api/v1/map/nodes",
+						UseAuth: true,
+					}
+				} else {
+					query := url.Values{}
+					query.Set("page", "1")
+					query.Set("limit", "10")
+					spec = RequestSpec{
+						Name:    fmt.Sprintf("gap3-read-journeys-%02d", i+1),
+						Method:  http.MethodGet,
+						Path:    "/api/v1/journeys",
+						Query:   query,
+						UseAuth: true,
+					}
+				}
+
+				res, err := session.Client.do(ctx, spec)
+				if err != nil {
+					outcomesCh <- burstOutcome{Kind: "read", Name: spec.Name, Err: err.Error()}
+					return
+				}
+				outcomesCh <- burstOutcome{Kind: "read", Name: spec.Name, StatusCode: res.StatusCode, DurationMS: res.Duration.Milliseconds()}
+			}()
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := session.Client.do(ctx, RequestSpec{
+				Name:   "gap3-write-refresh",
+				Method: http.MethodPost,
+				Path:   "/api/v1/auth/refresh",
+				Body: map[string]interface{}{
+					"refresh_token": session.RefreshToken,
+				},
+				UseAuth: false,
+			})
+			if err != nil {
+				outcomesCh <- burstOutcome{Kind: "write", Name: "gap3-write-refresh", Err: err.Error()}
+				return
+			}
+			outcomesCh <- burstOutcome{Kind: "write", Name: "gap3-write-refresh", StatusCode: res.StatusCode, DurationMS: res.Duration.Milliseconds()}
+		}()
+
+		wg.Wait()
+		close(outcomesCh)
+
+		readOK := 0
+		readFail := 0
+		writeOK := 0
+		writeFail := 0
+		slowestMS := int64(0)
+		failureMessages := make([]string, 0, 8)
+
+		for out := range outcomesCh {
+			if out.DurationMS > slowestMS {
+				slowestMS = out.DurationMS
+			}
+
+			if out.Err != "" {
+				failureMessages = append(failureMessages, fmt.Sprintf("%s error: %s", out.Name, out.Err))
+				if out.Kind == "read" {
+					readFail++
+				} else {
+					writeFail++
+				}
+				continue
+			}
+
+			if out.Kind == "read" {
+				if out.StatusCode == http.StatusOK {
+					readOK++
+				} else {
+					readFail++
+					failureMessages = append(failureMessages, fmt.Sprintf("%s expected 200 got %d", out.Name, out.StatusCode))
+				}
+				continue
+			}
+
+			if out.StatusCode == http.StatusOK {
+				writeOK++
+			} else {
+				writeFail++
+				failureMessages = append(failureMessages, fmt.Sprintf("%s expected 200 got %d", out.Name, out.StatusCode))
+			}
+		}
+
+		totalMS := time.Since(start).Milliseconds()
+		if readFail > 0 || writeFail > 0 {
+			return fmt.Errorf("load burst failures read_ok=%d read_fail=%d write_ok=%d write_fail=%d: %s", readOK, readFail, writeOK, writeFail, strings.Join(failureMessages, " | "))
+		}
+		if totalMS > 6000 {
+			return fmt.Errorf("load burst exceeded expected wall time: %dms", totalMS)
+		}
+
+		step.SetDetails(fmt.Sprintf("10:1 burst passed in %dms (slowest request %dms)", totalMS, slowestMS))
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sr.setMetadata("gap_3", map[string]interface{}{
+		"read_to_write_ratio": "10:1",
+		"burst_requests":      11,
+	})
+	return nil
+}
+
+func runChecklistGap4LocalityScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap4-locality-driver", "car")
+	if err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap4-region-contract-and-route-region-tags", func(step *StepContext) error {
+		failures := make([]string, 0, 4)
+
+		regionRes, err := session.Client.do(ctx, RequestSpec{
+			Name:    "gap4-region",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/region",
+			UseAuth: false,
+		})
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("region endpoint transport error: %v", err))
+		} else {
+			step.AttachHTTP(regionRes)
+			if regionRes.StatusCode != http.StatusOK {
+				failures = append(failures, fmt.Sprintf("region endpoint expected 200 got %d", regionRes.StatusCode))
+			} else {
+				var region regionPayload
+				if err := regionRes.decodeJSON(&region); err != nil {
+					failures = append(failures, fmt.Sprintf("region endpoint JSON contract broken: %v", err))
+				} else if strings.TrimSpace(region.Region) == "" {
+					failures = append(failures, "region endpoint returned empty region value")
+				}
+			}
+		}
+
+		routeQuery := url.Values{}
+		routeQuery.Set("origin_node_id", "city")
+		routeQuery.Set("destination_node_id", "airport")
+
+		routeRes, err := session.Client.do(ctx, RequestSpec{
+			Name:    "gap4-route",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/map/route",
+			Query:   routeQuery,
+			UseAuth: true,
+		})
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("route endpoint transport error: %v", err))
+		} else {
+			step.AttachHTTP(routeRes)
+			if routeRes.StatusCode != http.StatusOK {
+				failures = append(failures, fmt.Sprintf("route endpoint expected 200 got %d", routeRes.StatusCode))
+			} else {
+				var route mapRoutePayload
+				if err := routeRes.decodeEnvelopeData(&route); err != nil {
+					failures = append(failures, fmt.Sprintf("route envelope decode failed: %v", err))
+				} else {
+					for _, segment := range route.Segments {
+						if strings.TrimSpace(segment.Region) == "" {
+							failures = append(failures, fmt.Sprintf("segment %s missing region tag", segment.SegmentID))
+						}
+					}
+				}
+			}
+		}
+
+		if len(failures) > 0 {
+			return fmt.Errorf(strings.Join(failures, " | "))
+		}
+		step.SetDetails("region endpoint and route segment locality tags satisfy contract")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sr.setMetadata("gap_4", "locality and sharding signals")
+	return nil
+}
+
+func runChecklistGap5CacheScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap5-cache-driver", "car")
+	if err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap5-route-cache-repeatability", func(step *StepContext) error {
+		query := url.Values{}
+		query.Set("origin_node_id", "city")
+		query.Set("destination_node_id", "airport")
+
+		signatures := make([]string, 0, 3)
+		durations := make([]int64, 0, 3)
+
+		for i := 0; i < 3; i++ {
+			res, err := session.Client.do(ctx, RequestSpec{
+				Name:    fmt.Sprintf("gap5-map-route-%d", i+1),
+				Method:  http.MethodGet,
+				Path:    "/api/v1/map/route",
+				Query:   query,
+				UseAuth: true,
+			})
+			if err != nil {
+				return err
+			}
+			step.AttachHTTP(res)
+			if res.StatusCode != http.StatusOK {
+				return fmt.Errorf("map route expected 200 on attempt %d, got %d", i+1, res.StatusCode)
+			}
+
+			var route mapRoutePayload
+			if err := res.decodeEnvelopeData(&route); err != nil {
+				return err
+			}
+
+			signatures = append(signatures, routeSignature(route))
+			durations = append(durations, res.Duration.Milliseconds())
+		}
+
+		for i := 1; i < len(signatures); i++ {
+			if signatures[i] != signatures[0] {
+				return fmt.Errorf("route payload changed across repeated calls (attempt %d mismatch)", i+1)
+			}
+		}
+
+		if durations[1] > durations[0]*4 && durations[1] > 1200 {
+			return fmt.Errorf("second route call latency regression detected: first=%dms second=%dms", durations[0], durations[1])
+		}
+		if durations[2] > durations[0]*4 && durations[2] > 1200 {
+			return fmt.Errorf("third route call latency regression detected: first=%dms third=%dms", durations[0], durations[2])
+		}
+
+		step.SetDetails(fmt.Sprintf("repeated route reads are stable; durations_ms=%v", durations))
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sr.setMetadata("gap_5", "cache replacement observability via repeated-read consistency")
+	return nil
+}
+
+func runChecklistGap6IsolationScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	sharedPlan := routePlan{Label: "gap6-shared-race", OriginID: "city", DestinationID: "airport"}
+	sessions := make([]*userSession, 0, 3)
+	for i := 0; i < 3; i++ {
+		session, err := ensureSession(ctx, cfg, logger, sr, target, fmt.Sprintf("gap6-user-%d", i+1), "car")
+		if err != nil {
+			return err
+		}
+		if err := cleanupOpenJourneys(ctx, sr, session); err != nil {
+			return err
+		}
+		sessions = append(sessions, session)
+	}
+
+	minAvailable := 1e9
+	departure := nextHalfHourSlot(2 * time.Hour)
+
+	if err := runStep(sr, "gap6-select-for-update-capacity-precheck", func(step *StepContext) error {
+		routeRes, route, err := fetchRouteByPlan(ctx, sessions[0], sharedPlan)
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(routeRes)
+
+		windows := buildSegmentWindows(departure, route.Segments)
+		if len(windows) == 0 {
+			return fmt.Errorf("gap6 route produced zero segment windows")
+		}
+
+		minAvailable = 1e9
+		for idx, window := range windows {
+			query := url.Values{}
+			query.Set("segment_id", window.SegmentID)
+			query.Set("time_window_start", window.Start.UTC().Format(time.RFC3339))
+			query.Set("time_window_end", window.End.UTC().Format(time.RFC3339))
+
+			res, err := sessions[0].Client.do(ctx, RequestSpec{
+				Name:    fmt.Sprintf("gap6-capacity-check-%d", idx+1),
+				Method:  http.MethodGet,
+				Path:    "/api/v1/capacity/check",
+				Query:   query,
+				UseAuth: true,
+			})
+			if err != nil {
+				return err
+			}
+			step.AttachHTTP(res)
+			if res.StatusCode != http.StatusOK {
+				return fmt.Errorf("gap6 capacity precheck expected 200 for %s, got %d (%s)", window.SegmentID, res.StatusCode, res.errorMessage())
+			}
+
+			var check capacityCheckPayload
+			if err := res.decodeJSON(&check); err != nil {
+				return err
+			}
+			if check.AvailableSlots < minAvailable {
+				minAvailable = check.AvailableSlots
+			}
+		}
+
+		step.SetDetails(fmt.Sprintf("capacity precheck min available slots %.2f", minAvailable))
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	var outcomes []bookingOutcome
+	if err := runStep(sr, "gap6-concurrent-shared-slot-race", func(step *StepContext) error {
+		outcomes = runConcurrentBookings(ctx, sessions, []routePlan{sharedPlan, sharedPlan, sharedPlan}, departure)
+
+		approved := 0
+		rejected := 0
+		for _, outcome := range outcomes {
+			if outcome.Error != "" {
+				return fmt.Errorf("%s failed: %s", outcome.Alias, outcome.Error)
+			}
+			if outcome.HTTPStatus != http.StatusCreated && outcome.HTTPStatus != http.StatusOK {
+				return fmt.Errorf("%s unexpected status %d", outcome.Alias, outcome.HTTPStatus)
+			}
+
+			switch strings.ToUpper(strings.TrimSpace(outcome.Status)) {
+			case "APPROVED":
+				approved++
+			case "REJECTED":
+				rejected++
+			default:
+				return fmt.Errorf("%s unexpected journey status %s", outcome.Alias, outcome.Status)
+			}
+		}
+
+		if hasDuplicateJourneyID(outcomes) {
+			return fmt.Errorf("duplicate journey ids detected in concurrent race")
+		}
+
+		if minAvailable < float64(len(sessions)) && rejected == 0 {
+			return fmt.Errorf("expected at least one rejection under contention: min_available=%.2f approved=%d rejected=%d", minAvailable, approved, rejected)
+		}
+
+		step.SetDetails(fmt.Sprintf("race outcomes approved=%d rejected=%d min_available=%.2f", approved, rejected, minAvailable))
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	_ = runStep(sr, "gap6-cleanup-approved-journeys", func(step *StepContext) error {
+		cleaned := 0
+		for _, outcome := range outcomes {
+			if strings.ToUpper(strings.TrimSpace(outcome.Status)) != "APPROVED" || strings.TrimSpace(outcome.JourneyID) == "" {
+				continue
+			}
+			session := sessionByAlias(sessions, outcome.Alias)
+			if session == nil {
+				continue
+			}
+			if _, _, err := cancelJourney(ctx, session, outcome.JourneyID); err == nil {
+				cleaned++
+			}
+		}
+		step.SetDetails(fmt.Sprintf("cleaned approved journeys=%d", cleaned))
+		return nil
+	})
+
+	sr.setMetadata("gap_6", map[string]interface{}{
+		"race_users":         len(sessions),
+		"departure_time_utc": departure.UTC().Format(time.RFC3339),
+		"min_available":      minAvailable,
+	})
+	return nil
+}
+
+func runChecklistGap7PartitionResilienceScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap7-resilience-driver", "car")
+	if err != nil {
+		return err
+	}
+
+	origin := mapNode{NodeID: "city", Lat: 53.3498, Lng: -6.2603}
+	destination := mapNode{NodeID: "airport", Lat: 53.4264, Lng: -6.2499}
+	departure := nextHalfHourSlot(2 * time.Hour)
+	idempotencyKey := newID("gap7-idem")
+
+	firstStatus := 0
+	firstJourneyID := ""
+	firstMode := ""
+
+	if err := runStep(sr, "gap7-degrade-contract-and-idempotent-retry", func(step *StepContext) error {
+		requestBody := map[string]interface{}{
+			"origin": map[string]interface{}{
+				"lat": origin.Lat,
+				"lng": origin.Lng,
+			},
+			"destination": map[string]interface{}{
+				"lat": destination.Lat,
+				"lng": destination.Lng,
+			},
+			"departure_time": departure.UTC().Format(time.RFC3339),
+			"vehicle_type":   session.VehicleType,
+			"priority_level": "normal",
+		}
+
+		spec := RequestSpec{
+			Name:   "gap7-create-journey-idempotent",
+			Method: http.MethodPost,
+			Path:   "/api/v1/journeys",
+			Body:   requestBody,
+			Headers: map[string]string{
+				"Idempotency-Key": idempotencyKey,
+			},
+			UseAuth: true,
+		}
+
+		res1, err := session.Client.do(ctx, spec)
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res1)
+		firstStatus = res1.StatusCode
+
+		switch res1.StatusCode {
+		case http.StatusCreated, http.StatusOK:
+			firstMode = "success"
+			var journey journeyPayload
+			if err := res1.decodeEnvelopeData(&journey); err != nil {
+				return err
+			}
+			firstJourneyID = strings.TrimSpace(journey.JourneyID)
+			if firstJourneyID == "" {
+				return fmt.Errorf("first idempotent request succeeded but journey_id was empty")
+			}
+		case http.StatusConflict, http.StatusUnprocessableEntity:
+			firstMode = "business-rejection"
+		case http.StatusBadGateway:
+			firstMode = "dependency-degraded"
+			var env genericEnvelope
+			if err := res1.decodeJSON(&env); err != nil {
+				return fmt.Errorf("expected structured 502 response, decode failed: %w", err)
+			}
+			if env.Error == nil || strings.TrimSpace(env.Error.Code) != "EXTERNAL_API_ERROR" {
+				return fmt.Errorf("expected EXTERNAL_API_ERROR on 502, got %s", res1.errorMessage())
+			}
+		default:
+			return fmt.Errorf("unexpected first idempotent attempt status %d (%s)", res1.StatusCode, res1.errorMessage())
+		}
+
+		res2, err := session.Client.do(ctx, spec)
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res2)
+
+		if res2.StatusCode != firstStatus {
+			if !(firstStatus == http.StatusBadGateway && (res2.StatusCode == http.StatusCreated || res2.StatusCode == http.StatusOK)) {
+				return fmt.Errorf("idempotent retry status mismatch: first=%d second=%d", firstStatus, res2.StatusCode)
+			}
+		}
+
+		if firstMode == "success" && (res2.StatusCode == http.StatusCreated || res2.StatusCode == http.StatusOK) {
+			var journey2 journeyPayload
+			if err := res2.decodeEnvelopeData(&journey2); err != nil {
+				return err
+			}
+			if strings.TrimSpace(journey2.JourneyID) == "" || strings.TrimSpace(journey2.JourneyID) != firstJourneyID {
+				return fmt.Errorf("idempotent retry returned different journey id: first=%s second=%s", firstJourneyID, journey2.JourneyID)
+			}
+		}
+
+		step.SetDetails(fmt.Sprintf("mode=%s first_status=%d second_status=%d", firstMode, firstStatus, res2.StatusCode))
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap7-post-error-read-path-health", func(step *StepContext) error {
+		profileRes, err := session.Client.do(ctx, RequestSpec{
+			Name:    "gap7-profile-health",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/auth/profile",
+			UseAuth: true,
+		})
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(profileRes)
+		if profileRes.StatusCode != http.StatusOK {
+			return fmt.Errorf("profile health check expected 200, got %d", profileRes.StatusCode)
+		}
+
+		listQuery := url.Values{}
+		listQuery.Set("page", "1")
+		listQuery.Set("limit", "20")
+		journeyRes, err := session.Client.do(ctx, RequestSpec{
+			Name:    "gap7-journeys-health",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/journeys",
+			Query:   listQuery,
+			UseAuth: true,
+		})
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(journeyRes)
+		if journeyRes.StatusCode != http.StatusOK {
+			return fmt.Errorf("journey list health check expected 200, got %d", journeyRes.StatusCode)
+		}
+
+		step.SetDetails("core read APIs remain healthy after retry/degradation exercise")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(firstJourneyID) != "" {
+		_ = runStep(sr, "gap7-cleanup-created-journey", func(step *StepContext) error {
+			res, journey, err := getJourney(ctx, session, firstJourneyID)
+			if err != nil {
+				step.SetDetails("cleanup skipped; created journey could not be fetched")
+				return nil
+			}
+			step.AttachHTTP(res)
+
+			if strings.ToUpper(strings.TrimSpace(journey.Status)) == "APPROVED" {
+				cancelRes, _, cancelErr := cancelJourney(ctx, session, firstJourneyID)
+				if cancelErr == nil {
+					step.AttachHTTP(cancelRes)
+					step.SetDetails("cleaned approved journey created during resilience scenario")
+					return nil
+				}
+			}
+
+			step.SetDetails("no cleanup needed for created journey status " + strings.ToUpper(strings.TrimSpace(journey.Status)))
+			return nil
+		})
+	}
+
+	sr.setMetadata("gap_7", map[string]interface{}{
+		"first_mode":   firstMode,
+		"first_status": firstStatus,
+	})
+	return nil
+}
+
+func runChecklistGap8FrameworkScenario(ctx context.Context, cfg Config, logger *slog.Logger, sr *ScenarioRecorder, target gatewayTarget) error {
+	session, err := ensureSession(ctx, cfg, logger, sr, target, "gap8-framework-driver", "van")
+	if err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap8-handler-contract-missing-auth-401", func(step *StepContext) error {
+		anonymousClient := newAPIClient(target.BaseURL, cfg.RequestTimeout, logger, sr.record.Name, "gap8-anonymous")
+		res, err := anonymousClient.do(ctx, RequestSpec{
+			Name:    "gap8-journeys-no-auth",
+			Method:  http.MethodGet,
+			Path:    "/api/v1/journeys",
+			UseAuth: false,
+		})
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res)
+		if res.StatusCode != http.StatusUnauthorized {
+			return fmt.Errorf("expected 401 without auth header, got %d", res.StatusCode)
+		}
+		step.SetDetails("missing auth header returns 401 as expected")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap8-handler-contract-invalid-body-400", func(step *StepContext) error {
+		res, err := session.Client.do(ctx, RequestSpec{
+			Name:   "gap8-invalid-create-body",
+			Method: http.MethodPost,
+			Path:   "/api/v1/journeys",
+			Body: map[string]interface{}{
+				"vehicle_type": "car",
+			},
+			Headers: map[string]string{
+				"Idempotency-Key": newID("gap8-idem"),
+			},
+			UseAuth: true,
+		})
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res)
+		if res.StatusCode != http.StatusBadRequest {
+			return fmt.Errorf("expected 400 for malformed create journey body, got %d", res.StatusCode)
+		}
+		step.SetDetails("invalid create-journey payload returns 400")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := runStep(sr, "gap8-handler-contract-departure-too-soon-422", func(step *StepContext) error {
+		tooSoon := time.Now().UTC().Add(30 * time.Minute)
+		origin := mapNode{NodeID: "city", Lat: 53.3498, Lng: -6.2603}
+		destination := mapNode{NodeID: "airport", Lat: 53.4264, Lng: -6.2499}
+
+		_, res, err := createJourney(ctx, session, origin, destination, tooSoon, "van", "normal")
+		if err != nil {
+			return err
+		}
+		step.AttachHTTP(res)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			return fmt.Errorf("expected 422 for departure too soon, got %d", res.StatusCode)
+		}
+		step.SetDetails("departure less than 1 hour returns 422 with validation guard")
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sr.setMetadata("gap_8", map[string]interface{}{
+		"missing_auth_401":     true,
+		"invalid_body_400":     true,
+		"departure_too_soon_422": true,
+	})
+	return nil
+}
+
+func routeSignature(route mapRoutePayload) string {
+	parts := make([]string, 0, len(route.Segments)+1)
+	parts = append(parts, fmt.Sprintf("minutes=%d", route.TotalTraversalTimeMinutes))
+	for _, segment := range route.Segments {
+		parts = append(parts, fmt.Sprintf("%s:%s:%s:%d:%s", segment.SegmentID, segment.FromNodeID, segment.ToNodeID, segment.TraversalTimeMinutes, strings.TrimSpace(strings.ToLower(segment.Region))))
+	}
+	return strings.Join(parts, "|")
 }
 
 func sessionByAlias(sessions []*userSession, alias string) *userSession {
