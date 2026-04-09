@@ -109,7 +109,6 @@ func (c *GeoClient) SearchPlaces(ctx context.Context, query string, limit int) (
 	v.Set("format", "jsonv2")
 	v.Set("addressdetails", "1")
 	v.Set("limit", strconv.Itoa(limit))
-	v.Set("countrycodes", "ie,gb")
 
 	rawURL := fmt.Sprintf("%s/search?%s", c.nominatimBaseURL, v.Encode())
 
