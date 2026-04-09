@@ -110,7 +110,7 @@ func NewMapClient(baseURL string) *MapClient {
 	return &MapClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 55 * time.Second,
 		},
 		breaker: breaker,
 	}

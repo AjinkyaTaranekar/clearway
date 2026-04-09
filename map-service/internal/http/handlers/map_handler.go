@@ -356,10 +356,7 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 		Int("total_duration_minutes", computeRoute.TotalDurationMinutes).
 		Msg("compute route request completed")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Trace-ID", traceID)
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(computeRoute)
+	response.Success(w, computeRoute, traceID)
 }
 
 // GetTraffic godoc
