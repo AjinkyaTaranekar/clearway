@@ -181,10 +181,74 @@ sudo docker service update \
 
 ---
 
-## 6. Deploying / Redeploying the Stack
+## 6. Deployment
+
+### How deployment works
+
+```
+git push → GitHub Actions (manual trigger) → build Docker images → push to GHCR
+  → SSH into each region's Swarm manager → docker stack deploy → docker service update
+```
+
+The pipeline is **manual** (`workflow_dispatch`) — it does **not** auto-trigger on push.
+After pushing code, you must trigger a run from GitHub Actions.
+
+### Triggering a deployment via GitHub UI
+
+1. Go to: `https://github.com/AjinkyaTaranekar/clearway/actions/workflows/pipeline.yml`
+2. Click **Run workflow**
+3. Fill in the inputs:
+
+| Input | Default | Options |
+|---|---|---|
+| `services` | `all` | Comma-separated: `map-service,journey-service` or `all` |
+| `regions` | `all` | `all`, `eu`, `us`, `apac` |
+| `image_tag` | (git SHA) | Leave blank to use the latest commit SHA |
+
+4. Click **Run workflow** (green button)
+
+### What the pipeline does (step by step)
+
+```
+setup job
+  └─ computes build matrix, image tag (first 12 chars of SHA), repo name
+
+build-frontend job  (only when nginx is in the service list)
+  └─ npm ci + npm run build → uploads dist/ as artifact
+
+build-push job  (parallel, one per service)
+  └─ docker buildx build + push to ghcr.io/ajinkyataranekar/clearway/<svc>:<sha>
+  └─ also tags :latest
+
+deploy-eu / deploy-us / deploy-apac jobs  (parallel across regions)
+  ├─ SSH: docker login ghcr.io on all nodes in the region
+  ├─ SCP: copy SQL migration files to the manager
+  ├─ Run migrations: check schema_migrations, apply missing files
+  ├─ SCP: copy docker-stack.yml + observability configs to manager
+  ├─ docker stack deploy --prune (picks up config/env changes)
+  ├─ docker service update --image <svc>:<sha> for each selected service
+  └─ Wait for replicas to stabilise, then smoke-test /nginx-health
+```
+
+### Deploying a single service
+
+In the GitHub Actions **Run workflow** dialog:
+- `services` → `map-service`
+- `regions` → `eu`
+
+This builds only `map-service`, skips frontend, and deploys only to EU.
+
+### Deploying to one region only
+
+- `services` → `all`
+- `regions` → `eu`
+
+### Manual deploy without CI (emergency / hotfix)
+
+SSH into the manager for the target region and run:
 
 ```bash
-# EU — full redeploy (picks up docker-stack.yml changes, prunes removed services)
+# EU
 sudo GITHUB_REPOSITORY=ajinkyataranekar/clearway \
      IMAGE_TAG=latest \
      CRDB_JOIN="10.0.1.11:26257,10.0.1.12:26257" \
@@ -204,15 +268,48 @@ sudo GITHUB_REPOSITORY=ajinkyataranekar/clearway \
      CRDB_JOIN="localhost:26257" \
      SWAGGER_PUBLIC_BASE_URL=https://34.8.134.246.nip.io \
   docker stack deploy --with-registry-auth --prune -c ~/docker-stack.yml vcs
+```
 
-# Update a single service to a specific commit SHA
+### Update a single service to a specific commit SHA
+
+```bash
 sudo docker service update \
   --image ghcr.io/ajinkyataranekar/clearway/map-service:1fcd8da \
   --with-registry-auth \
   vcs_map-service
+```
 
-# Remove the entire stack (DESTRUCTIVE — stops all services)
+### Roll back to the previous image
+
+```bash
+sudo docker service rollback vcs_map-service
+```
+
+### Remove the entire stack (DESTRUCTIVE)
+
+```bash
 sudo docker stack rm vcs
+```
+
+### Image registry
+
+Images live at: `ghcr.io/ajinkyataranekar/clearway/<service>:<tag>`
+
+| Service | Image |
+|---|---|
+| iam-service | `ghcr.io/ajinkyataranekar/clearway/iam-service` |
+| journey-service | `ghcr.io/ajinkyataranekar/clearway/journey-service` |
+| capacity-service | `ghcr.io/ajinkyataranekar/clearway/capacity-service` |
+| map-service | `ghcr.io/ajinkyataranekar/clearway/map-service` |
+| notification-service | `ghcr.io/ajinkyataranekar/clearway/notification-service` |
+| nginx | `ghcr.io/ajinkyataranekar/clearway/nginx` |
+
+Tags pushed on every pipeline run: `:latest` and `:<12-char-sha>` (e.g. `:254cdb3929c4`).
+
+```bash
+# List available tags for a service
+curl -s -H "Authorization: Bearer $(echo '<GHCR_PAT>' | base64)" \
+  https://ghcr.io/v2/ajinkyataranekar/clearway/journey-service/tags/list | python3 -m json.tool
 ```
 
 ---
