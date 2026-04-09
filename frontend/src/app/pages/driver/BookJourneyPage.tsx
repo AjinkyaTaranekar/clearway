@@ -716,9 +716,9 @@ export default function BookJourneyPage() {
         destination: destPlace.name,
         originCoords: { lat: originPlace.lat, lng: originPlace.lng },
         destCoords: { lat: destPlace.lat, lng: destPlace.lng },
-        // Persist display labels so journey notifications use readable place names.
-        originPlaceId: originPlace.name,
-        destinationPlaceId: destPlace.name,
+        // Persist canonical place IDs returned by map search.
+        originPlaceId: originPlace.place_id,
+        destinationPlaceId: destPlace.place_id,
         departureTime,
         vehicleType: selectedVehicle.vehicleType,
         priorityLevel: selectedVehicle.isEmergencyVehicle ? 'max' : 'normal',

@@ -369,6 +369,24 @@ function mapJourneyEvent(ev: APIJourneyEvent, index: number): TimelineEvent {
   };
 }
 
+function resolveJourneyPlaceLabel(placeID: unknown, coords?: GeoPoint, fallbackName?: unknown): string {
+  if (coords) {
+    return getLocationName(coords.lat, coords.lng);
+  }
+
+  const normalizedPlaceID = typeof placeID === 'string' ? placeID.trim() : '';
+  if (normalizedPlaceID && !normalizedPlaceID.toLowerCase().startsWith('coord_')) {
+    return normalizedPlaceID;
+  }
+
+  const normalizedFallback = typeof fallbackName === 'string' ? fallbackName.trim() : '';
+  if (normalizedFallback) {
+    return normalizedFallback;
+  }
+
+  return 'Unknown';
+}
+
 export async function getJourneyEvents(id: string, isAdmin = false): Promise<TimelineEvent[]> {
   const path = isAdmin
     ? `/api/v1/admin/journeys/${id}/events`
@@ -398,12 +416,8 @@ function mapApiJourney(
     : (fallbackDurationMinutes > 0 ? fallbackDurationMinutes : undefined);
 
   const mapPath = buildJourneyPath(j.segments ?? [], originCoords, destinationCoords);
-  const originName = j.origin
-    ? getLocationName(j.origin.lat, j.origin.lng)
-    : j.origin_name ?? 'Unknown';
-  const destName = j.destination
-    ? getLocationName(j.destination.lat, j.destination.lng)
-    : j.destination_name ?? 'Unknown';
+  const originName = resolveJourneyPlaceLabel(j.origin_place_id, originCoords, j.origin_name);
+  const destName = resolveJourneyPlaceLabel(j.destination_place_id, destinationCoords, j.destination_name);
 
   const driverId = j.driver_id ?? '';
   const driverName = (j.driver_name ?? '').trim() || fallbackDriverName(driverId);
