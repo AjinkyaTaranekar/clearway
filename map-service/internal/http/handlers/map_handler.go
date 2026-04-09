@@ -331,8 +331,17 @@ func (h *MapHandler) ComputeRoute(w http.ResponseWriter, r *http.Request) {
 			Str("handler", "MapHandler.ComputeRoute").
 			Err(err).
 			Msg("compute route build failed")
-		if strings.Contains(strings.ToLower(err.Error()), "origin and destination must be different") {
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "origin and destination must be different") {
 			response.Error(w, appErrors.BadRequest("origin and destination must be different"), traceID)
+			return
+		}
+		if strings.Contains(errLower, "osrm route lookup failed") {
+			response.Error(w, appErrors.ExternalAPIError("routing provider unavailable", err), traceID)
+			return
+		}
+		if strings.Contains(errLower, "osrm returned no segments") || strings.Contains(errLower, "route not found") {
+			response.Error(w, appErrors.NotFound("route not found"), traceID)
 			return
 		}
 		response.Error(w, appErrors.InternalError("route computation failed", err), traceID)

@@ -12,9 +12,6 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 	if h.geo == nil {
 		return ComputeRouteResponse{}, fmt.Errorf("geo client is not configured")
 	}
-	if h.db == nil {
-		return ComputeRouteResponse{}, fmt.Errorf("database connection is not configured")
-	}
 
 	origin = normalizedPoint(origin)
 	destination = normalizedPoint(destination)
@@ -26,16 +23,17 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 	originPlaceID := coordinatePlaceID(origin)
 	destinationPlaceID := coordinatePlaceID(destination)
 
-	cachedRoute, found, err := h.loadCachedDynamicRoute(ctx, originPlaceID, destinationPlaceID)
-	if err != nil {
-		return ComputeRouteResponse{}, err
-	}
-	if found {
-		if err := h.ensureCapacitySegments(ctx, cachedRoute.Segments); err != nil {
-			return ComputeRouteResponse{}, fmt.Errorf("register cached route segments: %w", err)
+	if h.db != nil {
+		cachedRoute, found, err := h.loadCachedDynamicRoute(ctx, originPlaceID, destinationPlaceID)
+		if err != nil {
+			logWithTrace(ctx).Warn().Err(err).Msg("failed to load cached route; continuing with live route computation")
+		} else if found {
+			if err := h.ensureCapacitySegments(ctx, cachedRoute.Segments); err != nil {
+				logWithTrace(ctx).Warn().Err(err).Str("route_id", cachedRoute.RouteID).Msg("failed to register cached route segments in capacity service")
+			}
+			_ = h.touchRouteLastUsed(ctx, cachedRoute.RouteID)
+			return cachedRoute, nil
 		}
-		_ = h.touchRouteLastUsed(ctx, cachedRoute.RouteID)
-		return cachedRoute, nil
 	}
 
 	routeResult, err := h.geo.GetRoute(ctx, RoutePoint{Lat: origin.Lat, Lng: origin.Lng}, RoutePoint{Lat: destination.Lat, Lng: destination.Lng})
@@ -49,12 +47,17 @@ func (h *MapHandler) computeDynamicRoute(ctx context.Context, origin, destinatio
 	}
 
 	if err := h.ensureCapacitySegments(ctx, segments); err != nil {
-		return ComputeRouteResponse{}, fmt.Errorf("register route segments: %w", err)
+		logWithTrace(ctx).Warn().Err(err).Msg("failed to register route segments in capacity service")
 	}
 
-	routeID, err := h.persistDynamicRoute(ctx, originPlaceID, destinationPlaceID, origin, destination, routeResult, segments)
-	if err != nil {
-		return ComputeRouteResponse{}, fmt.Errorf("persist dynamic route: %w", err)
+	routeID := fmt.Sprintf("rte_%s_%s", originPlaceID, destinationPlaceID)
+	if h.db != nil {
+		persistedRouteID, err := h.persistDynamicRoute(ctx, originPlaceID, destinationPlaceID, origin, destination, routeResult, segments)
+		if err != nil {
+			logWithTrace(ctx).Warn().Err(err).Msg("failed to persist dynamic route; returning non-cached route response")
+		} else {
+			routeID = persistedRouteID
+		}
 	}
 
 	response := ComputeRouteResponse{
