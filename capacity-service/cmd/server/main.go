@@ -107,6 +107,7 @@ func main() {
 	segmentRepo := repository.NewSegmentRepo(dbPools.Slave)
 	reservRepo := repository.NewReservationRepo(dbPools.Master, dbPools.Slave)
 	idempRepo := repository.NewIdempotencyRepo(dbPools.Master)
+	closureRepo := repository.NewClosureRepo(dbPools.Master, dbPools.Slave)
 
 	// Wire up services
 	reservSvc := service.NewReservationService(
@@ -126,6 +127,7 @@ func main() {
 		orphanThreshold,
 		log,
 	)
+	closureSvc := service.NewClosureService(closureRepo, log)
 
 	// Background context for long-running goroutines
 	bgCtx, bgCancel := context.WithCancel(context.Background())
@@ -146,9 +148,10 @@ func main() {
 	healthHandler := handlers.NewHealthHandler()
 	capacityHandler := handlers.NewCapacityHandler(reservSvc, log)
 	occupancyHandler := handlers.NewOccupancyHandler(reservSvc, log)
+	closuresHandler := handlers.NewClosuresHandler(closureSvc, log)
 
 	// Setup router
-	router := httpHandler.NewRouter(healthHandler, capacityHandler, occupancyHandler, log)
+	router := httpHandler.NewRouter(healthHandler, capacityHandler, occupancyHandler, closuresHandler, log)
 	mux := router.Setup()
 
 	// Create HTTP server

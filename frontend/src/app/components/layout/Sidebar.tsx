@@ -10,6 +10,7 @@ import {
   BarChart2,
   Map,
   ShieldCheck,
+  OctagonX,
   X,
 } from 'lucide-react';
 
@@ -27,6 +28,7 @@ const adminNav = [
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart2, end: false },
   { to: '/admin/enforcement', label: 'Enforcement', icon: ShieldCheck, end: false },
   { to: '/admin/map', label: 'Traffic map', icon: Map, end: false },
+  { to: '/admin/closures', label: 'Segment closures', icon: OctagonX, end: false },
   { to: '/admin/notifications', label: 'Notifications', icon: Bell, end: false },
   { to: '/admin/settings', label: 'Settings', icon: Settings, end: false },
 ];

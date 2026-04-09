@@ -22,6 +22,7 @@ import AllJourneysPage from './pages/admin/AllJourneysPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
 import EnforcementPage from './pages/admin/EnforcementPage';
 import TrafficMapPage from './pages/admin/TrafficMapPage';
+import SegmentClosuresPage from './pages/admin/SegmentClosuresPage';
 
 function NotFound() {
   return (
@@ -85,6 +86,7 @@ export const router = createBrowserRouter([
       { path: 'analytics', Component: AnalyticsPage },
       { path: 'enforcement', Component: EnforcementPage },
       { path: 'map', Component: TrafficMapPage },
+      { path: 'closures', Component: SegmentClosuresPage },
       { path: 'notifications', Component: AdminNotificationsPage },
       { path: 'settings', Component: AdminSettingsPage },
     ],

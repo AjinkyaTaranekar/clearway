@@ -18,6 +18,7 @@ type Router struct {
 	healthHandler    *handlers.HealthHandler
 	capacityHandler  *handlers.CapacityHandler
 	occupancyHandler *handlers.OccupancyHandler
+	closuresHandler  *handlers.ClosuresHandler
 	logger           *logger.Logger
 }
 
@@ -26,6 +27,7 @@ func NewRouter(
 	healthHandler *handlers.HealthHandler,
 	capacityHandler *handlers.CapacityHandler,
 	occupancyHandler *handlers.OccupancyHandler,
+	closuresHandler *handlers.ClosuresHandler,
 	log *logger.Logger,
 ) *Router {
 	return &Router{
@@ -33,6 +35,7 @@ func NewRouter(
 		healthHandler:    healthHandler,
 		capacityHandler:  capacityHandler,
 		occupancyHandler: occupancyHandler,
+		closuresHandler:  closuresHandler,
 		logger:           log,
 	}
 }
@@ -63,6 +66,8 @@ func (r *Router) Setup() *mux.Router {
 	// does not shadow the more-specific path.
 	api.HandleFunc("/segments", r.occupancyHandler.Segments).Methods("GET")
 	api.HandleFunc("/segments/occupancy", r.occupancyHandler.Occupancy).Methods("GET")
+	api.HandleFunc("/closures", r.closuresHandler.List).Methods("GET")
+	api.HandleFunc("/closures", r.closuresHandler.Create).Methods("POST")
 
 	return r.mux
 }
