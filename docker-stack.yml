@@ -29,10 +29,6 @@ secrets:
   iam_private_key:
     external: true
 
-configs:
-  nginx_conf:
-    external: true
-
 networks:
   vcs-internal:
     driver: overlay
@@ -489,9 +485,6 @@ services:
 
   nginx:
     image: ghcr.io/${GITHUB_REPOSITORY}/nginx:${IMAGE_TAG:-latest}
-    configs:
-      - source: nginx_conf
-        target: /etc/nginx/conf.d/vcs.conf
     environment:
       REGION: ${REGION:-EU}
     deploy:
