@@ -200,6 +200,8 @@ services:
       VCS_LOGGING_LEVEL: info
       VCS_SERVICES_JWKS_URL: http://iam-service:8082/.well-known/jwks.json
       JWKS_URL: http://iam-service:8082/.well-known/jwks.json
+      VCS_CORS_ALLOW_ORIGINS: http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173
+      VCS_CORS_ALLOW_CREDENTIALS: "false"
       VM_ID: "1"
       FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
       VCS_SWAGGER_PUBLIC_BASE_URL: http://localhost
