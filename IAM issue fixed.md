@@ -1,8 +1,9 @@
 # IAM Service - Issues Fixed by Deepika Nag
 
 > **Audit Reference:** AUDIT_REPORT.md  
-> **Issues:** F-11, U-01, U-02, U-03, U-11  
-> **Date:** 2026-04-08
+> **Issues:** F-11, U-01, U-02, U-03, U-11 + nginx routing bugs  
+> **Date:** 2026-04-09  
+> **Owner:** Deepika Nag
 
 ---
 
@@ -127,6 +128,112 @@ const [form, setForm] = useState<FormData>({
 
 ---
 
+## nginx Routing Bugs (Infrastructure - Deepika Nag)
+
+Two routing bugs were discovered during live deployment verification against all three regions (EU `35.187.121.12`, US `34.138.242.217`, APAC `34.80.180.64`).
+
+---
+
+### Bug 1 - JWKS Endpoint Returns HTML Instead of JSON
+
+**Symptom:** `GET /.well-known/jwks.json` returned `Content-Type: text/html` (the React SPA `index.html`) on all three regions. Swagger "Try it out" RS256 token verification was broken for external clients.
+
+**Root cause:** No `location /.well-known/` block existed in `nginx/nginx.conf`. The SPA catch-all `try_files $uri $uri/ /index.html` matched the request and served `index.html`.
+
+**Fix:** `nginx/nginx.conf` - added before the SPA `location /` block:
+
+```nginx
+location /.well-known/ {
+    set $iam http://iam-service:8082;
+    proxy_pass $iam;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 10s;
+    proxy_connect_timeout 5s;
+}
+```
+
+**Why this works:** Nginx longest-prefix matching picks `/.well-known/` over `/` (SPA fallback) for any request starting with `/.well-known/`. IAM registers exactly `/.well-known/jwks.json` at `router.go:43`. Journey service is unaffected - it fetches JWKS via internal Docker DNS directly, not via nginx.
+
+---
+
+### Bug 2 - IAM Admin Endpoints Routed to Journey Service
+
+**Symptom:** `GET /api/v1/admin/auth/users` returned a 404 from `journey-service`. The IAM admin API (`/promote`, `/force-logout`, `/users`) was unreachable from outside the cluster.
+
+**Root cause:** `location /api/v1/admin/` (15-char prefix) in nginx caught all admin paths including `/api/v1/admin/auth/*`, routing them to `journey-service:8083` instead of `iam-service:8082`.
+
+**Fix:** `nginx/nginx.conf` - added BEFORE the existing `location /api/v1/admin/` block:
+
+```nginx
+location /api/v1/admin/auth/ {
+    limit_req zone=api burst=10 nodelay;
+    set $iam http://iam-service:8082;
+    proxy_pass $iam;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+    proxy_connect_timeout 5s;
+}
+```
+
+**Why this works:** Nginx always selects the longest matching prefix. `/api/v1/admin/auth/` (22 chars) beats `/api/v1/admin/` (15 chars) for any request under `/api/v1/admin/auth/*`. IAM admin routes are registered at prefix `/api/v1/admin/auth` (`router.go:63`). The broader journey-service block still handles all other `/api/v1/admin/` paths.
+
+---
+
+### Deployment Procedure (Docker Swarm - immutable config rotation)
+
+Docker Swarm configs are immutable - they cannot be updated in place. The procedure creates a new versioned config and hot-swaps it on the nginx service (zero downtime).
+
+Run from **GCP Cloud Shell** after cloning/pulling the `iam-auth-service` branch:
+
+```bash
+gcloud config set project distributed-capacity-system
+TAG=$(date +%Y%m%d%H%M%S)
+
+# EU cell - manager: vcs-vm-eu1 (worker vcs-vm-eu2 is updated automatically)
+gcloud compute scp nginx/nginx.conf vcs-vm-eu1:~/nginx.conf --zone=europe-west1-b
+gcloud compute ssh vcs-vm-eu1 --zone=europe-west1-b --command="
+  sudo docker config create nginx_conf_${TAG} ~/nginx.conf && \
+  sudo docker service update \
+    --config-rm nginx_conf \
+    --config-add source=nginx_conf_${TAG},target=/etc/nginx/nginx.conf \
+    vcs_nginx"
+
+# US cell - manager: vcs-vm-us1
+gcloud compute scp nginx/nginx.conf vcs-vm-us1:~/nginx.conf --zone=us-east1-d
+gcloud compute ssh vcs-vm-us1 --zone=us-east1-d --command="
+  sudo docker config create nginx_conf_${TAG} ~/nginx.conf && \
+  sudo docker service update \
+    --config-rm nginx_conf \
+    --config-add source=nginx_conf_${TAG},target=/etc/nginx/nginx.conf \
+    vcs_nginx"
+
+# APAC cell - manager: vcs-vm-ap1
+gcloud compute scp nginx/nginx.conf vcs-vm-ap1:~/nginx.conf --zone=asia-east1-b
+gcloud compute ssh vcs-vm-ap1 --zone=asia-east1-b --command="
+  sudo docker config create nginx_conf_${TAG} ~/nginx.conf && \
+  sudo docker service update \
+    --config-rm nginx_conf \
+    --config-add source=nginx_conf_${TAG},target=/etc/nginx/nginx.conf \
+    vcs_nginx"
+```
+
+**Verify all 3 regions:**
+```bash
+for IP in 35.187.121.12 34.138.242.217 34.80.180.64; do
+  echo "=== $IP ==="
+  curl -si http://$IP/.well-known/jwks.json | grep -E "HTTP|Content-Type"
+done
+# Expected: HTTP/1.1 200 OK  +  Content-Type: application/json  on all three
+```
+
+---
+
 ## Summary
 
 | Issue | Severity | Description | Status |
@@ -136,3 +243,5 @@ const [form, setForm] = useState<FormData>({
 | U-02 | P2 | Licence number accepted without validation | ✅ Format + length validation added to Register handler |
 | U-03 | P1 | Booking form vehicle type always blank | ✅ Pre-populated from `user.vehicle_type` with truck→HGV mapping |
 | U-11 | P0 | Settings save button was a fake setTimeout | ✅ Wired to real `PUT /api/v1/auth/profile`; proper loading/error states |
+| nginx-1 | P1 | JWKS endpoint returns HTML (SPA fallback) | ✅ Added `location /.well-known/` block proxying to IAM service |
+| nginx-2 | P1 | IAM admin endpoints routed to journey-service | ✅ Added specific `location /api/v1/admin/auth/` block before broad admin block |

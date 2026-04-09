@@ -40,6 +40,12 @@ const config: Record<
     text: 'var(--status-cancelled-text)',
     dot: '#6B4848',
   },
+  expired: {
+    label: 'Expired',
+    bg: 'var(--status-cancelled-bg)',
+    text: 'var(--status-cancelled-text)',
+    dot: '#888888',
+  },
 };
 
 interface StatusChipProps {
@@ -48,7 +54,7 @@ interface StatusChipProps {
 }
 
 export function StatusChip({ status, size = 'md' }: StatusChipProps) {
-  const c = config[status];
+  const c = config[status] ?? { label: status, bg: '#F0F0F0', text: '#555555', dot: '#888888' };
   const padding = size === 'sm' ? '2px 8px' : '4px 10px';
   const fontSize = size === 'sm' ? '0.75rem' : '0.8125rem';
 

@@ -1,4 +1,4 @@
-export type JourneyStatus = 'pending' | 'approved' | 'rejected' | 'active' | 'completed' | 'cancelled';
+export type JourneyStatus = 'pending' | 'approved' | 'rejected' | 'active' | 'completed' | 'cancelled' | 'expired';
 export type VehicleType = 'Car' | 'Van' | 'Motorcycle' | 'HGV';
 export type TrafficLevel = 'low' | 'medium' | 'high' | 'critical';
 export type Region = 'North' | 'South' | 'East' | 'West' | 'Central';
