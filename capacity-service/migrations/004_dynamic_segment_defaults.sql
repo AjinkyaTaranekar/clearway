@@ -14,6 +14,3 @@ ON CONFLICT (singleton) DO NOTHING;
 
 ALTER TABLE capacity.segments
     DROP CONSTRAINT IF EXISTS chk_region;
-
-ALTER TABLE capacity.segments
-    ADD CONSTRAINT chk_region CHECK (region IN ('north', 'south', 'east', 'west', 'central', 'intercity'));

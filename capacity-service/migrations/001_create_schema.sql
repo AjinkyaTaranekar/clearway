@@ -11,8 +11,7 @@ CREATE TABLE IF NOT EXISTS capacity.segments (
     version      INTEGER         NOT NULL DEFAULT 1,
     created_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_max_capacity CHECK (max_capacity > 0),
-    CONSTRAINT chk_region CHECK (region IN ('north', 'south', 'east', 'west', 'central'))
+    CONSTRAINT chk_max_capacity CHECK (max_capacity > 0)
 );
 
 -- Reservations: one row per segment per journey
