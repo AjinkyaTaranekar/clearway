@@ -66,6 +66,8 @@ jobs:
     timeout-minutes: 15
     needs: [setup]
     if: needs.setup.outputs.needs_nginx == 'true'
+    env:
+      VITE_FIREBASE_VAPID_KEY: BMtHzh3irkREAnJQEE2plxNqbTv44cGM9e3xHXRYy2ujgE8q89VXaBkgDX98ttEXeDlRVPptio2iDUeod5UokpU
     defaults:
       run:
         working-directory: frontend
