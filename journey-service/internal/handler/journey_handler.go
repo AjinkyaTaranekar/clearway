@@ -188,6 +188,48 @@ func (h *JourneyHandler) GetJourney(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, journey, traceID)
 }
 
+// GetJourneyEvents godoc
+// @Summary Get journey timeline events
+// @Description Returns durable lifecycle/audit events for a journey. Drivers can only access their own journey events.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID"
+// @Success 200 {array} model.JourneyEvent
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Failure 404 {object} response.Response "Journey not found or not owned by this driver"
+// @Router /api/v1/journeys/{id}/events [get]
+func (h *JourneyHandler) GetJourneyEvents(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	journeyID := mux.Vars(r)["id"]
+	driverID := middleware.GetDriverID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "JourneyHandler.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Str("driver_id", driverID).
+		Msg("get journey events request received")
+
+	events, err := h.svc.GetJourneyEvents(r.Context(), journeyID, driverID, false)
+	if err != nil {
+		log.Error().
+			Str("handler", "JourneyHandler.GetJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Str("driver_id", driverID).
+			Msg("journey service get journey events failed")
+		response.Error(w, err, traceID)
+		return
+	}
+
+	log.Info().
+		Str("handler", "JourneyHandler.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Int("event_count", len(events)).
+		Msg("get journey events request completed")
+	response.Success(w, events, traceID)
+}
+
 // ListJourneys godoc
 // @Summary List my journeys
 // @Description Returns a paginated list of journeys for the authenticated driver.

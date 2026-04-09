@@ -111,11 +111,11 @@ func main() {
 	}
 	cleanupInterval := cfg.Capacity.OrphanCleanupInterval
 	if cleanupInterval == 0 {
-		cleanupInterval = 30 * time.Minute
+		cleanupInterval = 5 * time.Minute
 	}
 	orphanThreshold := cfg.Capacity.OrphanThreshold
 	if orphanThreshold == 0 {
-		orphanThreshold = time.Hour
+		orphanThreshold = 5 * time.Minute
 	}
 	vmID := cfg.Capacity.VMID
 	if vmID == "" {

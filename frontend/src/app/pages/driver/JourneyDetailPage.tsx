@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '../../context/AppContext';
 import JourneyRouteMapCard from '../../components/journey/JourneyRouteMapCard';
+import { getJourneyEvents } from '../../services/journeyApi';
 import { StatusChip } from '../../components/ui/StatusChip';
 import {
   ArrowLeft, CheckCircle2, XCircle, AlertCircle, Play,
@@ -17,6 +18,28 @@ export default function JourneyDetailPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const journey = journeys.find((j) => j.id === id);
+  const [timeline, setTimeline] = useState(journey?.timeline ?? []);
+
+  useEffect(() => {
+    setTimeline(journey?.timeline ?? []);
+  }, [journey?.id, journey?.timeline]);
+
+  useEffect(() => {
+    if (!journey?.id) return;
+    let cancelled = false;
+    getJourneyEvents(journey.id)
+      .then((events) => {
+        if (!cancelled) {
+          setTimeline(events);
+        }
+      })
+      .catch(() => {
+        // Keep existing timeline in case timeline endpoint is temporarily unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [journey?.id, journey?.updatedAt]);
 
   if (!journey) {
     return (
@@ -225,7 +248,7 @@ export default function JourneyDetailPage() {
           Journey timeline
         </h4>
         <ol className="relative">
-          {journey.timeline.map((event, i) => (
+          {timeline.map((event, i) => (
             <li key={event.id} className="flex items-start gap-3 pb-4">
               <div className="flex flex-col items-center">
                 <div
@@ -242,7 +265,7 @@ export default function JourneyDetailPage() {
                     <Clock size={13} color={timelineIconColor(event.type)} />
                   )}
                 </div>
-                {i < journey.timeline.length - 1 && (
+                {i < timeline.length - 1 && (
                   <div className="w-px flex-1 mt-1" style={{ background: 'var(--border)', minHeight: '12px' }} />
                 )}
               </div>

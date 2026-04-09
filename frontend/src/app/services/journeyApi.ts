@@ -1,4 +1,4 @@
-import { GeoPoint, Journey, JourneyStatus, RouteSegment, VehicleType } from '../types';
+import { GeoPoint, Journey, JourneyStatus, RouteSegment, TimelineEvent, VehicleType } from '../types';
 import { authHeaders, getToken } from './auth';
 import { getCoordinates, getLocationName } from './coordinates';
 
@@ -14,6 +14,16 @@ const DRIVER_NAME_CACHE_TTL_MS = 5 * 60_000;
 type CacheEntry<T> = {
   value: T;
   expiresAt: number;
+};
+
+type APIJourneyEvent = {
+  event_id?: string;
+  journey_id?: string;
+  event_type?: string;
+  actor_type?: string;
+  actor_id?: string;
+  note?: string;
+  timestamp?: string;
 };
 
 const journeyDetailCache = new Map<string, CacheEntry<Journey>>();
@@ -290,7 +300,106 @@ function mapSegments(
   });
 }
 
-function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Journey {
+function timelineTypeForEvent(eventType: string): string {
+  switch ((eventType ?? '').toLowerCase()) {
+    case 'journey.requested':
+      return 'created';
+    case 'journey.booked':
+      return 'approved';
+    case 'journey.rejected':
+      return 'rejected';
+    case 'journey.cancelled':
+      return 'cancelled';
+    case 'journey.activated':
+      return 'active';
+    case 'journey.completed':
+      return 'completed';
+    case 'journey.expired':
+      return 'expired';
+    default:
+      return 'info';
+  }
+}
+
+function fallbackTimelineLabel(eventType: string): string {
+  switch ((eventType ?? '').toLowerCase()) {
+    case 'journey.requested':
+      return 'Journey booking requested';
+    case 'journey.booked':
+      return 'Journey approved';
+    case 'journey.rejected':
+      return 'Journey rejected';
+    case 'journey.cancelled':
+      return 'Journey cancelled';
+    case 'journey.activated':
+      return 'Journey activated';
+    case 'journey.completed':
+      return 'Journey completed';
+    case 'journey.expired':
+      return 'Journey expired';
+    default:
+      return 'Journey event';
+  }
+}
+
+function timelineActor(actorType: string, actorID?: string): string {
+  const normalizedType = (actorType ?? '').toLowerCase();
+  const normalizedID = (actorID ?? '').trim();
+  if (normalizedType === 'driver') {
+    return normalizedID ? `Driver ${normalizedID}` : 'Driver';
+  }
+  if (normalizedType === 'admin') {
+    return normalizedID ? `Admin ${normalizedID}` : 'Admin';
+  }
+  if (normalizedType === 'system') {
+    return normalizedID || 'System';
+  }
+  return normalizedID || normalizedType || 'System';
+}
+
+function mapJourneyEvent(ev: APIJourneyEvent, index: number): TimelineEvent {
+  const eventType = ev.event_type ?? '';
+  const note = (ev.note ?? '').trim();
+  return {
+    id: (ev.event_id ?? '').trim() || `E${index + 1}`,
+    type: timelineTypeForEvent(eventType),
+    label: note || fallbackTimelineLabel(eventType),
+    timestamp: ev.timestamp ?? new Date().toISOString(),
+    by: timelineActor(ev.actor_type ?? 'system', ev.actor_id),
+  };
+}
+
+function resolveJourneyPlaceLabel(placeID: unknown, coords?: GeoPoint, fallbackName?: unknown): string {
+  if (coords) {
+    return getLocationName(coords.lat, coords.lng);
+  }
+
+  const normalizedPlaceID = typeof placeID === 'string' ? placeID.trim() : '';
+  if (normalizedPlaceID && !normalizedPlaceID.toLowerCase().startsWith('coord_')) {
+    return normalizedPlaceID;
+  }
+
+  const normalizedFallback = typeof fallbackName === 'string' ? fallbackName.trim() : '';
+  if (normalizedFallback) {
+    return normalizedFallback;
+  }
+
+  return 'Unknown';
+}
+
+export async function getJourneyEvents(id: string, isAdmin = false): Promise<TimelineEvent[]> {
+  const path = isAdmin
+    ? `/api/v1/admin/journeys/${id}/events`
+    : `/api/v1/journeys/${id}/events`;
+  const events = await apiFetch<APIJourneyEvent[]>(path);
+  return (Array.isArray(events) ? events : []).map(mapJourneyEvent);
+}
+
+function mapApiJourney(
+  j: any,
+  occupancyMap?: Map<string, SegmentOccupancy>,
+  timeline?: TimelineEvent[],
+): Journey {
   const originCoords = parseGeoPoint(j.origin);
   const destinationCoords = parseGeoPoint(j.destination);
   const totalDistanceKm = Number.isFinite(Number(j.total_distance_km)) ? Number(j.total_distance_km) : undefined;
@@ -307,12 +416,8 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
     : (fallbackDurationMinutes > 0 ? fallbackDurationMinutes : undefined);
 
   const mapPath = buildJourneyPath(j.segments ?? [], originCoords, destinationCoords);
-  const originName = j.origin
-    ? getLocationName(j.origin.lat, j.origin.lng)
-    : j.origin_name ?? 'Unknown';
-  const destName = j.destination
-    ? getLocationName(j.destination.lat, j.destination.lng)
-    : j.destination_name ?? 'Unknown';
+  const originName = resolveJourneyPlaceLabel(j.origin_place_id, originCoords, j.origin_name);
+  const destName = resolveJourneyPlaceLabel(j.destination_place_id, destinationCoords, j.destination_name);
 
   const driverId = j.driver_id ?? '';
   const driverName = (j.driver_name ?? '').trim() || fallbackDriverName(driverId);
@@ -337,22 +442,7 @@ function mapApiJourney(j: any, occupancyMap?: Map<string, SegmentOccupancy>): Jo
     totalDistanceKm,
     totalDurationMinutes,
     mapPath,
-    timeline: [
-      {
-        id: 'T1',
-        type: 'created',
-        label: 'Journey booked',
-        timestamp: j.created_at ?? new Date().toISOString(),
-        by: 'You',
-      },
-      {
-        id: 'T2',
-        type: j.status?.toLowerCase() ?? 'pending',
-        label: `Journey ${j.status?.toLowerCase() ?? 'pending'}`,
-        timestamp: j.updated_at ?? new Date().toISOString(),
-        by: 'System',
-      },
-    ],
+    timeline: timeline ?? [],
     createdAt: j.created_at ?? new Date().toISOString(),
     updatedAt: j.updated_at ?? new Date().toISOString(),
     distance: totalDistanceKm !== undefined ? `${totalDistanceKm.toFixed(1)} km` : '-',
@@ -410,7 +500,14 @@ export async function createJourney(params: {
     }),
   });
 
-  const journey = mapApiJourney(data);
+  const initialJourney = mapApiJourney(data);
+  let timeline: TimelineEvent[] = [];
+  try {
+    timeline = await getJourneyEvents(initialJourney.id);
+  } catch {
+    // Keep journey usable even if timeline endpoint is temporarily unavailable.
+  }
+  const journey = mapApiJourney(data, undefined, timeline);
   // Preserve the human-readable names the user entered
   journey.origin = params.origin;
   journey.destination = params.destination;
@@ -463,32 +560,45 @@ export async function getJourney(id: string): Promise<Journey> {
 
   // Fetch journey data and current segment occupancy in parallel so the
   // occupancy call adds zero latency to the page load (U-08 fix).
-  const [data, occupancyMap] = await Promise.all([
+  const [data, occupancyMap, timeline] = await Promise.all([
     apiFetch<any>(`/api/v1/journeys/${id}`),
     fetchSegmentOccupancyMap(),
+    getJourneyEvents(id),
   ]);
-  return writeCache(journeyDetailCache, key, mapApiJourney(data, occupancyMap), JOURNEY_DETAIL_CACHE_TTL_MS);
+  return writeCache(journeyDetailCache, key, mapApiJourney(data, occupancyMap, timeline), JOURNEY_DETAIL_CACHE_TTL_MS);
 }
 
 export async function cancelJourney(id: string): Promise<Journey> {
-  const data = await apiFetch<any>(`/api/v1/journeys/${id}/cancel`, { method: 'PUT' });
-  const journey = mapApiJourney(data);
+  const [data, occupancyMap, timeline] = await Promise.all([
+    apiFetch<any>(`/api/v1/journeys/${id}/cancel`, { method: 'PUT' }),
+    fetchSegmentOccupancyMap(),
+    getJourneyEvents(id),
+  ]);
+  const journey = mapApiJourney(data, occupancyMap, timeline);
   invalidateJourneyReadCaches(id);
   writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
   return journey;
 }
 
 export async function activateJourney(id: string): Promise<Journey> {
-  const data = await apiFetch<any>(`/api/v1/journeys/${id}/activate`, { method: 'PUT' });
-  const journey = mapApiJourney(data);
+  const [data, occupancyMap, timeline] = await Promise.all([
+    apiFetch<any>(`/api/v1/journeys/${id}/activate`, { method: 'PUT' }),
+    fetchSegmentOccupancyMap(),
+    getJourneyEvents(id),
+  ]);
+  const journey = mapApiJourney(data, occupancyMap, timeline);
   invalidateJourneyReadCaches(id);
   writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
   return journey;
 }
 
 export async function completeJourney(id: string): Promise<Journey> {
-  const data = await apiFetch<any>(`/api/v1/journeys/${id}/complete`, { method: 'PUT' });
-  const journey = mapApiJourney(data);
+  const [data, occupancyMap, timeline] = await Promise.all([
+    apiFetch<any>(`/api/v1/journeys/${id}/complete`, { method: 'PUT' }),
+    fetchSegmentOccupancyMap(),
+    getJourneyEvents(id),
+  ]);
+  const journey = mapApiJourney(data, occupancyMap, timeline);
   invalidateJourneyReadCaches(id);
   writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
   return journey;
@@ -540,8 +650,12 @@ export async function adminListJourneys(filters?: {
 }
 
 export async function adminCancelJourney(id: string): Promise<Journey> {
-  const data = await apiFetch<any>(`/api/v1/admin/journeys/${id}/cancel`, { method: 'PUT' });
-  const journey = mapApiJourney(data);
+  const [data, occupancyMap, timeline] = await Promise.all([
+    apiFetch<any>(`/api/v1/admin/journeys/${id}/cancel`, { method: 'PUT' }),
+    fetchSegmentOccupancyMap(),
+    getJourneyEvents(id, true),
+  ]);
+  const journey = mapApiJourney(data, occupancyMap, timeline);
   invalidateJourneyReadCaches(id);
   writeCache(journeyDetailCache, `${cacheScope()}|journey:${journey.id}`, journey, JOURNEY_DETAIL_CACHE_TTL_MS);
   return journey;

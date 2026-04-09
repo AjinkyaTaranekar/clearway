@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -63,18 +64,71 @@ func LoggingMiddleware(log *logger.Logger) func(http.Handler) http.Handler {
 
 // CORSMiddleware handles CORS
 func CORSMiddleware(next http.Handler) http.Handler {
+	cfg := loadCORSConfigFromEnv()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		allowed := cfg.allowAll || (origin != "" && cfg.allowedOrigins[origin])
+
+		switch {
+		case cfg.allowAll:
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		case allowed:
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Trace-ID")
+		if cfg.allowCredentials && !cfg.allowAll && allowed {
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 
 		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+type corsConfig struct {
+	allowAll         bool
+	allowCredentials bool
+	allowedOrigins   map[string]bool
+}
+
+func loadCORSConfigFromEnv() corsConfig {
+	// Safe defaults for local dev. Production should override via
+	// VCS_CORS_ALLOW_ORIGINS with explicit trusted origins.
+	rawOrigins := strings.TrimSpace(os.Getenv("VCS_CORS_ALLOW_ORIGINS"))
+	if rawOrigins == "" {
+		rawOrigins = "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
+	}
+
+	cfg := corsConfig{
+		allowedOrigins: make(map[string]bool),
+	}
+	for _, origin := range strings.Split(rawOrigins, ",") {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			cfg.allowAll = true
+			continue
+		}
+		cfg.allowedOrigins[origin] = true
+	}
+
+	cfg.allowCredentials = strings.EqualFold(strings.TrimSpace(os.Getenv("VCS_CORS_ALLOW_CREDENTIALS")), "true")
+	// Browsers reject wildcard origins with credentialed CORS responses.
+	if cfg.allowAll {
+		cfg.allowCredentials = false
+	}
+
+	return cfg
 }
 
 // statusRecorder wraps ResponseWriter to capture the HTTP status code.

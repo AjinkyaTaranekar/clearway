@@ -96,6 +96,49 @@ func (h *AdminHandler) ListJourneys(w http.ResponseWriter, r *http.Request) {
 	}, traceID)
 }
 
+// GetJourneyEvents godoc
+// @Summary Get journey timeline events (admin)
+// @Description Returns durable lifecycle/audit events for a journey. Requires admin role.
+// @Tags Admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID"
+// @Success 200 {array} model.JourneyEvent
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Failure 403 {object} response.Response "Admin role required"
+// @Failure 404 {object} response.Response "Journey not found"
+// @Router /api/v1/admin/journeys/{id}/events [get]
+func (h *AdminHandler) GetJourneyEvents(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	journeyID := mux.Vars(r)["id"]
+	adminID := middleware.GetDriverID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "AdminHandler.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Str("admin_id", adminID).
+		Msg("admin get journey events request received")
+
+	events, err := h.svc.GetJourneyEvents(r.Context(), journeyID, adminID, true)
+	if err != nil {
+		log.Error().
+			Str("handler", "AdminHandler.GetJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Str("admin_id", adminID).
+			Msg("admin get journey events service failed")
+		response.Error(w, err, traceID)
+		return
+	}
+
+	log.Info().
+		Str("handler", "AdminHandler.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Int("event_count", len(events)).
+		Msg("admin get journey events request completed")
+	response.Success(w, events, traceID)
+}
+
 // EnforcementVerify godoc
 // @Summary Verify vehicle segment authorization
 // @Description Checks whether an ACTIVE journey covers the given road segment at the specified timestamp. Returns authorized=true with journey details if found. Requires enforcement or admin role.

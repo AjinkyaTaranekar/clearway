@@ -72,6 +72,7 @@ func (r *Router) Setup() *mux.Router {
 	api.HandleFunc("/journeys", r.journeyHandler.CreateJourney).Methods("POST", "OPTIONS")
 	api.HandleFunc("/journeys", r.journeyHandler.ListJourneys).Methods("GET")
 	api.HandleFunc("/journeys/{id}", r.journeyHandler.GetJourney).Methods("GET")
+	api.HandleFunc("/journeys/{id}/events", r.journeyHandler.GetJourneyEvents).Methods("GET")
 	api.HandleFunc("/journeys/{id}/cancel", r.journeyHandler.CancelJourney).Methods("PUT", "OPTIONS")
 	api.HandleFunc("/journeys/{id}/activate", r.journeyHandler.ActivateJourney).Methods("PUT", "OPTIONS")
 	api.HandleFunc("/journeys/{id}/complete", r.journeyHandler.CompleteJourney).Methods("PUT", "OPTIONS")
@@ -81,6 +82,7 @@ func (r *Router) Setup() *mux.Router {
 	admin.Use(middleware.AdminOnly)
 	admin.HandleFunc("/analytics", r.adminHandler.Analytics).Methods("GET")
 	admin.HandleFunc("/journeys", r.adminHandler.ListJourneys).Methods("GET")
+	admin.HandleFunc("/journeys/{id}/events", r.adminHandler.GetJourneyEvents).Methods("GET")
 	admin.HandleFunc("/journeys/{id}/cancel", r.adminHandler.CancelJourney).Methods("PUT", "OPTIONS")
 
 	// Enforcement subrouter - requires enforcement or admin role

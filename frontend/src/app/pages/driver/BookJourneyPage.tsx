@@ -2,6 +2,7 @@ import { LngLatBounds, Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { AlertCircle, ChevronRight, Clock, Info } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import CapacityReleaseTimer from '../../components/ui/CapacityReleaseTimer';
 import PlaceSearch from '../../components/ui/PlaceSearch';
 import OSMMap, { addMarker, addPolyline } from '../../components/ui/OSMMap';
 import { useApp } from '../../context/AppContext';
@@ -716,9 +717,9 @@ export default function BookJourneyPage() {
         destination: destPlace.name,
         originCoords: { lat: originPlace.lat, lng: originPlace.lng },
         destCoords: { lat: destPlace.lat, lng: destPlace.lng },
-        // Persist display labels so journey notifications use readable place names.
-        originPlaceId: originPlace.name,
-        destinationPlaceId: destPlace.name,
+        // Persist canonical place IDs returned by map search.
+        originPlaceId: originPlace.place_id,
+        destinationPlaceId: destPlace.place_id,
         departureTime,
         vehicleType: selectedVehicle.vehicleType,
         priorityLevel: selectedVehicle.isEmergencyVehicle ? 'max' : 'normal',
@@ -786,11 +787,15 @@ export default function BookJourneyPage() {
       <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--border)' }}>
         {step === 1 ? (
           <div>
-            <div className="flex items-start gap-3 p-3.5 rounded-lg mb-6" style={{ background: '#F0EDE7' }}>
+            <div className="flex items-start gap-3 p-3.5 rounded-lg mb-3" style={{ background: '#F0EDE7' }}>
               <Info size={15} color="#4E5953" className="flex-shrink-0 mt-0.5" />
               <p style={{ color: '#4E5953', fontSize: '0.8125rem', lineHeight: 1.55 }}>
                 You must book at least <strong style={{ color: '#1F2421' }}>1 hour before departure</strong>. Journeys are checked against live road capacity - peak hours (07:00–09:00) on busy routes may be rejected.
               </p>
+            </div>
+
+            <div className="mb-6">
+              <CapacityReleaseTimer cleanupIntervalMinutes={5} orphanThresholdMinutes={5} mode="compact" />
             </div>
 
             <div className="space-y-5">
