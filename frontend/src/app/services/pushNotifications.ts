@@ -7,6 +7,36 @@ const PUSH_TOKEN_KEY = 'cw_push_token';
 const PUSH_PROMPT_DISMISSED_KEY = 'cw_push_prompt_dismissed';
 const FCM_SW_PATH = '/firebase-messaging-sw.js';
 
+async function waitForActiveServiceWorker(registration: ServiceWorkerRegistration): Promise<ServiceWorkerRegistration> {
+  if (registration.active) {
+    return registration;
+  }
+
+  const pendingWorker = registration.installing ?? registration.waiting;
+  if (pendingWorker) {
+    await new Promise<void>((resolve) => {
+      const onStateChange = () => {
+        if (pendingWorker.state === 'activated') {
+          pendingWorker.removeEventListener('statechange', onStateChange);
+          resolve();
+        }
+      };
+
+      pendingWorker.addEventListener('statechange', onStateChange);
+      setTimeout(() => {
+        pendingWorker.removeEventListener('statechange', onStateChange);
+        resolve();
+      }, 8000);
+    });
+  }
+
+  if (registration.active) {
+    return registration;
+  }
+
+  return navigator.serviceWorker.ready;
+}
+
 function getLegacyToken(): string | null {
   return import.meta.env.VITE_FCM_WEB_TOKEN || null;
 }
@@ -26,9 +56,23 @@ async function getFirebaseWebToken(): Promise<string | null> {
     return null;
   }
 
-  const serviceWorkerRegistration = await navigator.serviceWorker.register(FCM_SW_PATH);
-  const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
-  return token || null;
+  const serviceWorkerRegistration = await navigator.serviceWorker.register(FCM_SW_PATH, { scope: '/' });
+  const activeRegistration = await waitForActiveServiceWorker(serviceWorkerRegistration);
+
+  try {
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: activeRegistration });
+    return token || null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message.toLowerCase() : '';
+    if (!message.includes('no active service worker')) {
+      throw err;
+    }
+
+    // Best-effort retry after the browser reports the registration as ready.
+    const readyRegistration = await navigator.serviceWorker.ready;
+    const retryToken = await getToken(messaging, { vapidKey, serviceWorkerRegistration: readyRegistration });
+    return retryToken || null;
+  }
 }
 
 async function getConfiguredToken(): Promise<string> {
