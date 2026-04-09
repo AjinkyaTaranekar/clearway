@@ -116,8 +116,18 @@ export async function disablePushNotifications(): Promise<void> {
 // Re-registers the current browser token after authentication refresh/login
 // when push was previously enabled in this browser.
 export async function syncPushRegistrationIfEnabled(): Promise<void> {
-  if (!isPushEnabled()) return;
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+  const storedPreference = localStorage.getItem(PUSH_ENABLED_KEY);
+  // Honor explicit opt-out in settings.
+  if (storedPreference === 'false') return;
+
+  // If there is no saved preference but the browser permission is already
+  // granted (e.g. cleared local storage), recover token registration.
+  if (storedPreference !== 'true' && Notification.permission !== 'granted') return;
+
   const token = await tryGetConfiguredToken();
   if (!token) return;
   await registerDeviceToken(token, 'web');
+  localStorage.setItem(PUSH_ENABLED_KEY, 'true');
 }

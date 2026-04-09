@@ -68,21 +68,39 @@ type Client struct {
 
 // NewClientFromEnv loads FCM credentials from environment variables.
 func NewClientFromEnv() (*Client, error) {
-	rawJSON := os.Getenv("FCM_SERVICE_ACCOUNT_JSON")
-	if rawJSON == "" {
-		path := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-		if path != "" {
-			bytes, err := os.ReadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("read GOOGLE_APPLICATION_CREDENTIALS: %w", err)
+	var failures []string
+
+	rawJSON := strings.TrimSpace(os.Getenv("FCM_SERVICE_ACCOUNT_JSON"))
+	if rawJSON != "" {
+		client, err := newClientFromServiceAccountJSON(rawJSON)
+		if err == nil {
+			return client, nil
+		}
+		failures = append(failures, fmt.Sprintf("FCM_SERVICE_ACCOUNT_JSON: %v", err))
+	}
+
+	path := strings.TrimSpace(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+	if path != "" {
+		bytes, err := os.ReadFile(path)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("GOOGLE_APPLICATION_CREDENTIALS read error: %v", err))
+		} else {
+			client, err := newClientFromServiceAccountJSON(string(bytes))
+			if err == nil {
+				return client, nil
 			}
-			rawJSON = string(bytes)
+			failures = append(failures, fmt.Sprintf("GOOGLE_APPLICATION_CREDENTIALS parse error: %v", err))
 		}
 	}
-	if rawJSON == "" {
+
+	if len(failures) == 0 {
 		return nil, ErrClientDisabled
 	}
 
+	return nil, fmt.Errorf("unable to initialize FCM client: %s", strings.Join(failures, "; "))
+}
+
+func newClientFromServiceAccountJSON(rawJSON string) (*Client, error) {
 	var account serviceAccount
 	if err := json.Unmarshal([]byte(rawJSON), &account); err != nil {
 		return nil, fmt.Errorf("parse FCM service account: %w", err)

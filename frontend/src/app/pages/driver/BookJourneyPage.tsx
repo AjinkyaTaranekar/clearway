@@ -8,6 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { authHeaders, getToken } from '../../services/auth';
 import { iamListVehicles, UserVehicle } from '../../services/iamApi';
 import { computeRoute, PlaceResult } from '../../services/mapApi';
+import { DEFAULT_REGION_UI_DEFAULTS, getRegionUiDefaults } from '../../services/regionDefaults';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -78,9 +79,6 @@ function VehicleTypeIcon({ icon, size = 22, stroke = '#2F6B55' }: { icon: Vehicl
 
   return null;
 }
-
-// Default map centre: Dublin, Ireland
-const DUBLIN: [number, number] = [53.3498, -6.2603];
 
 const SLOT_INTERVAL_MINUTES = 30;
 const SEGMENT_WINDOW_BUFFER_MINUTES = 5;
@@ -242,6 +240,7 @@ export default function BookJourneyPage() {
   const [routePolyline, setRoutePolyline] = useState<[number, number][]>([]);
   const [slotStates, setSlotStates] = useState<Record<string, SlotState>>({});
   const [ghostNotice, setGhostNotice] = useState('');
+  const [regionDefaults, setRegionDefaults] = useState(DEFAULT_REGION_UI_DEFAULTS);
 
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRefs = useRef<Marker[]>([]);
@@ -338,6 +337,23 @@ export default function BookJourneyPage() {
       cancelled = true;
     };
   }, [user?.id, user?.vehicle_type]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getRegionUiDefaults()
+      .then((defaults) => {
+        if (!cancelled) {
+          setRegionDefaults(defaults);
+        }
+      })
+      .catch(() => {
+        // Keep generic defaults when region detection is unavailable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const segmentFlow = useMemo(() => {
     if (!departureTime || routeSegments.length === 0) return [];
@@ -724,13 +740,13 @@ export default function BookJourneyPage() {
     } catch { return dt; }
   };
 
-  // Map centre: midpoint between O and D, or Dublin default
+  // Map centre: midpoint between O and D, otherwise region-aware default.
   const mapCenter: [number, number] =
     originPlace && destPlace
       ? [(originPlace.lat + destPlace.lat) / 2, (originPlace.lng + destPlace.lng) / 2]
       : originPlace
         ? [originPlace.lat, originPlace.lng]
-        : DUBLIN;
+        : regionDefaults.mapCenter;
 
   return (
     <div className="p-5 lg:p-8 max-w-2xl mx-auto">
@@ -784,7 +800,7 @@ export default function BookJourneyPage() {
                 </label>
                 <PlaceSearch
                   id="origin"
-                  placeholder="Search origin (e.g. Dublin, Cork…)"
+                  placeholder={regionDefaults.originPlaceholder}
                   value={originPlace}
                   onChange={(p) => {
                     setOriginPlace(p);
@@ -807,7 +823,7 @@ export default function BookJourneyPage() {
                 </label>
                 <PlaceSearch
                   id="destination"
-                  placeholder="Search destination (e.g. Galway, Limerick…)"
+                  placeholder={regionDefaults.destinationPlaceholder}
                   value={destPlace}
                   onChange={setDestPlace}
                   pinColor="#B65C3A"

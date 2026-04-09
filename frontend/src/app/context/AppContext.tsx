@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Journey, JourneyStatus, Notification } from '../types';
 import { clearTokens, getRefreshToken, getToken, isAccessTokenExpired, storeTokens } from '../services/auth';
@@ -67,6 +67,7 @@ interface AppContextType {
   adminJourneys: Journey[];
   notifications: Notification[];
   unreadCount: number;
+  refreshNotifications: () => Promise<void>;
   lastBookingResult: BookingResult | null;
   bookJourney: (data: BookingData) => Promise<BookingResult>;
   updateJourneyStatus: (id: string, status: JourneyStatus, by?: string) => Promise<void>;
@@ -111,6 +112,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
+  const refreshNotifications = useCallback(async (): Promise<void> => {
+    try {
+      const res = await notifApi.listNotifications();
+      setNotifications(res.notifications.map(mapApiNotification));
+    } catch {
+      // notifications are non-critical - no toast
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     if (getToken()) return;
@@ -140,15 +150,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      try {
-        const res = await notifApi.listNotifications();
-        setNotifications(res.notifications.map(mapApiNotification));
-      } catch {
-        // notifications are non-critical - no toast
-      }
+      await refreshNotifications();
     };
     load();
-  }, [user?.id, user?.role]);
+  }, [refreshNotifications, user?.id, user?.role]);
 
   useEffect(() => {
     if (!user) return;
@@ -261,8 +266,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       setTimeout(async () => {
         try {
-          const res = await notifApi.listNotifications();
-          setNotifications(res.notifications.map(mapApiNotification));
+          await refreshNotifications();
         } catch { /* ignore */ }
       }, 1500);
 
@@ -367,6 +371,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         adminJourneys,
         notifications,
         unreadCount,
+        refreshNotifications,
         lastBookingResult,
         bookJourney,
         updateJourneyStatus,

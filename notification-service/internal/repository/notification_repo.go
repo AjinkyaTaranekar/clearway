@@ -69,6 +69,13 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 		Str("type_filter", f.TypeFilter).
 		Msg("listing notifications by driver")
 
+	// Use primary for driver reads so notification lists and unread counters
+	// reflect newly inserted rows without replica lag gaps.
+	readDB := r.master
+	if readDB == nil {
+		readDB = r.slave
+	}
+
 	// Build dynamic WHERE clause
 	args := []interface{}{f.DriverID}
 	where := "WHERE driver_id = $1"
@@ -88,7 +95,7 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 	// Total count
 	var total int
 	countQ := fmt.Sprintf("SELECT COUNT(*) FROM notification.notifications %s", where)
-	if err := r.slave.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+	if err := readDB.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
 		log.Error().
 			Str("repository", "NotificationRepo.ListByDriver").
 			Err(err).
@@ -99,7 +106,7 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 
 	// Unread count (always for this driver, ignoring read/type filters)
 	var unread int
-	if err := r.slave.QueryRowContext(ctx,
+	if err := readDB.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM notification.notifications WHERE driver_id = $1 AND is_read = false",
 		f.DriverID,
 	).Scan(&unread); err != nil {
@@ -124,7 +131,7 @@ func (r *NotificationRepo) ListByDriver(ctx context.Context, f model.Notificatio
 		LIMIT $%d OFFSET $%d`, where, idx, idx+1)
 
 	args = append(args, f.Limit, offset)
-	rows, err := r.slave.QueryContext(ctx, listQ, args...)
+	rows, err := readDB.QueryContext(ctx, listQ, args...)
 	if err != nil {
 		log.Error().
 			Str("repository", "NotificationRepo.ListByDriver").

@@ -151,6 +151,23 @@ func normalizePlaceID(candidate string, coords model.Coordinates) string {
 	return fmt.Sprintf("coord_%.4f_%.4f", coords.Lat, coords.Lng)
 }
 
+func notificationPlaceLabel(placeID string, coords model.Coordinates) string {
+	trimmed := strings.TrimSpace(placeID)
+	if trimmed == "" || strings.HasPrefix(trimmed, "coord_") {
+		return fmt.Sprintf("%.4f, %.4f", coords.Lat, coords.Lng)
+	}
+	return trimmed
+}
+
+func journeyPlaceLabels(j *model.Journey) (string, string) {
+	if j == nil {
+		return "Unknown", "Unknown"
+	}
+	origin := notificationPlaceLabel(j.OriginPlaceID, j.Origin)
+	destination := notificationPlaceLabel(j.DestinationPlaceID, j.Destination)
+	return origin, destination
+}
+
 // CreateJourney orchestrates the full booking flow
 func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyRequest) (*model.Journey, error) {
 	log := s.logWithTrace(ctx)
@@ -371,11 +388,15 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	// known and can be written atomically in the same transaction (F-03).
 	var evType string
 	var evPayload interface{}
+	originLabel := notificationPlaceLabel(originPlaceID, req.Origin)
+	destinationLabel := notificationPlaceLabel(destinationPlaceID, req.Destination)
 	if status == model.StatusApproved {
 		evType = event.EventJourneyBooked
 		evPayload = event.BookedPayload{
 			JourneyID:        journeyID,
 			DriverID:         req.DriverID,
+			OriginLabel:      originLabel,
+			DestinationLabel: destinationLabel,
 			DepartureTime:    req.DepartureTime,
 			EstimatedArrival: estimatedArrival,
 			VehicleType:      vehicleType,
@@ -384,12 +405,15 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	} else {
 		evType = event.EventJourneyRejected
 		evPayload = event.BookedPayload{
-			JourneyID:       journeyID,
-			DriverID:        req.DriverID,
-			DepartureTime:   req.DepartureTime,
-			VehicleType:     vehicleType,
-			Status:          string(status),
-			RejectionReason: rejectionReason,
+			JourneyID:        journeyID,
+			DriverID:         req.DriverID,
+			OriginLabel:      originLabel,
+			DestinationLabel: destinationLabel,
+			DepartureTime:    req.DepartureTime,
+			VehicleType:      vehicleType,
+			Status:           string(status),
+			Reason:           rejectionReason,
+			RejectionReason:  rejectionReason,
 		}
 	}
 	eventID, evData, err := event.MarshalEnvelope(evType, evPayload)
@@ -507,12 +531,15 @@ func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID 
 	}
 
 	now := time.Now()
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCancelled, event.CancelledPayload{
-		JourneyID:     journeyID,
-		DriverID:      driverID,
-		Status:        string(model.StatusCancelled),
-		CancelledBy:   "driver",
-		ReservationID: j.ReservationID,
+		JourneyID:        journeyID,
+		DriverID:         driverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusCancelled),
+		CancelledBy:      "driver",
+		ReservationID:    j.ReservationID,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.CancelJourney").Msg("failed to marshal cancel event")
@@ -563,10 +590,13 @@ func (s *JourneyService) ActivateJourney(ctx context.Context, journeyID, driverI
 		return nil, apperrors.Forbidden("activation window has expired (30 minutes after departure)")
 	}
 
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyActivated, event.SimplePayload{
-		JourneyID: journeyID,
-		DriverID:  driverID,
-		Status:    string(model.StatusActive),
+		JourneyID:        journeyID,
+		DriverID:         driverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusActive),
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.ActivateJourney").Msg("failed to marshal activate event")
@@ -607,11 +637,14 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 	}
 
 	now := time.Now()
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCompleted, event.SimplePayload{
-		JourneyID:     journeyID,
-		DriverID:      driverID,
-		Status:        string(model.StatusCompleted),
-		ReservationID: j.ReservationID,
+		JourneyID:        journeyID,
+		DriverID:         driverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusCompleted),
+		ReservationID:    j.ReservationID,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.CompleteJourney").Msg("failed to marshal complete event")
@@ -655,12 +688,15 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID, admi
 	if cancelledBy == "" {
 		cancelledBy = "admin"
 	}
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCancelled, event.CancelledPayload{
-		JourneyID:     journeyID,
-		DriverID:      j.DriverID,
-		Status:        string(model.StatusCancelled),
-		CancelledBy:   cancelledBy,
-		ReservationID: j.ReservationID,
+		JourneyID:        journeyID,
+		DriverID:         j.DriverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusCancelled),
+		CancelledBy:      cancelledBy,
+		ReservationID:    j.ReservationID,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.AdminCancelJourney").Msg("failed to marshal admin cancel event")
@@ -836,11 +872,14 @@ func (s *JourneyService) expireJourneys(ctx context.Context) {
 
 	now := time.Now()
 	for _, j := range journeys {
+		originLabel, destinationLabel := journeyPlaceLabels(&j)
 		evID, evData, err := event.MarshalEnvelope(event.EventJourneyExpired, event.SimplePayload{
-			JourneyID:     j.JourneyID,
-			DriverID:      j.DriverID,
-			Status:        string(model.StatusExpired),
-			ReservationID: j.ReservationID,
+			JourneyID:        j.JourneyID,
+			DriverID:         j.DriverID,
+			OriginLabel:      originLabel,
+			DestinationLabel: destinationLabel,
+			Status:           string(model.StatusExpired),
+			ReservationID:    j.ReservationID,
 		})
 		if err != nil {
 			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to marshal expire event")

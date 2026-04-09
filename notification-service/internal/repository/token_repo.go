@@ -96,6 +96,13 @@ func (r *DeviceTokenRepo) FindActiveByDriver(ctx context.Context, driverID strin
 		Str("driver_id", driverID).
 		Msg("querying active device tokens")
 
+	// Use primary here so just-registered tokens are visible to the event
+	// consumer without waiting for replica convergence.
+	readDB := r.master
+	if readDB == nil {
+		readDB = r.slave
+	}
+
 	const q = `
 		SELECT device_token_id, driver_id, fcm_token, platform, is_active,
 		       last_seen_at, invalidated_at, invalidation_reason, created_at, updated_at
@@ -103,7 +110,7 @@ func (r *DeviceTokenRepo) FindActiveByDriver(ctx context.Context, driverID strin
 		WHERE driver_id = $1 AND is_active = true
 		ORDER BY last_seen_at DESC`
 
-	rows, err := r.slave.QueryContext(ctx, q, driverID)
+	rows, err := readDB.QueryContext(ctx, q, driverID)
 	if err != nil {
 		log.Error().
 			Str("repository", "DeviceTokenRepo.FindActiveByDriver").

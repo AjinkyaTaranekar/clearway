@@ -1,4 +1,4 @@
-import { Map as MapLibreMap } from 'maplibre-gl';
+import { LngLatBounds, Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import OSMMap, { addMarker } from '../../components/ui/OSMMap';
 import { TrafficSegment, getTrafficData, updateSegmentCapacity } from '../../services/mapApi';
+import { DEFAULT_REGION_UI_DEFAULTS, getRegionUiDefaults } from '../../services/regionDefaults';
 
 type LevelFilter = 'all' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -56,9 +57,6 @@ const LEVEL_OPTS: { label: string; value: LevelFilter }[] = [
   { label: 'Critical', value: 'critical' },
 ];
 
-// Dublin city centre default
-const DUBLIN_CENTRE: [number, number] = [53.3498, -6.2603];
-
 export default function TrafficMapPage() {
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const [selected, setSelected] = useState<TrafficSegment | null>(null);
@@ -68,8 +66,10 @@ export default function TrafficMapPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [capacityDraft, setCapacityDraft] = useState('');
   const [capacitySaving, setCapacitySaving] = useState(false);
+  const [regionDefaults, setRegionDefaults] = useState(DEFAULT_REGION_UI_DEFAULTS);
 
   const mapRef = useRef<MapLibreMap | null>(null);
+  const markerRefs = useRef<Marker[]>([]);
   // Track drawn segment layer IDs so we can update them on refresh
   const drawnLayersRef = useRef<Set<string>>(new Set());
 
@@ -94,6 +94,23 @@ export default function TrafficMapPage() {
     const timer = setInterval(fetchTraffic, 60_000);
     return () => clearInterval(timer);
   }, [fetchTraffic]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getRegionUiDefaults()
+      .then((defaults) => {
+        if (!cancelled) {
+          setRegionDefaults(defaults);
+        }
+      })
+      .catch(() => {
+        // Keep safe generic defaults when region endpoint is unavailable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (selected) {
@@ -194,10 +211,56 @@ export default function TrafficMapPage() {
     });
   };
 
+  const drawNodeMarkers = (map: MapLibreMap, segs: TrafficSegment[], filter: LevelFilter) => {
+    markerRefs.current.forEach((marker) => marker.remove());
+    markerRefs.current = [];
+
+    const seen = new Set<string>();
+    segs.forEach((seg) => {
+      if (filter !== 'all' && seg.level !== filter) {
+        return;
+      }
+      if (seg.from_node && !seen.has(seg.from_node.node_id)) {
+        seen.add(seg.from_node.node_id);
+        markerRefs.current.push(addMarker(map, seg.from_node.lat, seg.from_node.lng, '#4E5953'));
+      }
+      if (seg.to_node && !seen.has(seg.to_node.node_id)) {
+        seen.add(seg.to_node.node_id);
+        markerRefs.current.push(addMarker(map, seg.to_node.lat, seg.to_node.lng, '#4E5953'));
+      }
+    });
+  };
+
+  const fitMapToSegments = (map: MapLibreMap, segs: TrafficSegment[], filter: LevelFilter) => {
+    const visible = segs.filter((seg) => filter === 'all' || seg.level === filter);
+    if (visible.length === 0) return;
+
+    const first = visible[0];
+    if (!first.from_node || !first.to_node) return;
+
+    const bounds = new LngLatBounds(
+      [first.from_node.lng, first.from_node.lat],
+      [first.to_node.lng, first.to_node.lat],
+    );
+
+    visible.forEach((seg) => {
+      if (seg.from_node) {
+        bounds.extend([seg.from_node.lng, seg.from_node.lat]);
+      }
+      if (seg.to_node) {
+        bounds.extend([seg.to_node.lng, seg.to_node.lat]);
+      }
+    });
+
+    map.fitBounds(bounds, { padding: 60, maxZoom: 12 });
+  };
+
   const handleMapReady = (map: MapLibreMap) => {
     mapRef.current = map;
     if (segments.length > 0) {
       drawSegments(map, segments, levelFilter, selected?.segment_id ?? null);
+      drawNodeMarkers(map, segments, levelFilter);
+      fitMapToSegments(map, segments, levelFilter);
     }
   };
 
@@ -208,23 +271,12 @@ export default function TrafficMapPage() {
   const criticalCount = segments.filter((s) => s.level === 'critical').length;
   const highCount = segments.filter((s) => s.level === 'high').length;
 
-  // Add node markers after map ready
   useEffect(() => {
     const map = mapRef.current;
     if (!map || segments.length === 0) return;
-    // Add unique node markers
-    const seen = new Set<string>();
-    segments.forEach((seg) => {
-      if (seg.from_node && !seen.has(seg.from_node.node_id)) {
-        seen.add(seg.from_node.node_id);
-        addMarker(map, seg.from_node.lat, seg.from_node.lng, '#4E5953');
-      }
-      if (seg.to_node && !seen.has(seg.to_node.node_id)) {
-        seen.add(seg.to_node.node_id);
-        addMarker(map, seg.to_node.lat, seg.to_node.lng, '#4E5953');
-      }
-    });
-  }, [segments]);
+    drawNodeMarkers(map, segments, levelFilter);
+    fitMapToSegments(map, segments, levelFilter);
+  }, [segments, levelFilter]);
 
   return (
     <div className="p-5 lg:p-8 max-w-7xl mx-auto">
@@ -319,8 +371,8 @@ export default function TrafficMapPage() {
           </div>
 
           <OSMMap
-            center={DUBLIN_CENTRE}
-            zoom={12}
+            center={regionDefaults.mapCenter}
+            zoom={regionDefaults.mapZoom}
             onReady={handleMapReady}
             style={{ height: '420px' }}
           />
