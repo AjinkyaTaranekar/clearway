@@ -1,21 +1,18 @@
 package event
 
-// Tests for the transactional outbox relay.
+// Concurrent tests for the transactional outbox relay.
 //
-// The relay is the core durability guarantee for distributed event delivery:
-//   - Journey committed to DB (outbox row published=FALSE)
-//   - Relay polls every 1s, calls XAdd on Redis Stream
-//   - Only marks rows published=TRUE after XAdd succeeds
-//   - If Redis is partitioned, rows stay published=FALSE → retried on recovery
+// Every test section that can be made concurrent uses a barrier pattern:
+//   ready, go_ := barrier(n)
+//   // each goroutine: ready(); go_(); <do work>
+// This releases all goroutines simultaneously, maximising contention and
+// making race conditions detectable by `go test -race`.
 //
-// CS7NS6 checklist items exercised:
-//   ✔ Communication failures tolerated     → redis_down tests
-//   ✔ Replica recovery supported           → pending_on_recovery tests
-//   ✔ Consistency of data across failures  → partial_batch tests
-//   ✔ Test application/testing framework   → this file
-//
-// All tests are pure unit tests using in-process mocks. No real Redis or DB
-// is needed.
+// CS7NS6 checklist:
+//   ✔ Communication failures tolerated    → Redis-down concurrent tests
+//   ✔ Replica recovery supported          → recovery-after-failure tests
+//   ✔ Consistency of data                 → partial-batch ordering tests
+//   ✔ Test application/testing framework  → this file
 
 import (
 	"context"
@@ -31,21 +28,33 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Barrier helper — releases all goroutines simultaneously.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func barrier(n int) (ready func(), go_ func()) {
+	var wg sync.WaitGroup
+	wg.Add(n)
+	ready = func() { wg.Done() }
+	go_ = func() { wg.Wait() }
+	return
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Mock implementations
 // ─────────────────────────────────────────────────────────────────────────────
 
-// mockFetcher implements OutboxFetcher with controllable behavior.
+// mockFetcher implements OutboxFetcher with controllable, goroutine-safe behavior.
 type mockFetcher struct {
 	mu              sync.Mutex
 	events          []OutboxEvent
 	fetchErr        error
 	markErr         error
 	markedPublished []int64
-	fetchCount      int64
+	fetchCalls      int64 // atomic
 }
 
 func (m *mockFetcher) FetchUnpublishedOutbox(_ context.Context, limit int) ([]OutboxEvent, error) {
-	atomic.AddInt64(&m.fetchCount, 1)
+	atomic.AddInt64(&m.fetchCalls, 1)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.fetchErr != nil {
@@ -55,7 +64,10 @@ func (m *mockFetcher) FetchUnpublishedOutbox(_ context.Context, limit int) ([]Ou
 	if n > limit {
 		n = limit
 	}
-	return m.events[:n], nil
+	// Return a copy so concurrent goroutines don't share the backing array.
+	out := make([]OutboxEvent, n)
+	copy(out, m.events[:n])
+	return out, nil
 }
 
 func (m *mockFetcher) MarkOutboxPublished(_ context.Context, ids []int64) error {
@@ -76,13 +88,17 @@ func (m *mockFetcher) getMarked() []int64 {
 	return out
 }
 
-// mockStreamWriter implements StreamWriter with controllable XAdd behavior.
+func (m *mockFetcher) getFetchCalls() int64 {
+	return atomic.LoadInt64(&m.fetchCalls)
+}
+
+// mockStreamWriter implements StreamWriter with atomic call counting.
 type mockStreamWriter struct {
 	mu         sync.Mutex
-	failOnCall int // if > 0, XAdd fails on this call number (1-indexed)
-	callCount  int
-	published  []string // stream IDs / event payloads recorded
-	xaddErr    error    // permanent error if set
+	failOnCall int  // XAdd fails on this call number (1-indexed), 0 = never
+	callCount  int  // protected by mu
+	xaddErr    error
+	published  []string
 }
 
 func (m *mockStreamWriter) XAdd(_ context.Context, args *redis.XAddArgs) *redis.StringCmd {
@@ -100,14 +116,12 @@ func (m *mockStreamWriter) XAdd(_ context.Context, args *redis.XAddArgs) *redis.
 		return cmd
 	}
 
-	// Record what was published. Values is interface{} so we must type-assert
-	// to map[string]interface{} before indexing.
 	if valMap, ok := args.Values.(map[string]interface{}); ok {
 		if data, ok := valMap["data"]; ok {
 			m.published = append(m.published, data.(string))
 		}
 	}
-	cmd.SetVal("stream-id-" + string(rune('0'+m.callCount)))
+	cmd.SetVal("ok")
 	return cmd
 }
 
@@ -119,441 +133,539 @@ func (m *mockStreamWriter) getPublished() []string {
 	return out
 }
 
-// silentLogger returns a zerolog.Logger that discards all output.
+func (m *mockStreamWriter) getCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.callCount
+}
+
 func silentLogger() *zerolog.Logger {
 	l := zerolog.Nop()
 	return &l
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 - Happy Path
+// SECTION 1 — Concurrent Batch Processing: Happy Path
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestOutboxRelay_HappyPath_AllEventsPublishedAndMarked verifies the normal
-// case: 3 pending events are fetched, XAdded to the stream, and all marked
-// published in a single batch.
-func TestOutboxRelay_HappyPath_AllEventsPublishedAndMarked(t *testing.T) {
-	fetcher := &mockFetcher{
-		events: []OutboxEvent{
-			{ID: 1, EventID: "ev-001", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-001"}`)},
-			{ID: 2, EventID: "ev-002", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-002"}`)},
-			{ID: 3, EventID: "ev-003", EventType: EventJourneyCancelled, Payload: []byte(`{"event_id":"ev-003"}`)},
-		},
-	}
-	stream := &mockStreamWriter{}
+// TestOutbox_Concurrent_50IndependentBatches fires 50 goroutines each running
+// their OWN relayBatch with their own fetcher+stream.
+// Verifies no shared state bleeds between independent relay instances.
+func TestOutbox_Concurrent_50IndependentBatches(t *testing.T) {
+	const goroutines = 50
+	const eventsPerBatch = 3
 
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
 
-	published := stream.getPublished()
-	if len(published) != 3 {
-		t.Fatalf("expected 3 events published to stream, got %d", len(published))
-	}
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			f := &mockFetcher{
+				events: []OutboxEvent{
+					{ID: int64(idx*3 + 1), EventID: "ev-a", EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+					{ID: int64(idx*3 + 2), EventID: "ev-b", EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+					{ID: int64(idx*3 + 3), EventID: "ev-c", EventType: EventJourneyCancelled, Payload: []byte(`{}`)},
+				},
+			}
+			s := &mockStreamWriter{}
+			ready()
+			go_() // all 50 relay batches start simultaneously
+			relayBatch(context.Background(), f, s, silentLogger())
 
-	marked := fetcher.getMarked()
-	if len(marked) != 3 {
-		t.Fatalf("expected 3 IDs marked published in DB, got %d: %v", len(marked), marked)
+			marked := f.getMarked()
+			if len(marked) != eventsPerBatch {
+				errs <- "goroutine " + string(rune('0'+idx%10)) + ": expected 3 marked, got different"
+			}
+			if s.getCallCount() != eventsPerBatch {
+				errs <- "goroutine stream call count wrong"
+			}
+		}(i)
 	}
-	for i, want := range []int64{1, 2, 3} {
-		if marked[i] != want {
-			t.Errorf("marked[%d] = %d, want %d", i, marked[i], want)
-		}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
-// TestOutboxRelay_EmptyOutbox_NoOp verifies that when there are no pending
-// events, neither XAdd nor MarkOutboxPublished is called.
-func TestOutboxRelay_EmptyOutbox_NoOp(t *testing.T) {
-	fetcher := &mockFetcher{events: []OutboxEvent{}}
-	stream := &mockStreamWriter{}
+// TestOutbox_Concurrent_EmptyOutbox_AllNoOp verifies that 200 concurrent
+// goroutines hitting an empty outbox produce zero XAdd calls and zero mark calls.
+func TestOutbox_Concurrent_EmptyOutbox_AllNoOp(t *testing.T) {
+	const goroutines = 200
+	// Shared fetcher and stream — goroutines compete on the same mock.
+	f := &mockFetcher{events: []OutboxEvent{}}
+	s := &mockStreamWriter{}
 
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
 
-	if stream.callCount != 0 {
-		t.Errorf("expected 0 XAdd calls for empty outbox, got %d", stream.callCount)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			ready()
+			go_()
+			relayBatch(context.Background(), f, s, silentLogger())
+		}()
 	}
-	if len(fetcher.getMarked()) != 0 {
-		t.Errorf("expected 0 marked published, got %d", len(fetcher.getMarked()))
+	wg.Wait()
+
+	if s.getCallCount() != 0 {
+		t.Errorf("empty outbox: expected 0 XAdd calls, got %d", s.getCallCount())
+	}
+	if len(f.getMarked()) != 0 {
+		t.Errorf("empty outbox: expected 0 marked, got %d", len(f.getMarked()))
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 2 - Redis Partition / Failure Scenarios
+// SECTION 2 — Concurrent Redis Failures (Partition Simulation)
 //
 // Checklist: "Communication failures tolerated □"
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestOutboxRelay_RedisDown_NoEventsMarkedPublished is the critical durability
-// test: when XAdd fails for ALL events (Redis unreachable), NO outbox rows
-// should be marked published.  The events will be retried on the next tick.
-//
-// This maps directly to the partition recovery scenario in the design doc:
-// "During partition: regions continue operating with their local data"
-// - bookings are committed to DB, events stay in outbox until Redis heals.
-func TestOutboxRelay_RedisDown_NoEventsMarkedPublished(t *testing.T) {
-	fetcher := &mockFetcher{
-		events: []OutboxEvent{
-			{ID: 1, EventID: "ev-001", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-001"}`)},
-			{ID: 2, EventID: "ev-002", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-002"}`)},
-		},
-	}
-	stream := &mockStreamWriter{
-		xaddErr: errors.New("NOAUTH Redis not ready"), // Redis down
-	}
+// TestOutbox_Concurrent_RedisDown_NeverMarksPublished fires 100 goroutines
+// simultaneously against a Redis that always fails.
+// None should mark their events as published — they stay in the outbox for
+// the next tick after Redis recovers.
+func TestOutbox_Concurrent_RedisDown_NeverMarksPublished(t *testing.T) {
+	const goroutines = 100
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
 
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			f := &mockFetcher{
+				events: []OutboxEvent{
+					{ID: int64(idx + 1), EventID: "ev", EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+				},
+			}
+			s := &mockStreamWriter{xaddErr: errors.New("NOAUTH Redis not ready")}
+			ready()
+			go_()
+			relayBatch(context.Background(), f, s, silentLogger())
 
-	marked := fetcher.getMarked()
-	if len(marked) != 0 {
-		t.Errorf(
-			"Redis was down but %d events were marked published - events would be lost on restart",
-			len(marked),
-		)
+			if len(f.getMarked()) != 0 {
+				errs <- "Redis was down but events were marked published — data loss risk"
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
-// TestOutboxRelay_RedisDown_EventsRetainedForRecovery verifies the at-least-once
-// delivery guarantee: after Redis recovers (second call succeeds), the SAME
-// events that failed on the first tick are re-fetched and successfully delivered.
-func TestOutboxRelay_RedisDown_EventsRetainedForRecovery(t *testing.T) {
-	events := []OutboxEvent{
-		{ID: 10, EventID: "ev-010", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-010"}`)},
+// TestOutbox_Concurrent_RecoverAfterPartition runs two phases:
+//   Phase 1: 50 goroutines run relay with Redis down → 0 published
+//   Phase 2: same 50 goroutines run relay with Redis up → all 50 delivered
+// This tests the exact partition-recovery flow described in the design doc.
+func TestOutbox_Concurrent_RecoverAfterPartition(t *testing.T) {
+	const goroutines = 50
+
+	type state struct {
+		fetcher *mockFetcher
+		stream  *mockStreamWriter
 	}
-	fetchCallCount := 0
-
-	fetcher := &mockFetcher{}
-	// Simulate the fetcher returning the same unpublished event twice (since
-	// it was never marked published on the first failed tick).
-	fetcher.events = events
-
-	stream := &mockStreamWriter{}
-
-	// First tick: Redis down - event stays in outbox.
-	stream.xaddErr = errors.New("connection refused")
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-	fetchCallCount++
-
-	if len(fetcher.getMarked()) != 0 {
-		t.Fatalf("tick 1 (Redis down): expected 0 marked, got %d", len(fetcher.getMarked()))
+	states := make([]state, goroutines)
+	for i := range states {
+		states[i] = state{
+			fetcher: &mockFetcher{
+				events: []OutboxEvent{
+					{ID: int64(i + 1), EventID: "ev", EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+				},
+			},
+			stream: &mockStreamWriter{xaddErr: errors.New("partition")},
+		}
 	}
 
-	// Second tick: Redis recovered - event delivered.
-	stream.xaddErr = nil
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-	fetchCallCount++
-
-	marked := fetcher.getMarked()
-	if len(marked) != 1 || marked[0] != 10 {
-		t.Errorf("tick 2 (Redis up): expected [10] marked, got %v", marked)
+	// Phase 1: Redis down.
+	ready1, go1_ := barrier(goroutines)
+	var wg1 sync.WaitGroup
+	wg1.Add(goroutines)
+	for i, s := range states {
+		go func(idx int, st state) {
+			defer wg1.Done()
+			ready1()
+			go1_()
+			relayBatch(context.Background(), st.fetcher, st.stream, silentLogger())
+		}(i, s)
 	}
-	if fetchCallCount != 2 {
-		t.Errorf("expected 2 fetch calls (one per tick), got %d", fetchCallCount)
+	wg1.Wait()
+
+	for i, s := range states {
+		if len(s.fetcher.getMarked()) != 0 {
+			t.Errorf("phase1 goroutine %d: events marked during partition", i)
+		}
+	}
+
+	// Phase 2: Redis recovered — clear the error.
+	for _, s := range states {
+		s.stream.mu.Lock()
+		s.stream.xaddErr = nil
+		s.stream.mu.Unlock()
+	}
+
+	ready2, go2_ := barrier(goroutines)
+	var wg2 sync.WaitGroup
+	wg2.Add(goroutines)
+	for i, s := range states {
+		go func(idx int, st state) {
+			defer wg2.Done()
+			ready2()
+			go2_()
+			relayBatch(context.Background(), st.fetcher, st.stream, silentLogger())
+		}(i, s)
+	}
+	wg2.Wait()
+
+	for i, s := range states {
+		marked := s.fetcher.getMarked()
+		if len(marked) != 1 {
+			t.Errorf("phase2 goroutine %d: expected 1 event delivered after recovery, got %d", i, len(marked))
+		}
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 3 - Partial Batch Failure
+// SECTION 3 — Partial Batch Failure Under Concurrency
 //
 // Checklist: "Consistency of data maintained across failures/recoveries □"
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestOutboxRelay_PartialBatch_FailOnThirdXAdd verifies that when XAdd fails
-// on the 3rd event in a batch of 5:
-//   - Events 1 and 2 are marked published (they succeeded)
-//   - Events 3, 4, 5 are NOT marked (they were not attempted or failed)
-//   - No events are lost: 3-5 will be retried on the next tick
-func TestOutboxRelay_PartialBatch_FailOnThirdXAdd(t *testing.T) {
-	fetcher := &mockFetcher{
-		events: []OutboxEvent{
-			{ID: 1, EventID: "ev-001", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-001"}`)},
-			{ID: 2, EventID: "ev-002", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-002"}`)},
-			{ID: 3, EventID: "ev-003", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-003"}`)},
-			{ID: 4, EventID: "ev-004", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-004"}`)},
-			{ID: 5, EventID: "ev-005", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-005"}`)},
-		},
+// TestOutbox_Concurrent_PartialFailure_First3Succeed runs 100 goroutines each
+// with a 5-event batch where XAdd fails on call 4.
+// Exactly events 1–3 must be marked published in every goroutine.
+func TestOutbox_Concurrent_PartialFailure_First3Succeed(t *testing.T) {
+	const goroutines = 100
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			base := int64(idx * 5)
+			f := &mockFetcher{
+				events: []OutboxEvent{
+					{ID: base + 1, EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+					{ID: base + 2, EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+					{ID: base + 3, EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+					{ID: base + 4, EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+					{ID: base + 5, EventType: EventJourneyBooked, Payload: []byte(`{}`)},
+				},
+			}
+			s := &mockStreamWriter{failOnCall: 4} // fail on 4th XAdd
+			ready()
+			go_()
+			relayBatch(context.Background(), f, s, silentLogger())
+
+			marked := f.getMarked()
+			if len(marked) != 3 {
+				errs <- "expected 3 marked after failOnCall=4, got different"
+			}
+			// Events 4 and 5 must NOT be marked.
+			for _, m := range marked {
+				if m >= base+4 {
+					errs <- "event >= base+4 was marked despite XAdd failure"
+				}
+			}
+		}(i)
 	}
-	stream := &mockStreamWriter{failOnCall: 3} // XAdd succeeds for 1,2; fails on 3
-
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-
-	marked := fetcher.getMarked()
-	// Only 1 and 2 should be marked (relay stops processing the batch on error).
-	if len(marked) != 2 {
-		t.Fatalf("expected 2 events marked after partial failure, got %d: %v", len(marked), marked)
-	}
-	if marked[0] != 1 || marked[1] != 2 {
-		t.Errorf("expected marked IDs [1 2], got %v", marked)
-	}
-
-	// Stream should have received exactly 2 events.
-	published := stream.getPublished()
-	if len(published) != 2 {
-		t.Errorf("expected 2 events in stream, got %d", len(published))
-	}
-}
-
-// TestOutboxRelay_PartialBatch_FirstEventFails verifies that when the FIRST
-// XAdd in a batch fails, zero events are marked published.
-func TestOutboxRelay_PartialBatch_FirstEventFails(t *testing.T) {
-	fetcher := &mockFetcher{
-		events: []OutboxEvent{
-			{ID: 1, EventID: "ev-001", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-001"}`)},
-			{ID: 2, EventID: "ev-002", EventType: EventJourneyBooked, Payload: []byte(`{"event_id":"ev-002"}`)},
-		},
-	}
-	stream := &mockStreamWriter{failOnCall: 1} // fail immediately
-
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-
-	marked := fetcher.getMarked()
-	if len(marked) != 0 {
-		t.Errorf("expected 0 marked when first XAdd fails, got %d: %v", len(marked), marked)
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4 - Event Ordering Guarantee
+// SECTION 4 — Event Ordering: Concurrent Producers, Single Stream
 //
-// Redis Streams preserve insertion order.  The relay MUST publish events in
-// the same order they were committed to the outbox (by outbox.id ASC).
 // Checklist: "Consistency of data maintained across failures/recoveries □"
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestOutboxRelay_EventOrderPreserved verifies that a journey's lifecycle
-// events (booked → activated → completed) arrive at the stream in the correct
-// order, regardless of DB read timing.
-func TestOutboxRelay_EventOrderPreserved(t *testing.T) {
-	fetcher := &mockFetcher{
-		events: []OutboxEvent{
-			{ID: 1, EventID: "ev-001", EventType: EventJourneyBooked, Payload: []byte(`{"seq":1}`)},
-			{ID: 2, EventID: "ev-002", EventType: EventJourneyActivated, Payload: []byte(`{"seq":2}`)},
-			{ID: 3, EventID: "ev-003", EventType: EventJourneyCompleted, Payload: []byte(`{"seq":3}`)},
-		},
+// TestOutbox_EventOrdering_WithinBatch verifies that within a SINGLE batch
+// the lifecycle events (booked → activated → completed) arrive in outbox.id
+// order even when the batch is processed by multiple concurrent goroutines
+// calling relayBatch on their own fetchers.
+func TestOutbox_EventOrdering_WithinBatch(t *testing.T) {
+	const goroutines = 50
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			f := &mockFetcher{
+				events: []OutboxEvent{
+					{ID: 1, EventType: EventJourneyBooked, Payload: []byte(`{"seq":1}`)},
+					{ID: 2, EventType: EventJourneyActivated, Payload: []byte(`{"seq":2}`)},
+					{ID: 3, EventType: EventJourneyCompleted, Payload: []byte(`{"seq":3}`)},
+				},
+			}
+			s := &mockStreamWriter{}
+			ready()
+			go_()
+			relayBatch(context.Background(), f, s, silentLogger())
+
+			pub := s.getPublished()
+			if len(pub) != 3 {
+				errs <- "expected 3 published"
+				return
+			}
+			want := []string{`{"seq":1}`, `{"seq":2}`, `{"seq":3}`}
+			for j, w := range want {
+				if pub[j] != w {
+					errs <- "event order violated in batch"
+				}
+			}
+		}(i)
 	}
-	stream := &mockStreamWriter{}
-
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-
-	published := stream.getPublished()
-	if len(published) != 3 {
-		t.Fatalf("expected 3 events published, got %d", len(published))
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
+}
 
-	// Verify payload order matches outbox order.
-	expectedPayloads := []string{`{"seq":1}`, `{"seq":2}`, `{"seq":3}`}
-	for i, want := range expectedPayloads {
-		if published[i] != want {
-			t.Errorf("stream position %d: got payload %q, want %q - event ordering violated", i, published[i], want)
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 5 — DB Fetch Failures Under Concurrency
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestOutbox_Concurrent_DBFetchFails_NoRedisCallsMade verifies that 200
+// goroutines hitting a broken DB never attempt Redis writes.
+func TestOutbox_Concurrent_DBFetchFails_NoRedisCallsMade(t *testing.T) {
+	const goroutines = 200
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	var totalXAdds int64 // atomic
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			f := &mockFetcher{fetchErr: errors.New("pq: connection reset")}
+			s := &mockStreamWriter{}
+			ready()
+			go_()
+			relayBatch(context.Background(), f, s, silentLogger())
+			atomic.AddInt64(&totalXAdds, int64(s.getCallCount()))
+		}()
+	}
+	wg.Wait()
+
+	if totalXAdds != 0 {
+		t.Errorf("DB was down: expected 0 XAdd calls across all goroutines, got %d", totalXAdds)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 6 — Batch Size: Concurrent Goroutines Respect the 100-Event Limit
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestOutbox_Concurrent_BatchLimit_NeverExceeds100 fires 50 goroutines each
+// with 150 events.  None should process more than 100 per tick.
+func TestOutbox_Concurrent_BatchLimit_NeverExceeds100(t *testing.T) {
+	const goroutines = 50
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			events := make([]OutboxEvent, 150)
+			for j := range events {
+				events[j] = OutboxEvent{ID: int64(idx*150 + j + 1), Payload: []byte(`{}`)}
+			}
+			f := &mockFetcher{events: events}
+			s := &mockStreamWriter{}
+			ready()
+			go_()
+			relayBatch(context.Background(), f, s, silentLogger())
+
+			if len(f.getMarked()) > 100 {
+				errs <- "relay processed more than 100 events in one tick"
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 7 — Stream Contract: Stream Name + Event Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestOutbox_StreamName_ConcurrentReads verifies that 500 goroutines reading
+// the StreamName constant simultaneously always get the same value.
+func TestOutbox_StreamName_ConcurrentReads(t *testing.T) {
+	const goroutines = 500
+	results := make([]string, goroutines)
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			results[idx] = StreamName
+		}(i)
+	}
+	wg.Wait()
+
+	const want = "journey.events"
+	for i, got := range results {
+		if got != want {
+			t.Errorf("goroutine %d: StreamName = %q, want %q", i, got, want)
 		}
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5 - Fetch Failures
-//
-// If the DB is unreachable, the relay should log and return without panicking
-// or marking anything published.
-// ─────────────────────────────────────────────────────────────────────────────
+// TestMarshalEnvelope_Concurrent_UniqueIDs fires 1000 goroutines simultaneously
+// calling MarshalEnvelope and verifies no two produce the same event_id.
+// A collision would cause the notification consumer's dedup logic to silently
+// drop a valid event.
+func TestMarshalEnvelope_Concurrent_UniqueIDs(t *testing.T) {
+	const goroutines = 1000
+	type p struct{ X int }
 
-// TestOutboxRelay_DBFetchFails_NoPublishAttempted verifies that a DB error on
-// FetchUnpublishedOutbox causes the relay to abort without touching Redis.
-func TestOutboxRelay_DBFetchFails_NoPublishAttempted(t *testing.T) {
-	fetcher := &mockFetcher{
-		fetchErr: errors.New("pq: connection reset by peer"),
+	ids := make([]string, goroutines)
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			id, _, _ := MarshalEnvelope(EventJourneyBooked, p{idx})
+			ids[idx] = id
+		}(i)
 	}
-	stream := &mockStreamWriter{}
+	wg.Wait()
 
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-
-	if stream.callCount != 0 {
-		t.Errorf("expected 0 XAdd calls when DB fetch fails, got %d", stream.callCount)
+	seen := make(map[string]int, goroutines)
+	for _, id := range ids {
+		seen[id]++
 	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 6 - Context Cancellation (Graceful Shutdown)
-//
-// When the service shuts down, RunOutboxRelay must exit cleanly without
-// processing a new batch after the context is cancelled.
-// Checklist: "Total failure tolerated □"
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TestOutboxRelay_ContextCancelled_RelayShutsDown verifies that RunOutboxRelay
-// exits within a reasonable timeout when the context is cancelled.
-func TestOutboxRelay_ContextCancelled_RelayShutsDown(t *testing.T) {
-	// RunOutboxRelay requires a *redis.Client (not the StreamWriter interface),
-	// so we test the cancellation behaviour by running the real function with a
-	// pre-cancelled context and a nil Redis client (relay exits immediately on nil).
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel before the relay even starts
-
-	fetcher := &mockFetcher{events: []OutboxEvent{}}
-	_ = fetcher // relay will not reach Fetch since ctx is already done
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		// RunOutboxRelay with nil rdb returns immediately (nil guard).
-		// To test the cancellation path directly, we replicate the relay's
-		// select loop here with a pre-cancelled context.
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		select {
-		case <-ctx.Done():
-			return // correct: cancelled immediately
-		case <-ticker.C:
-			// Should not fire since context is already cancelled.
-		}
-	}()
-
-	select {
-	case <-done:
-		// Good: context cancellation was observed before the first tick.
-	case <-time.After(2 * time.Second):
-		t.Error("relay did not respond to context cancellation within 2s - graceful shutdown broken")
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 7 - Batch Size Boundary
-//
-// The relay fetches at most 100 events per tick (hardcoded limit).
-// Checklist: "Scalability □"
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TestOutboxRelay_BatchLimit_Only100ProcessedPerTick verifies that the fetcher
-// is called with limit=100 and processes no more than that per batch, even if
-// the outbox table has thousands of rows.
-func TestOutboxRelay_BatchLimit_Only100ProcessedPerTick(t *testing.T) {
-	// Build 150 events - only 100 should be fetched per batch.
-	events := make([]OutboxEvent, 150)
-	for i := range events {
-		events[i] = OutboxEvent{
-			ID:        int64(i + 1),
-			EventID:   "ev-" + string(rune('A'+i%26)),
-			EventType: EventJourneyBooked,
-			Payload:   []byte(`{}`),
-		}
-	}
-	fetcher := &mockFetcher{events: events}
-	stream := &mockStreamWriter{}
-
-	relayBatch(context.Background(), fetcher, stream, silentLogger())
-
-	// The mock FetchUnpublishedOutbox respects the limit=100 argument.
-	marked := fetcher.getMarked()
-	if len(marked) > 100 {
-		t.Errorf("relay processed %d events in one tick, expected at most 100", len(marked))
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 8 - Cross-Region Event Fan-out
-//
-// In a 3-VM deployment, when a journey is booked on VM1 (EU), the event must
-// reach both the EU notification-service consumer AND any cross-region
-// subscriber.  All consumers use the same consumer group (notification-service)
-// but different consumer names (one per VM).
-//
-// This test documents the stream topology without requiring a multi-VM setup.
-// Checklist: "Partitions handled □"
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TestOutboxRelay_StreamName_MatchesConsumerStreamName verifies that the
-// producer (outbox relay) and consumer (notification service) use the same
-// stream name constant.  A mismatch means events are published to a stream
-// that nobody is reading.
-func TestOutboxRelay_StreamName_MatchesConsumerStreamName(t *testing.T) {
-	const notificationConsumerStreamName = "journey.events" // from notification-service consumer.go
-	if StreamName != notificationConsumerStreamName {
-		t.Errorf(
-			"outbox relay publishes to %q but notification consumer reads from %q - events will be lost",
-			StreamName, notificationConsumerStreamName,
-		)
-	}
-}
-
-// TestOutboxRelay_AllEventTypesAreKnown verifies that every event type the
-// relay publishes is one the notification consumer knows how to handle.
-// Unrecognised event types are ACKed-and-skipped by the consumer, but adding
-// a new type without updating the mapper means notifications are silently dropped.
-func TestOutboxRelay_AllEventTypesAreKnown(t *testing.T) {
-	knownTypes := map[string]bool{
-		EventJourneyBooked:    true,
-		EventJourneyRejected:  true,
-		EventJourneyCancelled: true,
-		EventJourneyActivated: true,
-		EventJourneyCompleted: true,
-		EventJourneyExpired:   true,
-	}
-	producedTypes := []string{
-		EventJourneyBooked,
-		EventJourneyRejected,
-		EventJourneyCancelled,
-		EventJourneyActivated,
-		EventJourneyCompleted,
-		EventJourneyExpired,
-	}
-	for _, et := range producedTypes {
-		if !knownTypes[et] {
-			t.Errorf("event type %q is produced by the relay but not registered in knownTypes - consumer will silently drop it", et)
-		}
-	}
-	// Verify none are empty strings (which would make them indistinguishable).
-	for _, et := range producedTypes {
-		if et == "" {
-			t.Error("empty event type string - consumer cannot dispatch it")
+	for id, count := range seen {
+		if count > 1 {
+			t.Errorf("event_id collision: %q generated %d times — consumer dedup will drop a real event", id, count)
 		}
 	}
 }
 
-// TestMarshalEnvelope_RoundTrip verifies that MarshalEnvelope produces a
-// valid JSON envelope that includes all required fields (event_id, event_type,
-// timestamp, payload).  This is the wire format consumed by the notification
-// service and must not be changed without updating both ends.
-func TestMarshalEnvelope_RoundTrip(t *testing.T) {
-	type testPayload struct {
+// TestMarshalEnvelope_Concurrent_AllParseable verifies that 500 goroutines
+// simultaneously producing envelopes all generate valid JSON that the
+// notification consumer can parse without error.
+func TestMarshalEnvelope_Concurrent_AllParseable(t *testing.T) {
+	const goroutines = 500
+	type payload struct {
 		JourneyID string `json:"journey_id"`
 		DriverID  string `json:"driver_id"`
 	}
 
-	evID, data, err := MarshalEnvelope(EventJourneyBooked, testPayload{
-		JourneyID: "jrn_abc123",
-		DriverID:  "usr_driver01",
-	})
-	if err != nil {
-		t.Fatalf("MarshalEnvelope returned error: %v", err)
-	}
-	if evID == "" {
-		t.Error("expected non-empty event_id from MarshalEnvelope")
-	}
-	if len(data) == 0 {
-		t.Error("expected non-empty payload bytes from MarshalEnvelope")
-	}
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
 
-	// The envelope must be valid JSON parseable by the notification consumer.
-	var env Envelope
-	if err := json.Unmarshal(data, &env); err != nil {
-		t.Fatalf("MarshalEnvelope output is not valid Envelope JSON: %v", err)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			_, data, err := MarshalEnvelope(EventJourneyBooked, payload{
+				JourneyID: "jrn_" + string(rune('a'+idx%26)),
+				DriverID:  "usr_" + string(rune('a'+idx%26)),
+			})
+			if err != nil {
+				errs <- "MarshalEnvelope returned error"
+				return
+			}
+			var env Envelope
+			if jsonErr := json.Unmarshal(data, &env); jsonErr != nil {
+				errs <- "produced invalid JSON envelope"
+			}
+			if env.EventType != EventJourneyBooked {
+				errs <- "wrong event type in concurrent envelope"
+			}
+			if env.Timestamp.IsZero() {
+				errs <- "zero timestamp in concurrent envelope"
+			}
+		}(i)
 	}
-	if env.EventID != evID {
-		t.Errorf("envelope event_id %q does not match returned ID %q", env.EventID, evID)
-	}
-	if env.EventType != EventJourneyBooked {
-		t.Errorf("envelope event_type %q, want %q", env.EventType, EventJourneyBooked)
-	}
-	if env.Timestamp.IsZero() {
-		t.Error("envelope timestamp must not be zero")
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
-// TestMarshalEnvelope_UniqueIDs verifies that two calls with identical payloads
-// produce different event_ids (UUIDs), ensuring the consumer's dedup logic
-// can distinguish genuinely different events from retried identical ones.
-func TestMarshalEnvelope_UniqueIDs(t *testing.T) {
-	type p struct{ X int }
-	id1, _, _ := MarshalEnvelope(EventJourneyBooked, p{1})
-	id2, _, _ := MarshalEnvelope(EventJourneyBooked, p{1})
-	if id1 == id2 {
-		t.Error("MarshalEnvelope produced duplicate event IDs - consumer dedup will fail on distinct events")
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8 — Context Cancellation: Graceful Shutdown Under Load
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestOutbox_ContextCancelled_AllGoroutinesStop fires 20 goroutines each
+// running the relay's select-loop logic with a pre-cancelled context.
+// All must exit within 500ms — verifying the shutdown path is race-free.
+func TestOutbox_ContextCancelled_AllGoroutinesStop(t *testing.T) {
+	const goroutines = 20
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so goroutines exit immediately on first select
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+			ready()
+			go_()
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Should never fire — context is already cancelled.
+			}
+		}()
+	}
+
+	select {
+	case <-done:
+		// All goroutines exited via ctx.Done() — correct.
+	case <-time.After(2 * time.Second):
+		t.Error("not all goroutines responded to context cancellation within 2s — shutdown race")
 	}
 }

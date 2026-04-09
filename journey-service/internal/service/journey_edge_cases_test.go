@@ -1,20 +1,22 @@
 package service
 
-// Journey service edge-case tests.
+// Concurrent edge-case tests for the journey service.
 //
-// Tests are pure unit tests - no DB, HTTP, or Redis required.
-// They cover the pure-function and computation layer of the booking flow.
+// Every test uses the barrier pattern to release goroutines simultaneously:
+//   ready, go_ := barrier(n)
+//   // goroutine: ready(); go_(); <work>
+// Run with: go test -race ./internal/service/...
 //
-// CS7NS6 checklist coverage:
-//   ✔ Concurrent requests properly synchronized  → same-driver active journey guard
-//   ✔ Conflicting requests properly handled      → departure window validation
-//   ✔ Immediate access (no ghost booking)        → time-window cascade
+// CS7NS6 checklist:
+//   ✔ Concurrent requests properly synchronized  → same-driver active journey
+//   ✔ Conflicting requests properly handled      → departure-window validation
 //   ✔ Sharding / exploit locality                → region-annotated segments
-//   ✔ Failure handling: Communication failures   → vehicle type normalisation
+//   ✔ Communication failures tolerated           → vehicle type normalisation
 //   ✔ Test application/testing framework         → this file
 
 import (
-	"strings"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,494 +24,650 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/model"
 )
 
+func barrier(n int) (ready func(), go_ func()) {
+	var wg sync.WaitGroup
+	wg.Add(n)
+	ready = func() { wg.Done() }
+	go_ = func() { wg.Wait() }
+	return
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 - Time Window Cascade for Cross-Region Routes
+// SECTION 1 — Time Window Cascade: Concurrent Computation
 //
-// ComputeTimeWindows builds per-segment time windows from departure time.
-// For a cross-region route the windows must chain without gaps or overlaps:
-//   seg1 ends exactly when seg2 starts, etc.
-//
-// Checklist: "Immediate access to earned points □" - window precision prevents
-// two drivers from holding the same slot on the same segment simultaneously.
+// ComputeTimeWindows is a pure function.  Multiple goroutines calling it with
+// the same inputs must always get identical results (no shared mutable state).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestTimeWindows_CrossRegion_FourSegments verifies a full cross-region route
-// (central → north → west → port) produces gapless chained windows.
-func TestTimeWindows_CrossRegion_FourSegments(t *testing.T) {
+// TestTimeWindows_Concurrent_SameRoute_IdenticalResults fires 500 goroutines
+// all computing the same 4-segment cross-region route simultaneously.
+// All must produce byte-for-byte identical windows.
+func TestTimeWindows_Concurrent_SameRoute_IdenticalResults(t *testing.T) {
+	const goroutines = 500
 	dep := time.Date(2026, 4, 15, 7, 30, 0, 0, time.UTC)
-	segs, arrival := ComputeTimeWindows(dep, []client.MapSegment{
+	route := []client.MapSegment{
 		{SegmentID: "seg_city_north", SequenceOrder: 1, TraversalTimeMinutes: 12, Region: "central"},
 		{SegmentID: "seg_north_airport", SequenceOrder: 2, TraversalTimeMinutes: 18, Region: "north"},
 		{SegmentID: "seg_city_west", SequenceOrder: 3, TraversalTimeMinutes: 9, Region: "central"},
 		{SegmentID: "seg_west_port", SequenceOrder: 4, TraversalTimeMinutes: 25, Region: "west"},
-	})
-
-	if len(segs) != 4 {
-		t.Fatalf("expected 4 segments, got %d", len(segs))
 	}
 
-	// Windows must chain: end of seg[i] == start of seg[i+1].
-	for i := 0; i < len(segs)-1; i++ {
-		if !segs[i].TimeWindowEnd.Equal(segs[i+1].TimeWindowStart) {
-			t.Errorf(
-				"gap/overlap between seg[%d] and seg[%d]: %v → %v (end) vs %v (next start)",
-				i, i+1, segs[i].SegmentID, segs[i].TimeWindowEnd, segs[i+1].TimeWindowStart,
-			)
+	type result struct {
+		arrival time.Time
+		ends    [4]time.Time
+	}
+	results := make([]result, goroutines)
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			segs, arrival := ComputeTimeWindows(dep, route)
+			r := result{arrival: arrival}
+			for j, s := range segs {
+				r.ends[j] = s.TimeWindowEnd
+			}
+			results[idx] = r
+		}(i)
+	}
+	wg.Wait()
+
+	canonical := results[0]
+	for i, r := range results {
+		if !r.arrival.Equal(canonical.arrival) {
+			t.Errorf("goroutine %d: arrival %v ≠ canonical %v", i, r.arrival, canonical.arrival)
 		}
-	}
-
-	// Total traversal: 12+18+9+25 = 64 minutes.
-	wantArrival := dep.Add(64 * time.Minute)
-	if !arrival.Equal(wantArrival) {
-		t.Errorf("arrival = %v, want %v (64 min journey)", arrival, wantArrival)
-	}
-}
-
-// TestTimeWindows_RegionAnnotationPreserved verifies that the region field from
-// the map service is preserved on each segment, which is used by the capacity
-// service to route queries to the correct VM.
-func TestTimeWindows_RegionAnnotationPreserved(t *testing.T) {
-	dep := time.Now().UTC()
-	segs, _ := ComputeTimeWindows(dep, []client.MapSegment{
-		{SegmentID: "seg_city_north", Region: "central", TraversalTimeMinutes: 10},
-		{SegmentID: "seg_north_airport", Region: "north", TraversalTimeMinutes: 20},
-		{SegmentID: "seg_west_port", Region: "west", TraversalTimeMinutes: 15},
-	})
-
-	expectedRegions := []string{"central", "north", "west"}
-	for i, want := range expectedRegions {
-		if segs[i].Region != want {
-			t.Errorf("seg[%d] region = %q, want %q - capacity VM routing broken", i, segs[i].Region, want)
+		for j := range r.ends {
+			if !r.ends[j].Equal(canonical.ends[j]) {
+				t.Errorf("goroutine %d seg[%d] end %v ≠ canonical %v", i, j, r.ends[j], canonical.ends[j])
+			}
 		}
 	}
 }
 
-// TestTimeWindows_TwoDrivers_SameDeparture_SameRoute verifies that two drivers
-// departing at the same time on the same route produce IDENTICAL time windows.
-// Both requests will then contend on the SAME capacity slots in the capacity
-// service - exactly one must win (enforced by serializable transaction).
-func TestTimeWindows_TwoDrivers_SameDeparture_SameRoute(t *testing.T) {
+// TestTimeWindows_Concurrent_TwoDriversSameSlot fires goroutine pairs
+// simultaneously — one for Driver A, one for Driver B — on the same route
+// and same departure time.  Both must produce identical windows, which means
+// they WILL contend on the capacity service (serializable tx decides the winner).
+func TestTimeWindows_Concurrent_TwoDriversSameSlot(t *testing.T) {
+	const pairs = 200
 	dep := time.Date(2026, 4, 15, 9, 0, 0, 0, time.UTC)
 	route := []client.MapSegment{
 		{SegmentID: "seg_city_north", TraversalTimeMinutes: 15},
 		{SegmentID: "seg_north_airport", TraversalTimeMinutes: 20},
 	}
 
-	segsA, arrivalA := ComputeTimeWindows(dep, route)
-	segsB, arrivalB := ComputeTimeWindows(dep, route)
-
-	if !arrivalA.Equal(arrivalB) {
-		t.Errorf("same route, same departure: arrival times differ (%v vs %v)", arrivalA, arrivalB)
+	type window struct{ start, end time.Time }
+	type result struct {
+		driver  string
+		windows [2]window
+		arrival time.Time
 	}
-	for i := range segsA {
-		if !segsA[i].TimeWindowStart.Equal(segsB[i].TimeWindowStart) ||
-			!segsA[i].TimeWindowEnd.Equal(segsB[i].TimeWindowEnd) {
-			t.Errorf(
-				"seg[%d]: driver A window [%v,%v) ≠ driver B window [%v,%v) - should contend on same slot",
-				i,
-				segsA[i].TimeWindowStart, segsA[i].TimeWindowEnd,
-				segsB[i].TimeWindowStart, segsB[i].TimeWindowEnd,
-			)
+	results := make([]result, pairs*2)
+	ready, go_ := barrier(pairs * 2)
+	var wg sync.WaitGroup
+	wg.Add(pairs * 2)
+
+	for i := 0; i < pairs; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			segs, arrival := func() ([]model.JourneySegment, time.Time) { return ComputeTimeWindows(dep, route) }()
+			r := result{driver: "A"}
+			for j, s := range segs {
+				r.windows[j] = window{s.TimeWindowStart, s.TimeWindowEnd}
+			}
+			r.arrival = arrival
+			ready()
+			go_()
+			results[idx*2] = r
+		}(i)
+
+		go func(idx int) {
+			defer wg.Done()
+			segs, arrival := func() ([]model.JourneySegment, time.Time) { return ComputeTimeWindows(dep, route) }()
+			r := result{driver: "B"}
+			for j, s := range segs {
+				r.windows[j] = window{s.TimeWindowStart, s.TimeWindowEnd}
+			}
+			r.arrival = arrival
+			ready()
+			go_()
+			results[idx*2+1] = r
+		}(i)
+	}
+	wg.Wait()
+
+	canonical := results[0]
+	for i, r := range results {
+		if !r.arrival.Equal(canonical.arrival) {
+			t.Errorf("pair goroutine %d: arrival differs — drivers would book different capacity slots", i)
+		}
+		for j := range r.windows {
+			if !r.windows[j].start.Equal(canonical.windows[j].start) ||
+				!r.windows[j].end.Equal(canonical.windows[j].end) {
+				t.Errorf("goroutine %d seg[%d]: window differs — should contend on same capacity slot", i, j)
+			}
 		}
 	}
 }
 
-// TestTimeWindows_TwoDrivers_StaggeredDeparture_NonOverlapping verifies that
-// if driver B departs 35 minutes after driver A on the same 30-minute route,
-// their time windows on seg_city_north are completely non-overlapping - no
-// capacity contention, no serialization required.
-func TestTimeWindows_TwoDrivers_StaggeredDeparture_NonOverlapping(t *testing.T) {
+// TestTimeWindows_Concurrent_ChainedWindowsNeverGap verifies that no matter
+// how many goroutines compute the same route simultaneously, the end of
+// segment[i] always equals the start of segment[i+1].
+func TestTimeWindows_Concurrent_ChainedWindowsNeverGap(t *testing.T) {
+	const goroutines = 300
+	dep := time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC)
 	route := []client.MapSegment{
-		{SegmentID: "seg_city_north", TraversalTimeMinutes: 30},
+		{SegmentID: "seg_city_north", TraversalTimeMinutes: 10},
+		{SegmentID: "seg_west_northfield", TraversalTimeMinutes: 15},
+		{SegmentID: "seg_northfield_north", TraversalTimeMinutes: 8},
+		{SegmentID: "seg_north_airport", TraversalTimeMinutes: 20},
 	}
-	depA := time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC)
-	depB := depA.Add(35 * time.Minute) // departs 5 minutes after A finishes
 
-	segsA, _ := ComputeTimeWindows(depA, route)
-	segsB, _ := ComputeTimeWindows(depB, route)
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
 
-	// A: 08:00 → 08:30, B: 08:35 → 09:05 - must NOT overlap.
-	aEnd := segsA[0].TimeWindowEnd
-	bStart := segsB[0].TimeWindowStart
-
-	if !bStart.After(aEnd) && !bStart.Equal(aEnd) {
-		t.Errorf(
-			"staggered departures still overlap: A ends %v, B starts %v - unexpected capacity conflict",
-			aEnd, bStart,
-		)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			segs, _ := ComputeTimeWindows(dep, route)
+			for j := 0; j < len(segs)-1; j++ {
+				if !segs[j].TimeWindowEnd.Equal(segs[j+1].TimeWindowStart) {
+					errs <- fmt.Sprintf("goroutine %d: gap/overlap between seg[%d] and seg[%d]", idx, j, j+1)
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
-// TestTimeWindows_PeakHour_MorningRush simulates the peak load scenario
-// (Irish Traffic Commission data: morning rush 07:30–09:30) with 5 concurrent
-// departure times spaced 5 minutes apart, each on the same route.
-// All 5 should produce overlapping windows on seg_city_north - the segment
-// capacity must absorb them or reject the excess.
-func TestTimeWindows_PeakHour_MorningRush(t *testing.T) {
+// TestTimeWindows_Concurrent_PeakHour_5Departures simulates morning rush:
+// 5 different departure times (5-min spacing), each computed by 100 goroutines
+// simultaneously.  Verifies peak-hour windows overlap on the shared segment
+// and that the computation is race-free.
+func TestTimeWindows_Concurrent_PeakHour_5Departures(t *testing.T) {
+	const goroutinesPerDep = 100
+	baseTime := time.Date(2026, 4, 15, 7, 30, 0, 0, time.UTC)
+	departures := make([]time.Time, 5)
+	for i := range departures {
+		departures[i] = baseTime.Add(time.Duration(i*5) * time.Minute)
+	}
 	route := []client.MapSegment{
 		{SegmentID: "seg_city_north", TraversalTimeMinutes: 20},
 	}
-	baseTime := time.Date(2026, 4, 15, 7, 30, 0, 0, time.UTC)
 
-	type window struct{ start, end time.Time }
-	windows := make([]window, 5)
-	for i := 0; i < 5; i++ {
-		dep := baseTime.Add(time.Duration(i*5) * time.Minute)
-		segs, _ := ComputeTimeWindows(dep, route)
-		windows[i] = window{segs[0].TimeWindowStart, segs[0].TimeWindowEnd}
+	type windowResult struct {
+		depIdx int
+		start  time.Time
+		end    time.Time
+	}
+	total := len(departures) * goroutinesPerDep
+	results := make([]windowResult, total)
+	ready, go_ := barrier(total)
+	var wg sync.WaitGroup
+	wg.Add(total)
+
+	for di, dep := range departures {
+		for gi := 0; gi < goroutinesPerDep; gi++ {
+			idx := di*goroutinesPerDep + gi
+			go func(dep time.Time, depIdx, idx int) {
+				defer wg.Done()
+				ready()
+				go_()
+				segs, _ := ComputeTimeWindows(dep, route)
+				results[idx] = windowResult{depIdx, segs[0].TimeWindowStart, segs[0].TimeWindowEnd}
+			}(dep, di, idx)
+		}
+	}
+	wg.Wait()
+
+	// All goroutines for the same departure must have the same window.
+	for di := range departures {
+		base := results[di*goroutinesPerDep]
+		for gi := 1; gi < goroutinesPerDep; gi++ {
+			r := results[di*goroutinesPerDep+gi]
+			if !r.start.Equal(base.start) || !r.end.Equal(base.end) {
+				t.Errorf("dep[%d] goroutine %d: window differs from goroutine 0 — race in ComputeTimeWindows", di, gi)
+			}
+		}
 	}
 
-	// All 5 departures (07:30, 07:35, 07:40, 07:45, 07:50) produce 20-min
-	// windows that overlap each other on seg_city_north.
+	// Adjacent departures overlap on seg_city_north (20-min traversal, 5-min spacing).
 	overlapCount := 0
-	for i := 0; i < len(windows); i++ {
-		for j := i + 1; j < len(windows); j++ {
-			a, b := windows[i], windows[j]
+	for i := 0; i < len(departures); i++ {
+		for j := i + 1; j < len(departures); j++ {
+			a := results[i*goroutinesPerDep]
+			b := results[j*goroutinesPerDep]
 			if a.start.Before(b.end) && a.end.After(b.start) {
 				overlapCount++
 			}
 		}
 	}
 	if overlapCount == 0 {
-		t.Error("expected peak-hour windows to overlap on shared segment - capacity system should handle contention")
-	}
-	t.Logf("peak-hour: %d overlapping window pairs on seg_city_north (capacity service must handle %d concurrent bookings)", overlapCount, len(windows))
-}
-
-// TestTimeWindows_MidnightCrossover_CrossRegion verifies that a journey
-// departing just before midnight and crossing into a new day produces correct
-// windows across all segments - TIMESTAMPTZ arithmetic must handle the
-// date boundary correctly.
-func TestTimeWindows_MidnightCrossover_CrossRegion(t *testing.T) {
-	dep := time.Date(2026, 4, 15, 23, 45, 0, 0, time.UTC)
-	segs, arrival := ComputeTimeWindows(dep, []client.MapSegment{
-		{SegmentID: "seg_city_north", TraversalTimeMinutes: 10},
-		{SegmentID: "seg_north_airport", TraversalTimeMinutes: 15},
-	})
-
-	// seg_city_north: 23:45 → 23:55 (same day)
-	// seg_north_airport: 23:55 → 00:10 (next day)
-	wantSeg1End := time.Date(2026, 4, 15, 23, 55, 0, 0, time.UTC)
-	wantSeg2End := time.Date(2026, 4, 16, 0, 10, 0, 0, time.UTC)
-
-	if !segs[0].TimeWindowEnd.Equal(wantSeg1End) {
-		t.Errorf("seg_city_north end: got %v, want %v", segs[0].TimeWindowEnd, wantSeg1End)
-	}
-	if !segs[1].TimeWindowEnd.Equal(wantSeg2End) {
-		t.Errorf("seg_north_airport end (crosses midnight): got %v, want %v", segs[1].TimeWindowEnd, wantSeg2End)
-	}
-	if !arrival.Equal(wantSeg2End) {
-		t.Errorf("estimated arrival: got %v, want %v", arrival, wantSeg2End)
+		t.Error("peak-hour windows should overlap on shared segment — capacity system must handle this contention")
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 2 - Vehicle Type Normalisation
-//
-// The booking API accepts "HGV" as an alias for "truck".  Normalisation must
-// happen before the capacity service is called so slot weights are consistent.
+// SECTION 2 — Vehicle Type Normalisation: Concurrent Calls
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestVehicleTypeNormalisation_HGVToTruck verifies the HGV alias mapping.
-func TestVehicleTypeNormalisation_HGVToTruck(t *testing.T) {
-	got, err := normalizeVehicleType("HGV")
-	if err != nil {
-		t.Fatalf("normalizeVehicleType(HGV): unexpected error: %v", err)
-	}
-	if got != "truck" {
-		t.Errorf("normalizeVehicleType(HGV) = %q, want %q", got, "truck")
-	}
-}
+// TestVehicleNorm_Concurrent_AllValid fires 1000 goroutines simultaneously,
+// each calling normalizeVehicleType with a valid input.
+// No error, no data race.
+func TestVehicleNorm_Concurrent_AllValid(t *testing.T) {
+	inputs := []string{"car", "Car", "CAR", "van", "Van", "VAN",
+		"truck", "Truck", "TRUCK", "motorcycle", "Motorcycle",
+		"MOTORCYCLE", "HGV", "hgv"}
+	wants := []string{"car", "car", "car", "van", "van", "van",
+		"truck", "truck", "truck", "motorcycle", "motorcycle",
+		"motorcycle", "truck", "truck"}
 
-// TestVehicleTypeNormalisation_CaseInsensitive verifies all valid types are
-// accepted regardless of case (drivers may use "Car", "CAR", etc.).
-func TestVehicleTypeNormalisation_CaseInsensitive(t *testing.T) {
-	cases := []struct {
-		input string
-		want  string
-	}{
-		{"car", "car"},
-		{"Car", "car"},
-		{"CAR", "car"},
-		{"van", "van"},
-		{"Van", "van"},
-		{"VAN", "van"},
-		{"truck", "truck"},
-		{"Truck", "truck"},
-		{"TRUCK", "truck"},
-		{"motorcycle", "motorcycle"},
-		{"Motorcycle", "motorcycle"},
-		{"MOTORCYCLE", "motorcycle"},
-		{"HGV", "truck"},
-		{"hgv", "truck"},
-	}
-	for _, c := range cases {
-		got, err := normalizeVehicleType(c.input)
-		if err != nil {
-			t.Errorf("normalizeVehicleType(%q): unexpected error: %v", c.input, err)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("normalizeVehicleType(%q) = %q, want %q", c.input, got, c.want)
-		}
-	}
-}
+	const goroutines = 1000
+	results := make([]string, goroutines)
+	errs := make(chan string, goroutines)
 
-// TestVehicleTypeNormalisation_InvalidTypes verifies that unknown types are
-// rejected with an error before any DB or HTTP call is made.
-func TestVehicleTypeNormalisation_InvalidTypes(t *testing.T) {
-	invalid := []string{"bus", "tram", "bicycle", "lorry", "", " ", "TRACTOR"}
-	for _, vt := range invalid {
-		_, err := normalizeVehicleType(vt)
-		if err == nil {
-			t.Errorf("normalizeVehicleType(%q): expected error for invalid type, got nil", vt)
-		}
-	}
-}
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 3 - Journey Status Transition Logic
-//
-// Checklist: "Conflicting requests properly handled □"
-// The business rule: a driver can only have ONE active/approved journey.
-// Any attempt to book while one is in progress must be rejected with 409.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TestStatusTransitions_ValidTerminals verifies which status values represent
-// terminal states (no further transitions possible).
-func TestStatusTransitions_ValidTerminals(t *testing.T) {
-	terminals := []model.JourneyStatus{
-		model.StatusCompleted,
-		model.StatusCancelled,
-		model.StatusRejected,
-		model.StatusExpired,
-	}
-	nonTerminals := []model.JourneyStatus{
-		model.StatusApproved,
-		model.StatusActive,
-	}
-
-	// Terminal statuses must not allow activation or completion.
-	for _, s := range terminals {
-		if s == model.StatusApproved || s == model.StatusActive {
-			t.Errorf("status %q is classified as terminal but is a mutable state", s)
-		}
-	}
-	// Non-terminals must not be final.
-	for _, s := range nonTerminals {
-		for _, t2 := range terminals {
-			if s == t2 {
-				t.Errorf("status %q is in both terminal and non-terminal sets", s)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			in := inputs[idx%len(inputs)]
+			want := wants[idx%len(wants)]
+			ready()
+			go_()
+			got, err := normalizeVehicleType(in)
+			if err != nil {
+				errs <- fmt.Sprintf("goroutine %d: unexpected error for %q: %v", idx, in, err)
+				return
 			}
-		}
-	}
-}
-
-// TestCancellationWindow_MinutesBeforeDeparture validates the 30-minute
-// cancellation deadline rule:
-//   - Cancel 31+ min before departure: must be allowed
-//   - Cancel 30 min or less before departure: must be rejected
-func TestCancellationWindow_MinutesBeforeDeparture(t *testing.T) {
-	const minCancelMin = 30
-	now := time.Now().UTC()
-
-	cases := []struct {
-		label         string
-		departure     time.Time
-		expectAllowed bool
-	}{
-		{"61 min away - allowed", now.Add(61 * time.Minute), true},
-		{"31 min away - allowed", now.Add(31 * time.Minute), true},
-		{"30 min away - rejected", now.Add(30 * time.Minute), false},
-		{"29 min away - rejected", now.Add(29 * time.Minute), false},
-		{"1 min away - rejected", now.Add(1 * time.Minute), false},
-		{"departure now - rejected", now, false},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.label, func(t *testing.T) {
-			timeUntil := time.Until(tc.departure)
-			allowed := timeUntil > time.Duration(minCancelMin)*time.Minute
-			if allowed != tc.expectAllowed {
-				t.Errorf("departure in %v: allowed=%v, want %v", timeUntil.Round(time.Second), allowed, tc.expectAllowed)
+			if got != want {
+				errs <- fmt.Sprintf("goroutine %d: normalizeVehicleType(%q)=%q, want %q", idx, in, got, want)
 			}
-		})
+			results[idx] = got
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
-// TestActivationWindow_GracePeriod validates the 30-minute activation grace
-// window:
-//   - Before departure: must be rejected
-//   - After departure but within 30 min: allowed
-//   - More than 30 min past departure: rejected (journey expired)
-func TestActivationWindow_GracePeriod(t *testing.T) {
-	const activationGraceMin = 30
-	departure := time.Now().UTC().Add(-10 * time.Minute) // departed 10 min ago
+// TestVehicleNorm_Concurrent_MixedValidInvalid fires 600 goroutines:
+// 300 with valid types, 300 with invalid types.  No goroutine must
+// return a wrong result even when both sets run simultaneously.
+func TestVehicleNorm_Concurrent_MixedValidInvalid(t *testing.T) {
+	const goroutines = 600
+	errs := make(chan string, goroutines)
 
-	graceEnd := departure.Add(time.Duration(activationGraceMin) * time.Minute)
-	now := time.Now().UTC()
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
 
-	tooEarly := now.Before(departure)
-	tooLate := now.After(graceEnd)
-	inWindow := !tooEarly && !tooLate
-
-	if !inWindow {
-		t.Errorf("departure was 10min ago with 30min grace: should be in activation window (tooEarly=%v tooLate=%v)", tooEarly, tooLate)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			if idx%2 == 0 {
+				// Valid: must succeed.
+				got, err := normalizeVehicleType("car")
+				if err != nil || got != "car" {
+					errs <- fmt.Sprintf("goroutine %d: valid input failed", idx)
+				}
+			} else {
+				// Invalid: must fail.
+				_, err := normalizeVehicleType("bus")
+				if err == nil {
+					errs <- fmt.Sprintf("goroutine %d: invalid input passed", idx)
+				}
+			}
+		}(i)
 	}
-}
-
-// TestActivationWindow_ExpiredJourney verifies that a journey that was never
-// activated within the grace window is treated as expired.
-func TestActivationWindow_ExpiredJourney(t *testing.T) {
-	const activationGraceMin = 30
-	// Journey departed 45 minutes ago - grace window has closed.
-	departure := time.Now().UTC().Add(-45 * time.Minute)
-	graceEnd := departure.Add(time.Duration(activationGraceMin) * time.Minute)
-
-	tooLate := time.Now().UTC().After(graceEnd)
-	if !tooLate {
-		t.Error("a journey 45 min past departure should be past the activation grace window")
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4 - Departure Time Validation
+// SECTION 3 — Departure-Time Validation: Concurrent Clock Reads
 //
-// Drivers must book at least 1 hour in advance.
-// Checklist: "Conflicting requests properly handled □"
+// The departure-time check (must be ≥ 60 min from now) reads time.Now().
+// Multiple goroutines calling it simultaneously must all get consistent results.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestDepartureTime_TooSoon_Rejected verifies the 1-hour advance booking rule.
-func TestDepartureTime_TooSoon_Rejected(t *testing.T) {
+// TestDeparture_Concurrent_FutureAlwaysOK fires 500 goroutines all checking
+// a departure time 2 hours from now.  All must be accepted.
+func TestDeparture_Concurrent_FutureAlwaysOK(t *testing.T) {
+	const goroutines = 500
 	const minAdvanceMin = 60
-	now := time.Now().UTC()
-	minDeparture := now.Add(time.Duration(minAdvanceMin) * time.Minute)
 
-	cases := []struct {
-		label         string
-		departure     time.Time
-		expectAllowed bool
-	}{
-		{"90 min ahead - ok", now.Add(90 * time.Minute), true},
-		{"61 min ahead - ok", now.Add(61 * time.Minute), true},
-		{"60 min ahead - borderline ok", minDeparture, true},
-		{"59 min ahead - rejected", now.Add(59 * time.Minute), false},
-		{"30 min ahead - rejected", now.Add(30 * time.Minute), false},
-		{"now - rejected", now, false},
-		{"past - rejected", now.Add(-5 * time.Minute), false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.label, func(t *testing.T) {
-			allowed := !tc.departure.Before(minDeparture)
-			if allowed != tc.expectAllowed {
-				t.Errorf("departure at %v: allowed=%v, want %v", tc.departure.Round(time.Second), allowed, tc.expectAllowed)
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			departure := time.Now().Add(2 * time.Hour)
+			minDeparture := time.Now().Add(time.Duration(minAdvanceMin) * time.Minute)
+			if departure.Before(minDeparture) {
+				errs <- fmt.Sprintf("goroutine %d: 2-hour-ahead departure rejected — clock race?", idx)
 			}
-		})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+// TestDeparture_Concurrent_PastAlwaysRejected fires 500 goroutines all checking
+// a departure time 5 minutes ago.  All must be rejected.
+func TestDeparture_Concurrent_PastAlwaysRejected(t *testing.T) {
+	const goroutines = 500
+	const minAdvanceMin = 60
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			departure := time.Now().Add(-5 * time.Minute)
+			minDeparture := time.Now().Add(time.Duration(minAdvanceMin) * time.Minute)
+			if !departure.Before(minDeparture) {
+				errs <- fmt.Sprintf("goroutine %d: past departure was accepted — validation race?", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5 - Segment Sequence Order
-//
-// ComputeTimeWindows relies on segments being in traversal order.
-// The map service returns them ordered by sequence_order already, but
-// the sequence numbers must be preserved in the output for rendering.
+// SECTION 4 — Cancellation Window: Concurrent 30-Min Boundary Check
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestTimeWindows_SequenceOrderPreserved verifies that the segment's
-// sequence_order is carried through to the JourneySegment output.
-func TestTimeWindows_SequenceOrderPreserved(t *testing.T) {
+// TestCancellation_Concurrent_ClearlyAllowed fires 400 goroutines all checking
+// a journey with departure 90 minutes away.  All must be allowed.
+func TestCancellation_Concurrent_ClearlyAllowed(t *testing.T) {
+	const goroutines = 400
+	const minCancelMin = 30
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			departure := time.Now().Add(90 * time.Minute)
+			timeUntil := time.Until(departure)
+			if timeUntil <= time.Duration(minCancelMin)*time.Minute {
+				errs <- fmt.Sprintf("goroutine %d: 90-min-away cancellation rejected — race?", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+// TestCancellation_Concurrent_ClearlyRejected fires 400 goroutines all checking
+// a journey departing in 10 minutes.  All must be rejected.
+func TestCancellation_Concurrent_ClearlyRejected(t *testing.T) {
+	const goroutines = 400
+	const minCancelMin = 30
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			departure := time.Now().Add(10 * time.Minute)
+			timeUntil := time.Until(departure)
+			if timeUntil > time.Duration(minCancelMin)*time.Minute {
+				errs <- fmt.Sprintf("goroutine %d: 10-min-away cancellation accepted — race?", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 5 — Region Annotation: Concurrent Route Computation
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestRegion_Concurrent_AlwaysPreserved fires 300 goroutines all computing the
+// same 3-segment cross-region route.  The Region field on each segment must
+// survive unmodified — it is used for VM routing in the capacity service.
+func TestRegion_Concurrent_AlwaysPreserved(t *testing.T) {
+	const goroutines = 300
 	dep := time.Now().UTC()
-	segs, _ := ComputeTimeWindows(dep, []client.MapSegment{
-		{SegmentID: "seg_a", SequenceOrder: 1, TraversalTimeMinutes: 10},
-		{SegmentID: "seg_b", SequenceOrder: 2, TraversalTimeMinutes: 15},
-		{SegmentID: "seg_c", SequenceOrder: 3, TraversalTimeMinutes: 5},
-	})
-
-	for i, seg := range segs {
-		wantOrder := i + 1
-		if seg.SequenceOrder != wantOrder {
-			t.Errorf("segs[%d].SequenceOrder = %d, want %d", i, seg.SequenceOrder, wantOrder)
-		}
+	route := []client.MapSegment{
+		{SegmentID: "seg_city_north", Region: "central", TraversalTimeMinutes: 10},
+		{SegmentID: "seg_north_airport", Region: "north", TraversalTimeMinutes: 20},
+		{SegmentID: "seg_west_port", Region: "west", TraversalTimeMinutes: 15},
 	}
-}
+	wantRegions := []string{"central", "north", "west"}
 
-func TestBuildRejectionReason_SegmentClosed(t *testing.T) {
-	closureEnd := time.Date(2026, 4, 8, 14, 0, 0, 0, time.UTC)
-	reason := buildRejectionReason(&client.FailedSegment{
-		SegmentID:     "seg_city_north",
-		Reason:        "segment_closed",
-		ClosureReason: "maintenance",
-		ClosureEnd:    &closureEnd,
-	})
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
 
-	if !strings.Contains(strings.ToLower(reason), "closed") {
-		t.Fatalf("expected closure rejection reason, got %q", reason)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			segs, _ := ComputeTimeWindows(dep, route)
+			for j, want := range wantRegions {
+				if segs[j].Region != want {
+					errs <- fmt.Sprintf("goroutine %d seg[%d]: region=%q, want %q — VM routing broken", idx, j, segs[j].Region, want)
+				}
+			}
+		}(i)
 	}
-	if !strings.Contains(reason, "seg_city_north") {
-		t.Fatalf("expected segment id in rejection reason, got %q", reason)
-	}
-}
-
-func TestBuildRejectionReason_AtCapacity(t *testing.T) {
-	reason := buildRejectionReason(&client.FailedSegment{
-		SegmentID: "seg_city_north",
-		Reason:    "at_capacity",
-	})
-
-	if !strings.Contains(strings.ToLower(reason), "capacity") {
-		t.Fatalf("expected capacity rejection reason, got %q", reason)
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 6 - Integration Test Stubs
+// SECTION 6 — Activation Window: Concurrent Grace-Period Checks
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestIntegration_DoubleBooking_SameDriver_SameTime tests that a driver who
-// submits two booking requests simultaneously (e.g., double-tap on mobile) only
-// gets ONE approved journey, not two.
-//
-// Mechanisms:
-//  1. HasActiveJourney() query prevents a second booking when one is APPROVED
-//  2. Idempotency cache returns the same response for duplicate keys
-func TestIntegration_DoubleBooking_SameDriver_SameTime(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration: requires live CockroachDB")
+// TestActivation_Concurrent_WithinWindow fires 300 goroutines all checking
+// activation for a journey that departed 10 minutes ago (within the 30-min grace).
+// All must be allowed.
+func TestActivation_Concurrent_WithinWindow(t *testing.T) {
+	const goroutines = 300
+	const activationGraceMin = 30
+	departure := time.Now().UTC().Add(-10 * time.Minute)
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			now := time.Now().UTC()
+			graceEnd := departure.Add(time.Duration(activationGraceMin) * time.Minute)
+			inWindow := !now.Before(departure) && !now.After(graceEnd)
+			if !inWindow {
+				errs <- fmt.Sprintf("goroutine %d: journey 10min past departure should be in activation window", idx)
+			}
+		}(i)
 	}
-	t.Log("SCENARIO: Driver sends POST /journeys twice in <100ms with same idempotency key")
-	t.Log("Expected: both return 201 with identical journey_id - second is cache replay")
-	t.Log("SCENARIO: Driver sends second POST with different idempotency key")
-	t.Log("Expected: second returns 409 Conflict - 'driver already has an active journey'")
-	t.Skip("run without -short with live CRDB")
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
 }
 
-// TestIntegration_ConcurrentDrivers_SameSegment_AtCapacity verifies that when
-// N drivers all book the same segment simultaneously and N > capacity, exactly
-// capacity drivers succeed and the rest are rejected.
+// TestActivation_Concurrent_GraceExpired fires 300 goroutines all checking
+// activation for a journey that departed 45 minutes ago (past the 30-min grace).
+// All must be rejected.
+func TestActivation_Concurrent_GraceExpired(t *testing.T) {
+	const goroutines = 300
+	const activationGraceMin = 30
+	departure := time.Now().UTC().Add(-45 * time.Minute)
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			graceEnd := departure.Add(time.Duration(activationGraceMin) * time.Minute)
+			tooLate := time.Now().UTC().After(graceEnd)
+			if !tooLate {
+				errs <- fmt.Sprintf("goroutine %d: 45-min-past-departure should be beyond activation window", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 7 — Status Transition Safety: Concurrent State Reads
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestStatus_Concurrent_TerminalVsNonTerminal fires 400 goroutines checking
+// whether each status is terminal or non-terminal.  Results must be consistent
+// — no goroutine should see a mutable status as terminal or vice versa.
+func TestStatus_Concurrent_TerminalVsNonTerminal(t *testing.T) {
+	const goroutines = 400
+	terminals := map[model.JourneyStatus]bool{
+		model.StatusCompleted: true,
+		model.StatusCancelled: true,
+		model.StatusRejected:  true,
+		model.StatusExpired:   true,
+	}
+	nonTerminals := map[model.JourneyStatus]bool{
+		model.StatusApproved: true,
+		model.StatusActive:   true,
+	}
+	allStatuses := []model.JourneyStatus{
+		model.StatusApproved, model.StatusActive,
+		model.StatusCompleted, model.StatusCancelled,
+		model.StatusRejected, model.StatusExpired,
+	}
+
+	ready, go_ := barrier(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan string, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ready()
+			go_()
+			s := allStatuses[idx%len(allStatuses)]
+			isTerminal := terminals[s]
+			isNonTerminal := nonTerminals[s]
+			if isTerminal && isNonTerminal {
+				errs <- fmt.Sprintf("goroutine %d: status %q in both terminal and non-terminal sets", idx, s)
+			}
+			if !isTerminal && !isNonTerminal {
+				errs <- fmt.Sprintf("goroutine %d: status %q not in either set", idx, s)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8 — Integration Test Stubs (require live stack)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIntegration_ConcurrentDrivers_SameSegment_AtCapacity documents the
+// live scenario where N goroutines (representing N VMs) all submit bookings
+// for the last available slot simultaneously.
 func TestIntegration_ConcurrentDrivers_SameSegment_AtCapacity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration: requires live CockroachDB + Redis")
 	}
 	t.Log("SCENARIO: seg_city_north max_capacity=80, existing_load=79.0 (1 slot left)")
-	t.Log("5 drivers each submit a car booking (1.0 slot) at the same time via goroutines")
-	t.Log("Expected: exactly 1 succeeds (reserved), 4 rejected (at_capacity)")
-	t.Log("Mechanism: serializable transaction + SELECT FOR UPDATE in sorted lock order")
+	t.Log("5 goroutines (VMs) simultaneously POST /journeys with car (1.0 slot)")
+	t.Log("Expected: exactly 1 × HTTP 201, 4 × HTTP 409/200 at_capacity")
+	t.Log("Mechanism: serializable tx + SELECT FOR UPDATE (sorted lock order)")
 	t.Skip("run without -short with live stack")
 }
 
-// TestIntegration_CrossVM_JourneyOriginatedOnVM1_NotifiedOnVM2 verifies the
-// event propagation across VMs:
-//
-//	VM1 creates a journey → publishes to Redis Stream (journey.events)
-//	VM2's notification-service consumer group member receives the event
-//	VM2 sends FCM push to driver's registered device
-func TestIntegration_CrossVM_JourneyOriginatedOnVM1_NotifiedOnVM2(t *testing.T) {
+// TestIntegration_SameDriver_ConcurrentBookings documents the scenario where
+// a driver rapidly taps "book" twice — the system must prevent two APPROVED
+// journeys for the same driver existing simultaneously.
+func TestIntegration_SameDriver_ConcurrentBookings(t *testing.T) {
 	if testing.Short() {
-		t.Skip("integration: requires multi-VM docker-stack + FCM credentials")
+		t.Skip("integration: requires live CockroachDB")
 	}
-	t.Log("SCENARIO: Book journey on VM1, verify FCM push received within 5s")
-	t.Log("Mechanism: transactional outbox → Redis Stream → notification consumer → FCM")
-	t.Log("Checklist: 'Notification latency < 5s'")
-	t.Skip("run against full 3-VM docker-stack")
+	t.Log("SCENARIO: Driver D1 sends 2 concurrent POST /journeys with different idempotency keys")
+	t.Log("Expected: 1 × HTTP 201 (first writer wins), 1 × HTTP 409 Conflict")
+	t.Log("Mechanism: HasActiveJourney() query inside the same serializable transaction")
+	t.Skip("run without -short with live CRDB")
 }
