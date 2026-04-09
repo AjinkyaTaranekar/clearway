@@ -125,7 +125,8 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 			INSERT INTO journey.journey_segments (
 				journey_id, segment_id, segment_name, sequence_order,
 				time_window_start, time_window_end, traversal_minutes, region
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (journey_id, segment_id) DO NOTHING`,
 			j.JourneyID, seg.SegmentID, seg.SegmentName, seg.SequenceOrder,
 			seg.TimeWindowStart, seg.TimeWindowEnd, seg.TraversalMinutes, seg.Region,
 		)
