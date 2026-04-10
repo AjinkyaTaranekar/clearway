@@ -76,6 +76,11 @@ type SegmentsResponse struct {
 	Segments []SegmentMetadata `json:"segments"`
 }
 
+type RouteRequest struct {
+	OriginNodeID      string `json:"origin_node_id"`
+	DestinationNodeID string `json:"destination_node_id"`
+}
+
 // RouteResponse represents the response body for a route lookup.
 type RouteResponse struct {
 	Origin                    Node           `json:"origin"`
@@ -251,8 +256,15 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 	graph := h.graph.Snapshot()
 
-	originNodeID := r.URL.Query().Get("origin_node_id")
-	destinationNodeID := r.URL.Query().Get("destination_node_id")
+	originNodeID, destinationNodeID, err := h.parseRouteRequest(r)
+	if err != nil {
+		log.Warn().
+			Str("handler", "MapHandler.GetRoute").
+			Err(err).
+			Msg("route request validation failed: invalid body")
+		response.Error(w, appErrors.BadRequest("invalid request body"), traceID)
+		return
+	}
 
 	if originNodeID == "" || destinationNodeID == "" {
 		log.Warn().
@@ -301,6 +313,19 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		Msg("get route request completed")
 
 	response.Success(w, route, traceID)
+}
+
+func (h *MapHandler) parseRouteRequest(r *http.Request) (string, string, error) {
+	if r.Method == http.MethodPost {
+		var req RouteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return "", "", err
+		}
+
+		return req.OriginNodeID, req.DestinationNodeID, nil
+	}
+
+	return r.URL.Query().Get("origin_node_id"), r.URL.Query().Get("destination_node_id"), nil
 }
 
 // ComputeRoute godoc
