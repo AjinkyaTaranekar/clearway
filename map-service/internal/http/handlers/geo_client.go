@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -14,6 +15,10 @@ import (
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/map-service/pkg/logger"
 )
+
+// ErrNominatimRateLimited is returned when Nominatim responds with HTTP 429.
+// Callers should propagate this as a 429 to the client rather than a 500.
+var ErrNominatimRateLimited = errors.New("nominatim rate limited")
 
 const (
 	defaultNominatimBaseURL = "https://nominatim.openstreetmap.org"
@@ -129,6 +134,12 @@ func (c *GeoClient) SearchPlaces(ctx context.Context, query string, limit int) (
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		requestLog.Warn().
+			Str("client", "GeoClient.SearchPlaces").
+			Msg("Nominatim rate limit reached")
+		return nil, fmt.Errorf("%w", ErrNominatimRateLimited)
+	}
 	if resp.StatusCode != http.StatusOK {
 		requestLog.Error().
 			Str("client", "GeoClient.SearchPlaces").

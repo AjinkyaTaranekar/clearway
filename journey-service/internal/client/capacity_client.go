@@ -61,19 +61,31 @@ type CapacityClient struct {
 // NewCapacityClient creates a new Capacity Service client
 func NewCapacityClient(baseURL string) *CapacityClient {
 	breaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
-		Name:        "capacity-service",
-		MaxRequests: 1,
-		Interval:    30 * time.Second,
-		Timeout:     10 * time.Second,
+		Name: "capacity-service",
+		// Allow 3 probe requests in half-open state; with only 1 probe a single
+		// slow response during recovery causes immediate re-opening.
+		MaxRequests: 3,
+		// Widen the counting window: cross-region CockroachDB writes can be
+		// transiently slow without the service being truly down.
+		Interval: 60 * time.Second,
+		// Stay open longer before probing; 10s is too short when CRDB write
+		// latency in US/APAC already saturates the 5s client timeout.
+		Timeout: 30 * time.Second,
+		// Require more consecutive failures before opening; avoids locking out
+		// all journey creation on a brief latency spike.
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
-			return counts.ConsecutiveFailures >= 5
+			return counts.ConsecutiveFailures >= 10
 		},
 	})
 
 	return &CapacityClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
+			// 15s gives cross-region CockroachDB writes (US/APAC) enough headroom.
+			// The previous 5s timeout was too tight: APAC p95 capacity latency
+			// already reached 4.7s under load, causing routine timeouts that
+			// tripped the circuit breaker and blocked all journey creation.
+			Timeout: 15 * time.Second,
 		},
 		breaker: breaker,
 	}
@@ -88,68 +100,90 @@ func isCapacityCircuitOpen(err error) bool {
 // The Capacity Service responds with:
 //   - HTTP 201 + {"status":"reserved","reservation_id":...} on success
 //   - HTTP 200 + {"status":"failed","failed_segment":...} when a segment is at capacity
-//   - HTTP 4xx/5xx on bad request or internal error
+//   - HTTP 4xx on bad request
+//   - HTTP 5xx on internal / DB error (not counted toward circuit breaker)
 //
 // Returns an error if the service is unreachable or returns an unexpected
 // response - no silent fallback is performed.  Masking a capacity-service
 // failure with a fake approval defeats the core double-booking prevention
 // guarantee of the system.
+//
+// Circuit-breaker policy: only network-level failures (timeouts, connection
+// refused) trip the breaker.  HTTP 5xx responses mean the capacity-service is
+// reachable but temporarily overloaded (e.g. CockroachDB query cancellations
+// under cross-region load).  Counting those as circuit failures caused the
+// breaker to stay open permanently in US/APAC during load tests.
 func (c *CapacityClient) Reserve(ctx context.Context, req ReserveRequest) (*ReserveResponse, error) {
-	reserveCall := func() (*ReserveResponse, error) {
+	// networkCall wraps only the HTTP round-trip. It returns an error only on
+	// connection failures so the circuit breaker counts solely those events.
+	// HTTP 5xx from the capacity service is returned as a non-nil status code
+	// without an error, keeping it out of the breaker's failure count.
+	type callResult struct {
+		resp       *ReserveResponse
+		httpStatus int // non-zero only for unexpected HTTP status codes
+	}
+
+	networkCall := func() (callResult, error) {
 		body, err := json.Marshal(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal reserve request: %w", err)
+			return callResult{}, fmt.Errorf("failed to marshal reserve request: %w", err)
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 			c.baseURL+"/api/v1/capacity/reserve", bytes.NewReader(body))
 		if err != nil {
-			return nil, fmt.Errorf("capacity service: build request: %w", err)
+			return callResult{}, fmt.Errorf("capacity service: build request: %w", err)
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
-			return nil, fmt.Errorf("capacity service unreachable: %w", err)
+			// Network error: counts toward the circuit breaker.
+			return callResult{}, fmt.Errorf("capacity service unreachable: %w", err)
 		}
 		defer resp.Body.Close()
 
-		// 200 = capacity failure (valid business outcome) and 201 = reserved.
-		// Anything else is an unexpected error from the service.
+		// 200 = capacity failure (valid business outcome), 201 = reserved.
+		// 5xx means the capacity service is up but its DB is struggling —
+		// return the status without an error so the breaker is not tripped.
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			return nil, fmt.Errorf("capacity service error: unexpected status %d", resp.StatusCode)
+			return callResult{httpStatus: resp.StatusCode}, nil
 		}
 
 		var result ReserveResponse
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, fmt.Errorf("capacity service: decode response: %w", err)
+			return callResult{}, fmt.Errorf("capacity service: decode response: %w", err)
 		}
-
 		if result.Status == "" {
-			return nil, fmt.Errorf("capacity service: missing status field in response")
+			return callResult{}, fmt.Errorf("capacity service: missing status field in response")
 		}
-
-		return &result, nil
+		return callResult{resp: &result}, nil
 	}
 
+	var cr callResult
 	if c.breaker == nil {
-		return reserveCall()
-	}
-
-	value, err := c.breaker.Execute(func() (interface{}, error) {
-		return reserveCall()
-	})
-	if err != nil {
-		if isCapacityCircuitOpen(err) {
-			return nil, fmt.Errorf("capacity service circuit open")
+		var err error
+		cr, err = networkCall()
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+	} else {
+		raw, err := c.breaker.Execute(func() (interface{}, error) {
+			r, e := networkCall()
+			return r, e
+		})
+		if err != nil {
+			if isCapacityCircuitOpen(err) {
+				return nil, fmt.Errorf("capacity service circuit open")
+			}
+			return nil, err
+		}
+		cr = raw.(callResult)
 	}
 
-	result, ok := value.(*ReserveResponse)
-	if !ok || result == nil {
-		return nil, fmt.Errorf("capacity service: unexpected breaker result type %T", value)
+	if cr.httpStatus != 0 {
+		return nil, fmt.Errorf("capacity service error: unexpected status %d", cr.httpStatus)
 	}
 
-	return result, nil
+	return cr.resp, nil
 }

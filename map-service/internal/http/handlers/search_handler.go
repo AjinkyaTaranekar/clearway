@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -67,6 +68,14 @@ func (h *SearchHandler) SearchPlaces(w http.ResponseWriter, r *http.Request) {
 
 	places, err := h.geo.SearchPlaces(r.Context(), query, limit)
 	if err != nil {
+		if errors.Is(err, ErrNominatimRateLimited) {
+			log.Warn().
+				Str("handler", "SearchHandler.SearchPlaces").
+				Str("query", query).
+				Msg("Nominatim rate limited; propagating 429 to client")
+			response.Error(w, appErrors.RateLimited("search rate limited — please retry after a moment"), traceID)
+			return
+		}
 		log.Error().
 			Str("handler", "SearchHandler.SearchPlaces").
 			Err(err).

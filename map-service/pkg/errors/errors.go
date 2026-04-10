@@ -127,6 +127,15 @@ func ExternalAPIError(message string, err error) *AppError {
 	}
 }
 
+// RateLimited creates a rate-limited error (HTTP 429)
+func RateLimited(message string) *AppError {
+	return &AppError{
+		Code:    "RATE_LIMITED",
+		Message: message,
+		Status:  http.StatusTooManyRequests,
+	}
+}
+
 // AccountLocked creates an account locked error
 func AccountLocked(message string) *AppError {
 	return &AppError{
