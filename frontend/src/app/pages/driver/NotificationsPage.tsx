@@ -1,11 +1,16 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, CheckCheck, ArrowRight } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 
 export default function NotificationsPage() {
-  const { notifications, markNotificationRead, markAllRead, unreadCount, user } = useApp();
+  const { notifications, markNotificationRead, markAllRead, unreadCount, refreshNotifications, user } = useApp();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    void refreshNotifications();
+  }, [refreshNotifications]);
 
   const getIcon = (type: string) => {
     if (type === 'success') return <CheckCircle2 size={16} color="#2E7D32" />;

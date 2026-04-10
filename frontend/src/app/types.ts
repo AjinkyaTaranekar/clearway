@@ -3,16 +3,26 @@ export type VehicleType = 'Car' | 'Van' | 'Motorcycle' | 'HGV';
 export type TrafficLevel = 'low' | 'medium' | 'high' | 'critical';
 export type Region = 'North' | 'South' | 'East' | 'West' | 'Central';
 
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
+
 export interface RouteSegment {
   id: string;
   name: string;
   occupancy: number;
+  occupancyKnown?: boolean;
   level: TrafficLevel;
   sequenceOrder?: number;
   traversalMinutes?: number;
   timeWindowStart?: string;
   timeWindowEnd?: string;
   region?: string;
+  fromLat?: number;
+  fromLng?: number;
+  toLat?: number;
+  toLng?: number;
 }
 
 export interface TimelineEvent {
@@ -36,6 +46,13 @@ export interface Journey {
   region: Region;
   rejectionReason?: string;
   segments: RouteSegment[];
+  originCoords?: GeoPoint;
+  destinationCoords?: GeoPoint;
+  originPlaceId?: string;
+  destinationPlaceId?: string;
+  totalDistanceKm?: number;
+  totalDurationMinutes?: number;
+  mapPath?: GeoPoint[];
   timeline: TimelineEvent[];
   createdAt: string;
   updatedAt: string;

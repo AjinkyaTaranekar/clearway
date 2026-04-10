@@ -3,11 +3,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/journey-service/internal/event"
@@ -65,10 +67,16 @@ func isPQUniqueViolation(err error) bool {
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
-// Create inserts a new journey, its segments, and an outbox event in a single
-// atomic transaction (F-03). eventID, eventType, and payload are the
-// pre-marshalled Envelope bytes from event.MarshalEnvelope.
-func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segments []model.JourneySegment, eventID, eventType string, payload []byte) error {
+// Create inserts a new journey, its segments, outbox event, and timeline events
+// in a single atomic transaction.
+func (r *JourneyRepository) Create(
+	ctx context.Context,
+	j *model.Journey,
+	segments []model.JourneySegment,
+	eventID, eventType string,
+	payload []byte,
+	journeyEvents []model.JourneyEventInput,
+) error {
 	log := logWithTrace(ctx)
 	log.Info().
 		Str("repository", "JourneyRepository.Create").
@@ -93,13 +101,17 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 		INSERT INTO journey.journeys (
 			journey_id, driver_id, idempotency_key,
 			origin_lat, origin_lng, dest_lat, dest_lng,
+			origin_place_id, dest_place_id,
 			departure_time, estimated_arrival, vehicle_type,
+			total_distance_km, total_duration_minutes,
 			status, rejection_reason, reservation_id,
 			version, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		j.JourneyID, j.DriverID, j.IdempotencyKey,
 		j.Origin.Lat, j.Origin.Lng, j.Destination.Lat, j.Destination.Lng,
+		j.OriginPlaceID, j.DestinationPlaceID,
 		j.DepartureTime, j.EstimatedArrival, j.VehicleType,
+		j.TotalDistanceKm, j.TotalDurationMinutes,
 		string(j.Status), j.RejectionReason, j.ReservationID,
 		j.Version, j.CreatedAt, j.UpdatedAt,
 	)
@@ -124,11 +136,13 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO journey.journey_segments (
 				journey_id, segment_id, segment_name, sequence_order,
-				time_window_start, time_window_end, traversal_minutes, region
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+				time_window_start, time_window_end, traversal_minutes, region,
+				from_lat, from_lng, to_lat, to_lng
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 			ON CONFLICT (journey_id, segment_id) DO NOTHING`,
 			j.JourneyID, seg.SegmentID, seg.SegmentName, seg.SequenceOrder,
 			seg.TimeWindowStart, seg.TimeWindowEnd, seg.TraversalMinutes, seg.Region,
+			seg.FromLat, seg.FromLng, seg.ToLat, seg.ToLng,
 		)
 		if err != nil {
 			log.Error().
@@ -150,6 +164,15 @@ func (r *JourneyRepository) Create(ctx context.Context, j *model.Journey, segmen
 			Str("journey_id", j.JourneyID).
 			Msg("failed to enqueue outbox event in create transaction")
 		return apperrors.DatabaseError("failed to enqueue outbox event", err)
+	}
+
+	if err := r.insertJourneyEventsInTx(ctx, tx, journeyEvents); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.Create").
+			Err(err).
+			Str("journey_id", j.JourneyID).
+			Msg("failed to insert journey events in create transaction")
+		return apperrors.DatabaseError("failed to insert journey events", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -177,12 +200,19 @@ func (r *JourneyRepository) GetByID(ctx context.Context, journeyID string) (*mod
 		Msg("querying journey by id")
 
 	j := &model.Journey{}
-	var rejReason, reservationID sql.NullString
+	var (
+		rejReason, reservationID          sql.NullString
+		originPlaceID, destinationPlaceID sql.NullString
+		totalDistanceKm                   sql.NullFloat64
+		totalDurationMinutes              sql.NullInt64
+	)
 
 	err := r.readDB().QueryRowContext(ctx, `
 		SELECT journey_id, driver_id, idempotency_key,
 		       origin_lat, origin_lng, dest_lat, dest_lng,
+		       origin_place_id, dest_place_id,
 		       departure_time, estimated_arrival, vehicle_type,
+		       total_distance_km, total_duration_minutes,
 		       status, rejection_reason, reservation_id,
 		       version, created_at, updated_at,
 		       cancelled_at, activated_at, completed_at, expired_at
@@ -190,7 +220,9 @@ func (r *JourneyRepository) GetByID(ctx context.Context, journeyID string) (*mod
 		WHERE journey_id = $1`, journeyID).Scan(
 		&j.JourneyID, &j.DriverID, &j.IdempotencyKey,
 		&j.Origin.Lat, &j.Origin.Lng, &j.Destination.Lat, &j.Destination.Lng,
+		&originPlaceID, &destinationPlaceID,
 		&j.DepartureTime, &j.EstimatedArrival, &j.VehicleType,
+		&totalDistanceKm, &totalDurationMinutes,
 		&j.Status, &rejReason, &reservationID,
 		&j.Version, &j.CreatedAt, &j.UpdatedAt,
 		&j.CancelledAt, &j.ActivatedAt, &j.CompletedAt, &j.ExpiredAt,
@@ -215,6 +247,18 @@ func (r *JourneyRepository) GetByID(ctx context.Context, journeyID string) (*mod
 	}
 	if reservationID.Valid {
 		j.ReservationID = reservationID.String
+	}
+	if originPlaceID.Valid {
+		j.OriginPlaceID = originPlaceID.String
+	}
+	if destinationPlaceID.Valid {
+		j.DestinationPlaceID = destinationPlaceID.String
+	}
+	if totalDistanceKm.Valid {
+		j.TotalDistanceKm = totalDistanceKm.Float64
+	}
+	if totalDurationMinutes.Valid {
+		j.TotalDurationMinutes = int(totalDurationMinutes.Int64)
 	}
 
 	segments, err := r.getSegments(ctx, journeyID)
@@ -245,7 +289,8 @@ func (r *JourneyRepository) getSegments(ctx context.Context, journeyID string) (
 
 	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT segment_id, segment_name, sequence_order,
-		       time_window_start, time_window_end, traversal_minutes, region
+		       time_window_start, time_window_end, traversal_minutes, region,
+		       from_lat, from_lng, to_lat, to_lng
 		FROM journey.journey_segments
 		WHERE journey_id = $1
 		ORDER BY sequence_order`, journeyID)
@@ -262,14 +307,32 @@ func (r *JourneyRepository) getSegments(ctx context.Context, journeyID string) (
 	var segments []model.JourneySegment
 	for rows.Next() {
 		var s model.JourneySegment
+		var fromLat, fromLng, toLat, toLng sql.NullFloat64
 		if err := rows.Scan(&s.SegmentID, &s.SegmentName, &s.SequenceOrder,
-			&s.TimeWindowStart, &s.TimeWindowEnd, &s.TraversalMinutes, &s.Region); err != nil {
+			&s.TimeWindowStart, &s.TimeWindowEnd, &s.TraversalMinutes, &s.Region,
+			&fromLat, &fromLng, &toLat, &toLng); err != nil {
 			log.Error().
 				Str("repository", "JourneyRepository.getSegments").
 				Err(err).
 				Str("journey_id", journeyID).
 				Msg("failed to scan journey segment")
 			return nil, apperrors.DatabaseError("failed to scan segment", err)
+		}
+		if fromLat.Valid {
+			v := fromLat.Float64
+			s.FromLat = &v
+		}
+		if fromLng.Valid {
+			v := fromLng.Float64
+			s.FromLng = &v
+		}
+		if toLat.Valid {
+			v := toLat.Float64
+			s.ToLat = &v
+		}
+		if toLng.Valid {
+			v := toLng.Float64
+			s.ToLng = &v
 		}
 		segments = append(segments, s)
 	}
@@ -332,7 +395,9 @@ func (r *JourneyRepository) ListByDriverID(ctx context.Context, driverID, status
 	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT journey_id, driver_id, idempotency_key,
 		       origin_lat, origin_lng, dest_lat, dest_lng,
+		       origin_place_id, dest_place_id,
 		       departure_time, estimated_arrival, vehicle_type,
+		       total_distance_km, total_duration_minutes,
 		       status, rejection_reason, reservation_id,
 		       version, created_at, updated_at,
 		       cancelled_at, activated_at, completed_at, expired_at
@@ -419,7 +484,9 @@ func (r *JourneyRepository) AdminList(ctx context.Context, statusFilter, driverI
 	rows, err := r.readDB().QueryContext(ctx, `
 		SELECT journey_id, driver_id, idempotency_key,
 		       origin_lat, origin_lng, dest_lat, dest_lng,
+		       origin_place_id, dest_place_id,
 		       departure_time, estimated_arrival, vehicle_type,
+		       total_distance_km, total_duration_minutes,
 		       status, rejection_reason, reservation_id,
 		       version, created_at, updated_at,
 		       cancelled_at, activated_at, completed_at, expired_at
@@ -462,11 +529,18 @@ func (r *JourneyRepository) scanJourneys(ctx context.Context, rows *sql.Rows, to
 	var journeys []model.Journey
 	for rows.Next() {
 		var j model.Journey
-		var rejReason, reservationID sql.NullString
+		var (
+			rejReason, reservationID          sql.NullString
+			originPlaceID, destinationPlaceID sql.NullString
+			totalDistanceKm                   sql.NullFloat64
+			totalDurationMinutes              sql.NullInt64
+		)
 		if err := rows.Scan(
 			&j.JourneyID, &j.DriverID, &j.IdempotencyKey,
 			&j.Origin.Lat, &j.Origin.Lng, &j.Destination.Lat, &j.Destination.Lng,
+			&originPlaceID, &destinationPlaceID,
 			&j.DepartureTime, &j.EstimatedArrival, &j.VehicleType,
+			&totalDistanceKm, &totalDurationMinutes,
 			&j.Status, &rejReason, &reservationID,
 			&j.Version, &j.CreatedAt, &j.UpdatedAt,
 			&j.CancelledAt, &j.ActivatedAt, &j.CompletedAt, &j.ExpiredAt,
@@ -482,6 +556,18 @@ func (r *JourneyRepository) scanJourneys(ctx context.Context, rows *sql.Rows, to
 		}
 		if reservationID.Valid {
 			j.ReservationID = reservationID.String
+		}
+		if originPlaceID.Valid {
+			j.OriginPlaceID = originPlaceID.String
+		}
+		if destinationPlaceID.Valid {
+			j.DestinationPlaceID = destinationPlaceID.String
+		}
+		if totalDistanceKm.Valid {
+			j.TotalDistanceKm = totalDistanceKm.Float64
+		}
+		if totalDurationMinutes.Valid {
+			j.TotalDurationMinutes = int(totalDurationMinutes.Int64)
 		}
 		journeys = append(journeys, j)
 	}
@@ -685,6 +771,49 @@ func (r *JourneyRepository) insertAdminActionInTx(ctx context.Context, tx *sql.T
 	return err
 }
 
+// insertJourneyEventInTx writes a single durable journey event in the same
+// transaction as status changes/outbox writes.
+func (r *JourneyRepository) insertJourneyEventInTx(ctx context.Context, tx *sql.Tx, ev model.JourneyEventInput) error {
+	if ev.EventType == "" {
+		return nil
+	}
+	if ev.EventID == "" {
+		ev.EventID = uuid.NewString()
+	}
+	metadata := ev.Metadata
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO journey.journey_events (
+			event_id, journey_id, event_type, actor_type, actor_id, note, metadata
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (event_id) DO NOTHING`,
+		ev.EventID,
+		ev.JourneyID,
+		ev.EventType,
+		ev.ActorType,
+		ev.ActorID,
+		ev.Note,
+		metadataJSON,
+	)
+	return err
+}
+
+func (r *JourneyRepository) insertJourneyEventsInTx(ctx context.Context, tx *sql.Tx, events []model.JourneyEventInput) error {
+	for _, ev := range events {
+		if err := r.insertJourneyEventInTx(ctx, tx, ev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // UpdateStatusWithEvent updates a journey's status and atomically enqueues an
 // outbox event in the same DB transaction.  This guarantees that the event is
 // durable even if the process crashes before the OutboxRelay can publish it.
@@ -697,6 +826,7 @@ func (r *JourneyRepository) UpdateStatusWithEvent(
 	extra map[string]interface{},
 	eventID, eventType string,
 	payload []byte,
+	journeyEvent model.JourneyEventInput,
 ) error {
 	log := logWithTrace(ctx)
 	log.Info().
@@ -755,6 +885,20 @@ func (r *JourneyRepository) UpdateStatusWithEvent(
 		return apperrors.DatabaseError("failed to enqueue outbox event", err)
 	}
 
+	if journeyEvent.JourneyID == "" {
+		journeyEvent.JourneyID = journeyID
+	}
+	if journeyEvent.EventID == "" {
+		journeyEvent.EventID = eventID
+	}
+	if err := r.insertJourneyEventInTx(ctx, tx, journeyEvent); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to insert journey event in tx")
+		return apperrors.DatabaseError("failed to insert journey event", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		log.Error().
 			Str("repository", "JourneyRepository.UpdateStatusWithEvent").
@@ -783,6 +927,7 @@ func (r *JourneyRepository) UpdateStatusWithEventAndAdminAction(
 	eventID, eventType string,
 	payload []byte,
 	adminID string,
+	journeyEvent model.JourneyEventInput,
 ) error {
 	log := logWithTrace(ctx)
 	log.Info().
@@ -840,6 +985,20 @@ func (r *JourneyRepository) UpdateStatusWithEventAndAdminAction(
 			Err(err).Str("journey_id", journeyID).
 			Msg("failed to enqueue outbox event in tx")
 		return apperrors.DatabaseError("failed to enqueue outbox event", err)
+	}
+
+	if journeyEvent.JourneyID == "" {
+		journeyEvent.JourneyID = journeyID
+	}
+	if journeyEvent.EventID == "" {
+		journeyEvent.EventID = eventID
+	}
+	if err := r.insertJourneyEventInTx(ctx, tx, journeyEvent); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.UpdateStatusWithEventAndAdminAction").
+			Err(err).Str("journey_id", journeyID).
+			Msg("failed to insert journey event in tx")
+		return apperrors.DatabaseError("failed to insert journey event", err)
 	}
 
 	if err := r.insertAdminActionInTx(ctx, tx, journeyID, "force_cancel", adminID); err != nil {
@@ -998,4 +1157,90 @@ func (r *JourneyRepository) GetExpiredJourneys(ctx context.Context) ([]model.Jou
 		Int("expired_count", len(journeys)).
 		Msg("expired journeys loaded")
 	return journeys, nil
+}
+
+// ListJourneyEvents returns journey lifecycle/audit events ordered oldest-first.
+func (r *JourneyRepository) ListJourneyEvents(ctx context.Context, journeyID string) ([]model.JourneyEvent, error) {
+	log := logWithTrace(ctx)
+	log.Debug().
+		Str("repository", "JourneyRepository.ListJourneyEvents").
+		Str("journey_id", journeyID).
+		Msg("listing journey events")
+
+	rows, err := r.readDB().QueryContext(ctx, `
+		SELECT event_id, journey_id, event_type, actor_type, actor_id, note, metadata, created_at
+		FROM journey.journey_events
+		WHERE journey_id = $1
+		ORDER BY created_at ASC, id ASC`, journeyID)
+	if err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.ListJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("failed to query journey events")
+		return nil, apperrors.DatabaseError("failed to query journey events", err)
+	}
+	defer rows.Close()
+
+	events := make([]model.JourneyEvent, 0)
+	for rows.Next() {
+		var ev model.JourneyEvent
+		var actorID, note sql.NullString
+		var metadataJSON []byte
+
+		if err := rows.Scan(
+			&ev.EventID,
+			&ev.JourneyID,
+			&ev.EventType,
+			&ev.ActorType,
+			&actorID,
+			&note,
+			&metadataJSON,
+			&ev.CreatedAt,
+		); err != nil {
+			log.Error().
+				Str("repository", "JourneyRepository.ListJourneyEvents").
+				Err(err).
+				Str("journey_id", journeyID).
+				Msg("failed to scan journey event")
+			return nil, apperrors.DatabaseError("failed to scan journey event", err)
+		}
+
+		if actorID.Valid {
+			ev.ActorID = actorID.String
+		}
+		if note.Valid {
+			ev.Note = note.String
+		}
+
+		ev.Metadata = map[string]interface{}{}
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &ev.Metadata); err != nil {
+				log.Warn().
+					Str("repository", "JourneyRepository.ListJourneyEvents").
+					Err(err).
+					Str("journey_id", journeyID).
+					Str("event_id", ev.EventID).
+					Msg("failed to unmarshal journey event metadata")
+				ev.Metadata = map[string]interface{}{}
+			}
+		}
+
+		events = append(events, ev)
+	}
+	if err := rows.Err(); err != nil {
+		log.Error().
+			Str("repository", "JourneyRepository.ListJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("row iteration failed for journey events")
+		return nil, apperrors.DatabaseError("failed to iterate journey events", err)
+	}
+
+	log.Debug().
+		Str("repository", "JourneyRepository.ListJourneyEvents").
+		Str("journey_id", journeyID).
+		Int("event_count", len(events)).
+		Msg("journey events listed")
+	return events, nil
 }

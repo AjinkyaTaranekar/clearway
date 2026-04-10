@@ -4,35 +4,27 @@ A microservices-based system for managing vehicle journey bookings across road s
 
 ## Live Deployments
 
-| Region | App | API Docs | Grafana | CockroachDB UI |
-|--------|-----|----------|---------|----------------|
-| EU (eu-west1) | [35.187.121.12](http://35.187.121.12) | [/docs/iam/](http://35.187.121.12/docs/iam/) · [/docs/journey/](http://35.187.121.12/docs/journey/) · [/docs/capacity/](http://35.187.121.12/docs/capacity/) · [/docs/map/](http://35.187.121.12/docs/map/) | [35.187.121.12:3000](http://35.187.121.12:3000) | [35.187.121.12:8080](http://35.187.121.12:8080) |
-| US (us-east1) | [34.138.242.217](http://34.138.242.217) | [/docs/iam/](http://34.138.242.217/docs/iam/) · [/docs/journey/](http://34.138.242.217/docs/journey/) · [/docs/capacity/](http://34.138.242.217/docs/capacity/) · [/docs/map/](http://34.138.242.217/docs/map/) | [34.138.242.217:3000](http://34.138.242.217:3000) | [34.138.242.217:8080](http://34.138.242.217:8080) |
-| APAC (asia-east1) | [34.80.180.64](http://34.80.180.64) | [/docs/iam/](http://34.80.180.64/docs/iam/) · [/docs/journey/](http://34.80.180.64/docs/journey/) · [/docs/capacity/](http://34.80.180.64/docs/capacity/) · [/docs/map/](http://34.80.180.64/docs/map/) | [34.80.180.64:3000](http://34.80.180.64:3000) | [34.80.180.64:8080](http://34.80.180.64:8080) |
+HTTPS is terminated at the GCP global load balancer. HTTP on port 80 redirects to HTTPS.
+
+| Region | App (HTTPS) | API Docs | Grafana | CockroachDB UI |
+|--------|-------------|----------|---------|----------------|
+| EU (europe-west1) | [35.244.162.92.nip.io](https://35.244.162.92.nip.io) | [/docs/iam/](https://35.244.162.92.nip.io/docs/iam/) · [/docs/journey/](https://35.244.162.92.nip.io/docs/journey/) · [/docs/capacity/](https://35.244.162.92.nip.io/docs/capacity/) · [/docs/map/](https://35.244.162.92.nip.io/docs/map/) | [35.187.121.12:3000](http://35.187.121.12:3000) | [35.187.121.12:8080](http://35.187.121.12:8080) |
+| US (us-east1) | [35.227.198.68.nip.io](https://35.227.198.68.nip.io) | [/docs/iam/](https://35.227.198.68.nip.io/docs/iam/) · [/docs/journey/](https://35.227.198.68.nip.io/docs/journey/) · [/docs/capacity/](https://35.227.198.68.nip.io/docs/capacity/) · [/docs/map/](https://35.227.198.68.nip.io/docs/map/) | [34.138.242.217:3000](http://34.138.242.217:3000) | [34.138.242.217:8080](http://34.138.242.217:8080) |
+| APAC (asia-east1) | [34.8.134.246.nip.io](https://34.8.134.246.nip.io) | [/docs/iam/](https://34.8.134.246.nip.io/docs/iam/) · [/docs/journey/](https://34.8.134.246.nip.io/docs/journey/) · [/docs/capacity/](https://34.8.134.246.nip.io/docs/capacity/) · [/docs/map/](https://34.8.134.246.nip.io/docs/map/) | [34.80.180.64:3000](http://34.80.180.64:3000) | [34.80.180.64:8080](http://34.80.180.64:8080) |
+
+> HTTPS uses [nip.io](https://nip.io) wildcard DNS (no real domain required) with GCP-managed TLS certificates that auto-renew. See [`docs/https-setup.md`](docs/https-setup.md) for architecture details and the upgrade path to a real domain.
 
 ---
 
 ## Swagger Base URL Per Region
 
-Each Go service now supports runtime Swagger base URL override via:
-
-```bash
-VCS_SWAGGER_PUBLIC_BASE_URL
-```
-
-Set this to the public app URL of the region so Swagger "Try it out" calls point at the correct regional gateway.
+Each Go service supports a runtime Swagger base URL override via `VCS_SWAGGER_PUBLIC_BASE_URL`. This is injected automatically during deployment — Swagger "Try it out" calls point at the correct regional HTTPS gateway.
 
 | Region | Value |
 |--------|-------|
-| EU | `http://35.187.121.12` |
-| US | `http://34.138.242.217` |
-| APAC | `http://34.80.180.64` |
-
-For Docker Swarm deploys, `docker-stack.yml` reads this via `SWAGGER_PUBLIC_BASE_URL`:
-
-```bash
-SWAGGER_PUBLIC_BASE_URL=http://35.187.121.12 docker stack deploy -c docker-stack.yml vcs
-```
+| EU | `https://35.244.162.92.nip.io` |
+| US | `https://35.227.198.68.nip.io` |
+| APAC | `https://34.8.134.246.nip.io` |
 
 For local Docker Compose, it defaults to `http://localhost`.
 
@@ -152,5 +144,6 @@ make docker-run        # runs container on port 8080
 ├── capacity-service/       # Segment capacity manager (port 8081)
 ├── map-service/            # Route & map service (port 8084)
 ├── notification-service/   # Push notification consumer (port 8085)
+├── docs/                   # Architecture and operational documentation
 └── specs/                  # Service specification documents
 ```

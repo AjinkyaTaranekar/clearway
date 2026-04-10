@@ -6,17 +6,22 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Globe,
   MapPin,
   Navigation,
   Zap,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { useApp } from '../../context/AppContext';
+import { getRegion } from '../../services/mapApi';
 
 export default function DriverDashboard() {
   const navigate = useNavigate();
   const { user, journeys, notifications } = useApp();
+  const [region, setRegion] = useState<string | null>(null);
+  useEffect(() => { getRegion().then(setRegion); }, []);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -55,13 +60,26 @@ export default function DriverDashboard() {
   return (
     <div className="p-5 lg:p-8 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#1F2421', marginBottom: '4px' }}>
-          {greeting}, {user?.name?.split(' ')[0]}.
-        </h1>
-        <p style={{ color: '#4E5953', fontSize: '0.9375rem' }}>
-          {today} - Here's your journey overview.
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#1F2421', marginBottom: '4px' }}>
+            {greeting}, {user?.name?.split(' ')[0]}.
+          </h1>
+          <p style={{ color: '#4E5953', fontSize: '0.9375rem' }}>
+            {today} - Here's your journey overview.
+          </p>
+        </div>
+        {region && (
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+            style={{ background: '#E3EEFB', border: '1px solid #B8D4F0', flexShrink: 0 }}
+          >
+            <Globe size={13} color="#1A4E80" />
+            <span style={{ color: '#1A4E80', fontSize: '0.8125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {region}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Stats row */}
@@ -150,13 +168,13 @@ export default function DriverDashboard() {
 
           <div className="flex items-center gap-4">
             <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
-              🚗 {highlightJourney.vehicleType}
+              Vehicle: {highlightJourney.vehicleType}
             </span>
             <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
-              📏 {highlightJourney.distance}
+              Distance: {highlightJourney.distance}
             </span>
             <span style={{ color: '#4E5953', fontSize: '0.875rem' }}>
-              ⏱ {highlightJourney.duration}
+              Duration: {highlightJourney.duration}
             </span>
           </div>
         </div>

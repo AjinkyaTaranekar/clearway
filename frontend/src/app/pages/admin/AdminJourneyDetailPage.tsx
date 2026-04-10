@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import JourneyRouteMapCard from '../../components/journey/JourneyRouteMapCard';
+import { getJourneyEvents } from '../../services/journeyApi';
 import { StatusChip } from '../../components/ui/StatusChip';
 import {
   ArrowLeft, CheckCircle2, XCircle, AlertCircle, Play, Clock,
-  User, Car, MapPin, Shield,
+  User, MapPin, Shield,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -18,6 +20,28 @@ export default function AdminJourneyDetailPage() {
   const [cancelled, setCancelled] = useState(false);
 
   const journey = adminJourneys.find((j) => j.id === id);
+  const [timeline, setTimeline] = useState(journey?.timeline ?? []);
+
+  useEffect(() => {
+    setTimeline(journey?.timeline ?? []);
+  }, [journey?.id, journey?.timeline]);
+
+  useEffect(() => {
+    if (!journey?.id) return;
+    let disposed = false;
+    getJourneyEvents(journey.id, true)
+      .then((events) => {
+        if (!disposed) {
+          setTimeline(events);
+        }
+      })
+      .catch(() => {
+        // Keep existing timeline when event endpoint is temporarily unavailable.
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [journey?.id, journey?.updatedAt]);
 
   if (!journey) {
     return (
@@ -59,15 +83,15 @@ export default function AdminJourneyDetailPage() {
     return '#A61E1E';
   };
 
+  const segmentColor = (known: boolean | undefined, level: string) => {
+    return known === false ? '#9AA19C' : occupancyColor(level);
+  };
+
   const timelineIconColor = (type: string) => {
     if (type === 'approved' || type === 'completed') return '#2E7D32';
     if (type === 'rejected' || type === 'cancelled') return '#B42318';
     if (type === 'active') return '#1A4E80';
     return '#4E5953';
-  };
-
-  const vehicleIcons: Record<string, string> = {
-    Car: '🚗', Van: '🚐', Motorcycle: '🏍️', HGV: '🚛',
   };
 
   const handleForceCancel = async () => {
@@ -146,7 +170,7 @@ export default function AdminJourneyDetailPage() {
           <div>
             <div style={{ color: '#4E5953', fontSize: '0.75rem', marginBottom: '2px' }}>Vehicle</div>
             <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem' }}>
-              {vehicleIcons[journey.vehicleType]} {journey.vehicleType}
+              {journey.vehicleType}
             </div>
           </div>
           <div>
@@ -207,6 +231,8 @@ export default function AdminJourneyDetailPage() {
         </div>
       </div>
 
+      <JourneyRouteMapCard journey={journey} title="Journey route map" />
+
       {/* Route segments */}
       {journey.segments.length > 0 && (
         <div className="bg-white rounded-xl p-5 mb-4" style={{ border: '1px solid var(--border)' }}>
@@ -217,15 +243,15 @@ export default function AdminJourneyDetailPage() {
             {journey.segments.map((seg) => (
               <div key={seg.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: '#F8F6F2' }}>
                 <div className="flex items-center gap-2.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: occupancyColor(seg.level) }} />
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: segmentColor(seg.occupancyKnown, seg.level) }} />
                   <span style={{ color: '#1F2421', fontWeight: 500, fontSize: '0.875rem' }}>{seg.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
-                    <div className="h-full rounded-full" style={{ width: `${seg.occupancy}%`, background: occupancyColor(seg.level) }} />
+                    <div className="h-full rounded-full" style={{ width: `${seg.occupancyKnown === false ? 0 : seg.occupancy}%`, background: segmentColor(seg.occupancyKnown, seg.level) }} />
                   </div>
                   <span style={{ color: '#4E5953', fontSize: '0.8125rem', minWidth: '32px', textAlign: 'right' }}>
-                    {seg.occupancy}%
+                    {seg.occupancyKnown === false ? 'N/A' : `${seg.occupancy}%`}
                   </span>
                 </div>
               </div>
@@ -240,10 +266,7 @@ export default function AdminJourneyDetailPage() {
           Lifecycle history
         </h4>
         <ol>
-          {(cancelled
-            ? [...journey.timeline, { id: 'TC', type: 'cancelled', label: 'Force cancelled by admin', timestamp: new Date().toISOString(), by: 'Admin' }]
-            : journey.timeline
-          ).map((event, i, arr) => (
+          {timeline.map((event, i, arr) => (
             <li key={event.id} className="flex items-start gap-3 pb-4">
               <div className="flex flex-col items-center">
                 <div

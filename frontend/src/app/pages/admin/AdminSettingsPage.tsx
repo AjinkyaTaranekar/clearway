@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router';
 import { getDefaultSegmentCapacity, updateDefaultSegmentCapacity } from '../../services/mapApi';
+import { disablePushNotifications, enablePushNotifications, isPushEnabled } from '../../services/pushNotifications';
 import {
   Bell, Shield, HelpCircle, LogOut, ChevronRight, Check, Settings,
-  AlertTriangle, Activity,
+  AlertTriangle, Activity, AlertCircle,
 } from 'lucide-react';
 
 function isValidPhone(phoneNumber: string): boolean {
@@ -30,6 +31,9 @@ export default function AdminSettingsPage() {
   const navigate = useNavigate();
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [criticalAlerts, setCriticalAlerts] = useState(true);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -38,6 +42,28 @@ export default function AdminSettingsPage() {
   const [defaultCapacity, setDefaultCapacity] = useState('100');
   const [initialDefaultCapacity, setInitialDefaultCapacity] = useState<number | null>(null);
   const [capacityLoading, setCapacityLoading] = useState(true);
+
+  useEffect(() => {
+    setPushEnabled(isPushEnabled());
+  }, []);
+
+  const handlePushToggle = async () => {
+    setPushBusy(true);
+    setPushError('');
+    try {
+      if (pushEnabled) {
+        await disablePushNotifications();
+        setPushEnabled(false);
+      } else {
+        await enablePushNotifications();
+        setPushEnabled(true);
+      }
+    } catch (err: any) {
+      setPushError(err.message ?? 'Failed to toggle push notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -287,6 +313,42 @@ export default function AdminSettingsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Push notifications */}
+      <div className="bg-white rounded-xl p-5 mb-4" style={{ border: '1px solid var(--border)' }}>
+        <div className="flex items-center gap-2.5 mb-4">
+          <Bell size={17} color="#2F6B55" />
+          <h4 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem' }}>
+            Push notifications
+          </h4>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div style={{ color: '#1F2421', fontWeight: 500, fontSize: '0.875rem' }}>Enable push notifications</div>
+            <div style={{ color: '#4E5953', fontSize: '0.8125rem' }}>Receive critical alerts and system events on this device.</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { void handlePushToggle(); }}
+            disabled={pushBusy}
+            className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
+            style={{ background: pushEnabled ? '#2F6B55' : '#D9D2C7', opacity: pushBusy ? 0.7 : 1, cursor: pushBusy ? 'not-allowed' : 'pointer' }}
+            role="switch"
+            aria-checked={pushEnabled}
+          >
+            <span
+              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm"
+              style={{ left: pushEnabled ? '24px' : '4px' }}
+            />
+          </button>
+        </div>
+        {pushError && (
+          <div className="flex items-center gap-2 mt-3 p-3 rounded-lg text-sm" style={{ background: '#FDECEA', color: '#B42318' }}>
+            <AlertCircle size={15} />
+            {pushError}
+          </div>
+        )}
       </div>
 
       {/* Sign out */}

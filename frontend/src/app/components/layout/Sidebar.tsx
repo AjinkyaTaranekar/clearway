@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import { useApp } from '../../context/AppContext';
+import { getRegion } from '../../services/mapApi';
 import {
   LayoutDashboard,
   Navigation,
@@ -11,6 +13,7 @@ import {
   Construction,
   Map,
   ShieldCheck,
+  Globe,
   X,
 } from 'lucide-react';
 
@@ -42,6 +45,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { user, logout, unreadCount } = useApp();
   const navigate = useNavigate();
   const navItems = user?.role === 'admin' ? adminNav : driverNav;
+  const [region, setRegion] = useState<string | null>(null);
+  useEffect(() => { getRegion().then(setRegion); }, []);
 
   const handleLogout = () => {
     logout();
@@ -106,6 +111,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <div style={{ fontSize: '0.65rem', color: '#4E5953', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 {user?.role === 'admin' ? 'Admin Console' : 'Driver Portal'}
               </div>
+              {region && (
+                <div className="flex items-center gap-1" style={{ marginTop: '2px' }}>
+                  <Globe size={9} color="#4E5953" />
+                  <span style={{ fontSize: '0.6rem', color: '#4E5953', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{region}</span>
+                </div>
+              )}
             </div>
           </div>
           <button

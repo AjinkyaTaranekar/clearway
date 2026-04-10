@@ -27,11 +27,13 @@ func NewJourneyHandler(svc *service.JourneyService) *JourneyHandler {
 
 // createJourneyRequest is the request body for POST /api/v1/journeys
 type createJourneyRequest struct {
-	Origin        model.Coordinates `json:"origin"`
-	Destination   model.Coordinates `json:"destination"`
-	DepartureTime jsonTime          `json:"departure_time"`
-	VehicleType   string            `json:"vehicle_type"`
-	PriorityLevel string            `json:"priority_level,omitempty"`
+	Origin             model.Coordinates `json:"origin"`
+	Destination        model.Coordinates `json:"destination"`
+	OriginPlaceID      string            `json:"origin_place_id,omitempty"`
+	DestinationPlaceID string            `json:"destination_place_id,omitempty"`
+	DepartureTime      jsonTime          `json:"departure_time"`
+	VehicleType        string            `json:"vehicle_type"`
+	PriorityLevel      string            `json:"priority_level,omitempty"`
 }
 
 // CreateJourney godoc
@@ -110,13 +112,15 @@ func (h *JourneyHandler) CreateJourney(w http.ResponseWriter, r *http.Request) {
 		Msg("invoking journey service create flow")
 
 	journey, err := h.svc.CreateJourney(r.Context(), service.CreateJourneyRequest{
-		Origin:         req.Origin,
-		Destination:    req.Destination,
-		DepartureTime:  req.DepartureTime.Time,
-		VehicleType:    req.VehicleType,
-		PriorityLevel:  req.PriorityLevel,
-		IdempotencyKey: idempKey,
-		DriverID:       driverID,
+		Origin:             req.Origin,
+		Destination:        req.Destination,
+		OriginPlaceID:      req.OriginPlaceID,
+		DestinationPlaceID: req.DestinationPlaceID,
+		DepartureTime:      req.DepartureTime.Time,
+		VehicleType:        req.VehicleType,
+		PriorityLevel:      req.PriorityLevel,
+		IdempotencyKey:     idempKey,
+		DriverID:           driverID,
 	})
 	if err != nil {
 		log.Error().
@@ -182,6 +186,48 @@ func (h *JourneyHandler) GetJourney(w http.ResponseWriter, r *http.Request) {
 		Str("journey_status", string(journey.Status)).
 		Msg("get journey request completed")
 	response.Success(w, journey, traceID)
+}
+
+// GetJourneyEvents godoc
+// @Summary Get journey timeline events
+// @Description Returns durable lifecycle/audit events for a journey. Drivers can only access their own journey events.
+// @Tags Journeys
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Journey ID"
+// @Success 200 {array} model.JourneyEvent
+// @Failure 401 {object} response.Response "Missing or invalid JWT"
+// @Failure 404 {object} response.Response "Journey not found or not owned by this driver"
+// @Router /api/v1/journeys/{id}/events [get]
+func (h *JourneyHandler) GetJourneyEvents(w http.ResponseWriter, r *http.Request) {
+	traceID := tracing.GetTraceID(r.Context())
+	journeyID := mux.Vars(r)["id"]
+	driverID := middleware.GetDriverID(r.Context())
+	log := logWithTrace(r.Context())
+	log.Info().
+		Str("handler", "JourneyHandler.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Str("driver_id", driverID).
+		Msg("get journey events request received")
+
+	events, err := h.svc.GetJourneyEvents(r.Context(), journeyID, driverID, false)
+	if err != nil {
+		log.Error().
+			Str("handler", "JourneyHandler.GetJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Str("driver_id", driverID).
+			Msg("journey service get journey events failed")
+		response.Error(w, err, traceID)
+		return
+	}
+
+	log.Info().
+		Str("handler", "JourneyHandler.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Int("event_count", len(events)).
+		Msg("get journey events request completed")
+	response.Success(w, events, traceID)
 }
 
 // ListJourneys godoc

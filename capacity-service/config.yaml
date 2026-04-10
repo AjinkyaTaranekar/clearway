@@ -27,8 +27,8 @@ redis:
 capacity:
   vm_id: "vm-a"
   availability_cache_ttl: 30s
-  orphan_cleanup_interval: 30m
-  orphan_threshold: 1h
+  orphan_cleanup_interval: 5m
+  orphan_threshold: 5m
 
 services:
   jwks_url: ""

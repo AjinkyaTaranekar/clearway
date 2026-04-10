@@ -19,13 +19,15 @@ import (
 
 // CreateJourneyRequest is the input for creating a journey
 type CreateJourneyRequest struct {
-	Origin         model.Coordinates `json:"origin"`
-	Destination    model.Coordinates `json:"destination"`
-	DepartureTime  time.Time         `json:"departure_time"`
-	VehicleType    string            `json:"vehicle_type"`
-	PriorityLevel  string            `json:"priority_level,omitempty"`
-	IdempotencyKey string            `json:"-"`
-	DriverID       string            `json:"-"`
+	Origin             model.Coordinates `json:"origin"`
+	Destination        model.Coordinates `json:"destination"`
+	OriginPlaceID      string            `json:"origin_place_id,omitempty"`
+	DestinationPlaceID string            `json:"destination_place_id,omitempty"`
+	DepartureTime      time.Time         `json:"departure_time"`
+	VehicleType        string            `json:"vehicle_type"`
+	PriorityLevel      string            `json:"priority_level,omitempty"`
+	IdempotencyKey     string            `json:"-"`
+	DriverID           string            `json:"-"`
 }
 
 // AdminListFilters holds filters for the admin list endpoint
@@ -79,6 +81,29 @@ func generateJourneyID() string {
 	id := uuid.New().String()
 	clean := strings.ReplaceAll(id, "-", "")
 	return "jrn_" + clean[:8]
+}
+
+const (
+	actorTypeDriver = "driver"
+	actorTypeAdmin  = "admin"
+	actorTypeSystem = "system"
+
+	eventJourneyRequested = "journey.requested"
+)
+
+func newJourneyEvent(
+	journeyID, eventID, eventType, actorType, actorID, note string,
+	metadata map[string]interface{},
+) model.JourneyEventInput {
+	return model.JourneyEventInput{
+		EventID:   eventID,
+		JourneyID: journeyID,
+		EventType: eventType,
+		ActorType: actorType,
+		ActorID:   actorID,
+		Note:      note,
+		Metadata:  metadata,
+	}
 }
 
 // normalizeVehicleType normalizes vehicle type to lowercase and maps HGV -> truck
@@ -139,6 +164,36 @@ func normalizePriorityLevel(level string) (string, error) {
 		return lower, nil
 	}
 	return "", apperrors.BadRequest("priority_level must be either normal or max")
+}
+
+func normalizePlaceID(candidate string, coords model.Coordinates) string {
+	trimmed := strings.TrimSpace(candidate)
+	if trimmed != "" {
+		return trimmed
+	}
+	return fmt.Sprintf("coord_%.4f_%.4f", coords.Lat, coords.Lng)
+}
+
+func notificationPlaceLabel(placeID string, coords model.Coordinates) string {
+	trimmed := strings.TrimSpace(placeID)
+	if trimmed == "" || strings.HasPrefix(trimmed, "coord_") {
+		return fmt.Sprintf("%.4f, %.4f", coords.Lat, coords.Lng)
+	}
+	// Older journeys may store raw Nominatim IDs (e.g. osm:relation:12345).
+	// Avoid showing opaque IDs in user notifications.
+	if strings.HasPrefix(strings.ToLower(trimmed), "osm:") {
+		return fmt.Sprintf("%.4f, %.4f", coords.Lat, coords.Lng)
+	}
+	return trimmed
+}
+
+func journeyPlaceLabels(j *model.Journey) (string, string) {
+	if j == nil {
+		return "Unknown", "Unknown"
+	}
+	origin := notificationPlaceLabel(j.OriginPlaceID, j.Origin)
+	destination := notificationPlaceLabel(j.DestinationPlaceID, j.Destination)
+	return origin, destination
 }
 
 // CreateJourney orchestrates the full booking flow
@@ -267,6 +322,15 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	}
 
 	segments, estimatedArrival := ComputeTimeWindows(req.DepartureTime, route.Segments)
+	originPlaceID := normalizePlaceID(req.OriginPlaceID, req.Origin)
+	destinationPlaceID := normalizePlaceID(req.DestinationPlaceID, req.Destination)
+	totalDurationMinutes := route.TotalDurationMinutes
+	if totalDurationMinutes <= 0 {
+		totalDurationMinutes = route.TotalTraversalTimeMinutes
+	}
+	if totalDurationMinutes <= 0 {
+		totalDurationMinutes = int(estimatedArrival.Sub(req.DepartureTime).Minutes())
+	}
 	journeyID := generateJourneyID()
 	idempKey := req.IdempotencyKey
 	if idempKey == "" {
@@ -328,31 +392,47 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 	}
 
 	journey := &model.Journey{
-		JourneyID:        journeyID,
-		DriverID:         req.DriverID,
-		IdempotencyKey:   idempKey,
-		Origin:           req.Origin,
-		Destination:      req.Destination,
-		DepartureTime:    req.DepartureTime,
-		EstimatedArrival: estimatedArrival,
-		VehicleType:      vehicleType,
-		Status:           status,
-		RejectionReason:  rejectionReason,
-		ReservationID:    reservationID,
-		Version:          1,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		JourneyID:            journeyID,
+		DriverID:             req.DriverID,
+		IdempotencyKey:       idempKey,
+		Origin:               req.Origin,
+		Destination:          req.Destination,
+		OriginPlaceID:        originPlaceID,
+		DestinationPlaceID:   destinationPlaceID,
+		DepartureTime:        req.DepartureTime,
+		EstimatedArrival:     estimatedArrival,
+		VehicleType:          vehicleType,
+		TotalDistanceKm:      route.TotalDistanceKm,
+		TotalDurationMinutes: totalDurationMinutes,
+		Status:               status,
+		RejectionReason:      rejectionReason,
+		ReservationID:        reservationID,
+		Version:              1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 
 	// Build the outbox event before persisting the journey so the eventID is
 	// known and can be written atomically in the same transaction (F-03).
 	var evType string
 	var evPayload interface{}
+	var statusNote string
+	statusMetadata := map[string]interface{}{}
+	originLabel := notificationPlaceLabel(originPlaceID, req.Origin)
+	destinationLabel := notificationPlaceLabel(destinationPlaceID, req.Destination)
 	if status == model.StatusApproved {
 		evType = event.EventJourneyBooked
+		statusNote = fmt.Sprintf("Capacity reserved across %d segments", len(reservations))
+		if reservationID != "" {
+			statusNote = fmt.Sprintf("%s (reservation %s)", statusNote, reservationID)
+		}
+		statusMetadata["reservation_id"] = reservationID
+		statusMetadata["segment_count"] = len(reservations)
 		evPayload = event.BookedPayload{
 			JourneyID:        journeyID,
 			DriverID:         req.DriverID,
+			OriginLabel:      originLabel,
+			DestinationLabel: destinationLabel,
 			DepartureTime:    req.DepartureTime,
 			EstimatedArrival: estimatedArrival,
 			VehicleType:      vehicleType,
@@ -360,13 +440,22 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		}
 	} else {
 		evType = event.EventJourneyRejected
+		statusNote = rejectionReason
+		statusMetadata["segment_count"] = len(reservations)
+		if reserveResp.FailedSegment != nil {
+			statusMetadata["failed_segment_id"] = reserveResp.FailedSegment.SegmentID
+			statusMetadata["failure_reason"] = reserveResp.FailedSegment.Reason
+		}
 		evPayload = event.BookedPayload{
-			JourneyID:       journeyID,
-			DriverID:        req.DriverID,
-			DepartureTime:   req.DepartureTime,
-			VehicleType:     vehicleType,
-			Status:          string(status),
-			RejectionReason: rejectionReason,
+			JourneyID:        journeyID,
+			DriverID:         req.DriverID,
+			OriginLabel:      originLabel,
+			DestinationLabel: destinationLabel,
+			DepartureTime:    req.DepartureTime,
+			VehicleType:      vehicleType,
+			Status:           string(status),
+			Reason:           rejectionReason,
+			RejectionReason:  rejectionReason,
 		}
 	}
 	eventID, evData, err := event.MarshalEnvelope(evType, evPayload)
@@ -375,7 +464,35 @@ func (s *JourneyService) CreateJourney(ctx context.Context, req CreateJourneyReq
 		return nil, err
 	}
 
-	if err := s.repo.Create(ctx, journey, segments, eventID, evType, evData); err != nil {
+	journeyEvents := []model.JourneyEventInput{
+		newJourneyEvent(
+			journeyID,
+			uuid.NewString(),
+			eventJourneyRequested,
+			actorTypeDriver,
+			req.DriverID,
+			"Driver requested journey booking",
+			map[string]interface{}{
+				"vehicle_type":    vehicleType,
+				"priority_level":  priorityLevel,
+				"segment_count":   len(reservations),
+				"departure_time":  req.DepartureTime.UTC().Format(time.RFC3339),
+				"origin_place_id": originPlaceID,
+				"dest_place_id":   destinationPlaceID,
+			},
+		),
+		newJourneyEvent(
+			journeyID,
+			eventID,
+			evType,
+			actorTypeSystem,
+			"capacity-service",
+			statusNote,
+			statusMetadata,
+		),
+	}
+
+	if err := s.repo.Create(ctx, journey, segments, eventID, evType, evData, journeyEvents); err != nil {
 		log.Error().
 			Str("service", "JourneyService.CreateJourney").
 			Err(err).
@@ -434,6 +551,57 @@ func (s *JourneyService) GetJourney(ctx context.Context, journeyID, driverID str
 	return j, nil
 }
 
+// GetJourneyEvents returns durable lifecycle/audit events for a journey.
+func (s *JourneyService) GetJourneyEvents(ctx context.Context, journeyID, requesterID string, isAdmin bool) ([]model.JourneyEvent, error) {
+	log := s.logWithTrace(ctx)
+	log.Info().
+		Str("service", "JourneyService.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Str("requester_id", requesterID).
+		Bool("is_admin", isAdmin).
+		Msg("loading journey events")
+
+	j, err := s.repo.GetByID(ctx, journeyID)
+	if err != nil {
+		log.Error().
+			Str("service", "JourneyService.GetJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("failed to load journey while checking event access")
+		return nil, err
+	}
+
+	if !isAdmin && j.DriverID != requesterID {
+		log.Warn().
+			Str("service", "JourneyService.GetJourneyEvents").
+			Str("journey_id", journeyID).
+			Str("requested_driver_id", requesterID).
+			Str("owner_driver_id", j.DriverID).
+			Msg("journey event access denied")
+		return nil, apperrors.NotFound("journey not found")
+	}
+
+	events, err := s.repo.ListJourneyEvents(ctx, journeyID)
+	if err != nil {
+		log.Error().
+			Str("service", "JourneyService.GetJourneyEvents").
+			Err(err).
+			Str("journey_id", journeyID).
+			Msg("failed to load journey events")
+		return nil, err
+	}
+	if events == nil {
+		events = []model.JourneyEvent{}
+	}
+
+	log.Info().
+		Str("service", "JourneyService.GetJourneyEvents").
+		Str("journey_id", journeyID).
+		Int("event_count", len(events)).
+		Msg("journey events loaded")
+	return events, nil
+}
+
 // ListJourneys returns paginated journeys for a driver
 func (s *JourneyService) ListJourneys(ctx context.Context, driverID, statusFilter string, page, limit int) ([]model.Journey, int64, error) {
 	log := s.logWithTrace(ctx)
@@ -484,12 +652,15 @@ func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID 
 	}
 
 	now := time.Now()
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCancelled, event.CancelledPayload{
-		JourneyID:     journeyID,
-		DriverID:      driverID,
-		Status:        string(model.StatusCancelled),
-		CancelledBy:   "driver",
-		ReservationID: j.ReservationID,
+		JourneyID:        journeyID,
+		DriverID:         driverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusCancelled),
+		CancelledBy:      "driver",
+		ReservationID:    j.ReservationID,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.CancelJourney").Msg("failed to marshal cancel event")
@@ -498,6 +669,18 @@ func (s *JourneyService) CancelJourney(ctx context.Context, journeyID, driverID 
 	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusCancelled, j.Version,
 		map[string]interface{}{"cancelled_at": now},
 		evID, event.EventJourneyCancelled, evData,
+		newJourneyEvent(
+			journeyID,
+			evID,
+			event.EventJourneyCancelled,
+			actorTypeDriver,
+			driverID,
+			"Driver cancelled journey",
+			map[string]interface{}{
+				"cancelled_by":   "driver",
+				"reservation_id": j.ReservationID,
+			},
+		),
 	); err != nil {
 		log.Error().Str("service", "JourneyService.CancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
 		return nil, err
@@ -540,10 +723,13 @@ func (s *JourneyService) ActivateJourney(ctx context.Context, journeyID, driverI
 		return nil, apperrors.Forbidden("activation window has expired (30 minutes after departure)")
 	}
 
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyActivated, event.SimplePayload{
-		JourneyID: journeyID,
-		DriverID:  driverID,
-		Status:    string(model.StatusActive),
+		JourneyID:        journeyID,
+		DriverID:         driverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusActive),
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.ActivateJourney").Msg("failed to marshal activate event")
@@ -552,6 +738,17 @@ func (s *JourneyService) ActivateJourney(ctx context.Context, journeyID, driverI
 	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusActive, j.Version,
 		map[string]interface{}{"activated_at": now},
 		evID, event.EventJourneyActivated, evData,
+		newJourneyEvent(
+			journeyID,
+			evID,
+			event.EventJourneyActivated,
+			actorTypeDriver,
+			driverID,
+			"Driver activated journey",
+			map[string]interface{}{
+				"reservation_id": j.ReservationID,
+			},
+		),
 	); err != nil {
 		log.Error().Str("service", "JourneyService.ActivateJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist active status")
 		return nil, err
@@ -584,11 +781,14 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 	}
 
 	now := time.Now()
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCompleted, event.SimplePayload{
-		JourneyID:     journeyID,
-		DriverID:      driverID,
-		Status:        string(model.StatusCompleted),
-		ReservationID: j.ReservationID,
+		JourneyID:        journeyID,
+		DriverID:         driverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusCompleted),
+		ReservationID:    j.ReservationID,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.CompleteJourney").Msg("failed to marshal complete event")
@@ -597,6 +797,17 @@ func (s *JourneyService) CompleteJourney(ctx context.Context, journeyID, driverI
 	if err := s.repo.UpdateStatusWithEvent(ctx, journeyID, model.StatusCompleted, j.Version,
 		map[string]interface{}{"completed_at": now},
 		evID, event.EventJourneyCompleted, evData,
+		newJourneyEvent(
+			journeyID,
+			evID,
+			event.EventJourneyCompleted,
+			actorTypeDriver,
+			driverID,
+			"Driver completed journey",
+			map[string]interface{}{
+				"reservation_id": j.ReservationID,
+			},
+		),
 	); err != nil {
 		log.Error().Str("service", "JourneyService.CompleteJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist completed status")
 		return nil, err
@@ -632,12 +843,15 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID, admi
 	if cancelledBy == "" {
 		cancelledBy = "admin"
 	}
+	originLabel, destinationLabel := journeyPlaceLabels(j)
 	evID, evData, err := event.MarshalEnvelope(event.EventJourneyCancelled, event.CancelledPayload{
-		JourneyID:     journeyID,
-		DriverID:      j.DriverID,
-		Status:        string(model.StatusCancelled),
-		CancelledBy:   cancelledBy,
-		ReservationID: j.ReservationID,
+		JourneyID:        journeyID,
+		DriverID:         j.DriverID,
+		OriginLabel:      originLabel,
+		DestinationLabel: destinationLabel,
+		Status:           string(model.StatusCancelled),
+		CancelledBy:      cancelledBy,
+		ReservationID:    j.ReservationID,
 	})
 	if err != nil {
 		log.Error().Err(err).Str("service", "JourneyService.AdminCancelJourney").Msg("failed to marshal admin cancel event")
@@ -647,6 +861,19 @@ func (s *JourneyService) AdminCancelJourney(ctx context.Context, journeyID, admi
 		map[string]interface{}{"cancelled_at": now},
 		evID, event.EventJourneyCancelled, evData,
 		cancelledBy,
+		newJourneyEvent(
+			journeyID,
+			evID,
+			event.EventJourneyCancelled,
+			actorTypeAdmin,
+			cancelledBy,
+			"Journey force-cancelled by admin",
+			map[string]interface{}{
+				"cancelled_by":   cancelledBy,
+				"reservation_id": j.ReservationID,
+				"action":         "force_cancel",
+			},
+		),
 	); err != nil {
 		log.Error().Str("service", "JourneyService.AdminCancelJourney").Err(err).Str("journey_id", journeyID).Msg("failed to persist cancelled status")
 		return nil, err
@@ -813,11 +1040,14 @@ func (s *JourneyService) expireJourneys(ctx context.Context) {
 
 	now := time.Now()
 	for _, j := range journeys {
+		originLabel, destinationLabel := journeyPlaceLabels(&j)
 		evID, evData, err := event.MarshalEnvelope(event.EventJourneyExpired, event.SimplePayload{
-			JourneyID:     j.JourneyID,
-			DriverID:      j.DriverID,
-			Status:        string(model.StatusExpired),
-			ReservationID: j.ReservationID,
+			JourneyID:        j.JourneyID,
+			DriverID:         j.DriverID,
+			OriginLabel:      originLabel,
+			DestinationLabel: destinationLabel,
+			Status:           string(model.StatusExpired),
+			ReservationID:    j.ReservationID,
 		})
 		if err != nil {
 			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to marshal expire event")
@@ -826,6 +1056,17 @@ func (s *JourneyService) expireJourneys(ctx context.Context) {
 		if err := s.repo.UpdateStatusWithEvent(ctx, j.JourneyID, model.StatusExpired, j.Version,
 			map[string]interface{}{"expired_at": now},
 			evID, event.EventJourneyExpired, evData,
+			newJourneyEvent(
+				j.JourneyID,
+				evID,
+				event.EventJourneyExpired,
+				actorTypeSystem,
+				"journey-expiry-job",
+				"Journey expired because activation window elapsed",
+				map[string]interface{}{
+					"reservation_id": j.ReservationID,
+				},
+			),
 		); err != nil {
 			log.Warn().Err(err).Str("service", "JourneyService.expireJourneys").Str("journey_id", j.JourneyID).Msg("failed to expire journey")
 			continue

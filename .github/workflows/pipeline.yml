@@ -66,6 +66,8 @@ jobs:
     timeout-minutes: 15
     needs: [setup]
     if: needs.setup.outputs.needs_nginx == 'true'
+    env:
+      VITE_FIREBASE_VAPID_KEY: BMtHzh3irkREAnJQEE2plxNqbTv44cGM9e3xHXRYy2ujgE8q89VXaBkgDX98ttEXeDlRVPptio2iDUeod5UokpU
     defaults:
       run:
         working-directory: frontend
@@ -235,11 +237,13 @@ jobs:
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               echo 'Bootstrapping stack...'
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
+                SWAGGER_PUBLIC_BASE_URL='https://35.244.162.92.nip.io' REGION=EU \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
 
             # Always redeploy to pick up config changes; --prune removes stale services
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_EU }}' \
+              SWAGGER_PUBLIC_BASE_URL='https://35.244.162.92.nip.io' REGION=EU \
               docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
 
             # Update only selected app services to the pinned SHA tag
@@ -359,9 +363,11 @@ jobs:
               SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
+                SWAGGER_PUBLIC_BASE_URL='https://35.227.198.68.nip.io' REGION=US \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_US }}' \
+              SWAGGER_PUBLIC_BASE_URL='https://35.227.198.68.nip.io' REGION=US \
               docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do
@@ -477,9 +483,11 @@ jobs:
               SVCS='iam-service,journey-service,capacity-service,map-service,notification-service,nginx'
             if ! docker stack ls 2>/dev/null | grep -q '^vcs'; then
               GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
+                SWAGGER_PUBLIC_BASE_URL='https://34.8.134.246.nip.io' REGION=APAC \
                 docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs
             fi
             GITHUB_REPOSITORY=\$REPO IMAGE_TAG=latest CRDB_JOIN='${{ secrets.CRDB_JOIN_AP }}' \
+              SWAGGER_PUBLIC_BASE_URL='https://34.8.134.246.nip.io' REGION=APAC \
               docker stack deploy --with-registry-auth --prune -c ~/vcs/docker-stack.yml vcs 2>/dev/null || true
             IFS=',' read -ra ARR <<< \"\$SVCS\"
             for svc in \"\${ARR[@]}\"; do

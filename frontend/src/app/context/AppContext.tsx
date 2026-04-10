@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Journey, JourneyStatus, Notification } from '../types';
 import { clearTokens, getRefreshToken, getToken, isAccessTokenExpired, storeTokens } from '../services/auth';
@@ -34,6 +34,8 @@ export interface BookingData {
   destination: string;
   originCoords?: { lat: number; lng: number };
   destCoords?: { lat: number; lng: number };
+  originPlaceId?: string;
+  destinationPlaceId?: string;
   departureTime: string;
   vehicleType: string;
   priorityLevel?: 'normal' | 'max';
@@ -65,6 +67,7 @@ interface AppContextType {
   adminJourneys: Journey[];
   notifications: Notification[];
   unreadCount: number;
+  refreshNotifications: () => Promise<void>;
   lastBookingResult: BookingResult | null;
   bookJourney: (data: BookingData) => Promise<BookingResult>;
   updateJourneyStatus: (id: string, status: JourneyStatus, by?: string) => Promise<void>;
@@ -106,8 +109,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [adminJourneys, setAdminJourneys] = useState<Journey[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lastBookingResult, setLastBookingResult] = useState<BookingResult | null>(null);
+  const hasHydratedNotificationsRef = useRef(false);
+  const seenNotificationIDsRef = useRef<Set<string>>(new Set());
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
+
+  const refreshNotifications = useCallback(async (): Promise<void> => {
+    try {
+      const res = await notifApi.listNotifications();
+      const next = res.notifications.map(mapApiNotification);
+
+      // First sync seeds local state without toasting historical entries.
+      if (!hasHydratedNotificationsRef.current) {
+        hasHydratedNotificationsRef.current = true;
+        seenNotificationIDsRef.current = new Set(next.map((n) => n.id));
+        setNotifications(next);
+        return;
+      }
+
+      const unseenUnread = next.filter((n) => !n.read && !seenNotificationIDsRef.current.has(n.id));
+      if (unseenUnread.length > 0) {
+        unseenUnread.slice(0, 3).forEach((n) => {
+          toast(n.title, { description: n.message });
+        });
+        if (unseenUnread.length > 3) {
+          toast.info('More notification updates', {
+            description: `${unseenUnread.length - 3} additional notifications are available in the Notifications page.`,
+          });
+        }
+      }
+
+      seenNotificationIDsRef.current = new Set(next.map((n) => n.id));
+      setNotifications(next);
+    } catch {
+      // notifications are non-critical - no toast
+    }
+  }, []);
+
+  useEffect(() => {
+    // Reset notification toast dedupe cache when active user changes.
+    hasHydratedNotificationsRef.current = false;
+    seenNotificationIDsRef.current = new Set();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -138,15 +181,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      try {
-        const res = await notifApi.listNotifications();
-        setNotifications(res.notifications.map(mapApiNotification));
-      } catch {
-        // notifications are non-critical - no toast
-      }
+      await refreshNotifications();
     };
     load();
-  }, [user?.id, user?.role]);
+  }, [refreshNotifications, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const timer = setInterval(() => {
+      void refreshNotifications();
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, [refreshNotifications, user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -158,6 +206,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // -------------------------------------------------------------------------
 
   const login = async (email: string, password: string): Promise<UserRole> => {
+    api.clearJourneyReadCache();
     const tokens = await iamLogin(email, password);
     storeTokens(tokens.access_token, tokens.refresh_token);
     const u: User = {
@@ -176,6 +225,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (data: RegisterData): Promise<UserRole> => {
+    api.clearJourneyReadCache();
     const params: RegisterParams = {
       name: data.name,
       email: data.email,
@@ -212,6 +262,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAdminJourneys([]);
     setNotifications([]);
     setLastBookingResult(null);
+    hasHydratedNotificationsRef.current = false;
+    seenNotificationIDsRef.current = new Set();
+    api.clearJourneyReadCache();
     localStorage.removeItem('cw_user');
     clearTokens();
 
@@ -256,8 +309,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       setTimeout(async () => {
         try {
-          const res = await notifApi.listNotifications();
-          setNotifications(res.notifications.map(mapApiNotification));
+          await refreshNotifications();
         } catch { /* ignore */ }
       }, 1500);
 
@@ -307,10 +359,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (updated) {
         setJourneys((prev) =>
-          prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
+          prev.map((j) => (j.id === id ? updated! : j)),
         );
         setAdminJourneys((prev) =>
-          prev.map((j) => (j.id === id ? { ...updated!, segments: j.segments, timeline: j.timeline } : j)),
+          prev.map((j) => (j.id === id ? updated! : j)),
         );
         addStatusNotification(id, status);
         return;
@@ -362,6 +414,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         adminJourneys,
         notifications,
         unreadCount,
+        refreshNotifications,
         lastBookingResult,
         bookJourney,
         updateJourneyStatus,

@@ -44,14 +44,18 @@ type Node struct {
 
 // RouteSegment represents a segment in an ordered route.
 type RouteSegment struct {
-	Sequence             int    `json:"sequence,omitempty"`
-	SequenceOrder        int    `json:"sequence_order,omitempty"`
-	SegmentID            string `json:"segment_id"`
-	SegmentName          string `json:"segment_name"`
-	FromNodeID           string `json:"from_node_id,omitempty"`
-	ToNodeID             string `json:"to_node_id,omitempty"`
-	TraversalTimeMinutes int    `json:"traversal_time_minutes"`
-	Region               string `json:"region,omitempty"`
+	Sequence             int      `json:"sequence,omitempty"`
+	SequenceOrder        int      `json:"sequence_order,omitempty"`
+	SegmentID            string   `json:"segment_id"`
+	SegmentName          string   `json:"segment_name"`
+	FromNodeID           string   `json:"from_node_id,omitempty"`
+	ToNodeID             string   `json:"to_node_id,omitempty"`
+	TraversalTimeMinutes int      `json:"traversal_time_minutes"`
+	Region               string   `json:"region,omitempty"`
+	FromLat              *float64 `json:"from_lat,omitempty"`
+	FromLng              *float64 `json:"from_lng,omitempty"`
+	ToLat                *float64 `json:"to_lat,omitempty"`
+	ToLng                *float64 `json:"to_lng,omitempty"`
 }
 
 type SegmentMetadata struct {
@@ -70,6 +74,11 @@ type NodesResponse struct {
 
 type SegmentsResponse struct {
 	Segments []SegmentMetadata `json:"segments"`
+}
+
+type RouteRequest struct {
+	OriginNodeID      string `json:"origin_node_id"`
+	DestinationNodeID string `json:"destination_node_id"`
 }
 
 // RouteResponse represents the response body for a route lookup.
@@ -117,6 +126,8 @@ type ComputeRouteRequest struct {
 
 type ComputeRouteResponse struct {
 	RouteID              string              `json:"route_id"`
+	OriginPlaceID        string              `json:"origin_place_id,omitempty"`
+	DestinationPlaceID   string              `json:"destination_place_id,omitempty"`
 	TotalDistanceKm      float64             `json:"total_distance_km"`
 	TotalDurationMinutes int                 `json:"total_duration_minutes"`
 	Segments             []RouteSegment      `json:"segments"`
@@ -245,8 +256,15 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 
 	graph := h.graph.Snapshot()
 
-	originNodeID := r.URL.Query().Get("origin_node_id")
-	destinationNodeID := r.URL.Query().Get("destination_node_id")
+	originNodeID, destinationNodeID, err := h.parseRouteRequest(r)
+	if err != nil {
+		log.Warn().
+			Str("handler", "MapHandler.GetRoute").
+			Err(err).
+			Msg("route request validation failed: invalid body")
+		response.Error(w, appErrors.BadRequest("invalid request body"), traceID)
+		return
+	}
 
 	if originNodeID == "" || destinationNodeID == "" {
 		log.Warn().
@@ -295,6 +313,19 @@ func (h *MapHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 		Msg("get route request completed")
 
 	response.Success(w, route, traceID)
+}
+
+func (h *MapHandler) parseRouteRequest(r *http.Request) (string, string, error) {
+	if r.Method == http.MethodPost {
+		var req RouteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return "", "", err
+		}
+
+		return req.OriginNodeID, req.DestinationNodeID, nil
+	}
+
+	return r.URL.Query().Get("origin_node_id"), r.URL.Query().Get("destination_node_id"), nil
 }
 
 // ComputeRoute godoc

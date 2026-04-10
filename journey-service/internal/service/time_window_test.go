@@ -26,15 +26,17 @@ func TestComputeTimeWindows_SingleSegment(t *testing.T) {
 	if len(segs) != 1 {
 		t.Fatalf("expected 1 segment, got %d", len(segs))
 	}
-	if !segs[0].TimeWindowStart.Equal(dep) {
-		t.Errorf("window start: want %v, got %v", dep, segs[0].TimeWindowStart)
+	startWant := dep.Add(-5 * time.Minute)
+	if !segs[0].TimeWindowStart.Equal(startWant) {
+		t.Errorf("window start: want %v, got %v", startWant, segs[0].TimeWindowStart)
 	}
-	want := dep.Add(20 * time.Minute)
+	want := dep.Add(25 * time.Minute)
 	if !segs[0].TimeWindowEnd.Equal(want) {
 		t.Errorf("window end: want %v, got %v", want, segs[0].TimeWindowEnd)
 	}
-	if !arrival.Equal(want) {
-		t.Errorf("arrival: want %v, got %v", want, arrival)
+	arrivalWant := dep.Add(20 * time.Minute)
+	if !arrival.Equal(arrivalWant) {
+		t.Errorf("arrival: want %v, got %v", arrivalWant, arrival)
 	}
 }
 
@@ -49,13 +51,13 @@ func TestComputeTimeWindows_CascadingSegments(t *testing.T) {
 		t.Fatalf("expected 3 segments, got %d", len(segs))
 	}
 
-	// seg_1: 08:00 → 08:15
-	// seg_2: 08:15 → 08:25
-	// seg_3: 08:25 → 08:50
+	// seg_1: 07:55 → 08:20 (planned 08:00 → 08:15 + 5 min buffer)
+	// seg_2: 08:10 → 08:30 (planned 08:15 → 08:25 + 5 min buffer)
+	// seg_3: 08:20 → 08:55 (planned 08:25 → 08:50 + 5 min buffer)
 	cases := []struct{ start, end time.Time }{
-		{dep, dep.Add(15 * time.Minute)},
-		{dep.Add(15 * time.Minute), dep.Add(25 * time.Minute)},
-		{dep.Add(25 * time.Minute), dep.Add(50 * time.Minute)},
+		{dep.Add(-5 * time.Minute), dep.Add(20 * time.Minute)},
+		{dep.Add(10 * time.Minute), dep.Add(30 * time.Minute)},
+		{dep.Add(20 * time.Minute), dep.Add(55 * time.Minute)},
 	}
 	for i, c := range cases {
 		if !segs[i].TimeWindowStart.Equal(c.start) {
@@ -79,7 +81,8 @@ func TestComputeTimeWindows_MidnightCrossover(t *testing.T) {
 	if !arrival.Equal(want) {
 		t.Errorf("midnight crossover arrival: want %v, got %v", want, arrival)
 	}
-	if !segs[0].TimeWindowEnd.Equal(want) {
-		t.Errorf("midnight crossover segment end: want %v, got %v", want, segs[0].TimeWindowEnd)
+	endWant := time.Date(2026, 4, 16, 0, 15, 0, 0, time.UTC)
+	if !segs[0].TimeWindowEnd.Equal(endWant) {
+		t.Errorf("midnight crossover segment end: want %v, got %v", endWant, segs[0].TimeWindowEnd)
 	}
 }

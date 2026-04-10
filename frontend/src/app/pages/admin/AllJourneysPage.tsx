@@ -33,10 +33,6 @@ const REGION_OPTS: { label: string; value: Region | 'all' }[] = [
 
 const PAGE_SIZE = 10;
 
-const vehicleIcons: Record<string, string> = {
-  Car: '🚗', Van: '🚐', Motorcycle: '🏍️', HGV: '🚛',
-};
-
 export default function AllJourneysPage() {
   const navigate = useNavigate();
   const { adminJourneys } = useApp();
@@ -296,7 +292,7 @@ export default function AllJourneysPage() {
               <div style={{ fontWeight: 600, color: '#1F2421', fontSize: '0.9375rem', marginBottom: '4px' }}>{j.driverName}</div>
               <div style={{ color: '#4E5953', fontSize: '0.875rem' }}>{j.origin} → {j.destination}</div>
               <div className="flex items-center gap-3 mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-                <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>{vehicleIcons[j.vehicleType]} {j.vehicleType}</span>
+                <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>Vehicle: {j.vehicleType}</span>
                 <span style={{ color: '#D9D2C7' }}>·</span>
                 <span style={{ color: '#4E5953', fontSize: '0.8125rem' }}>{j.region}</span>
                 <span style={{ color: '#D9D2C7' }}>·</span>
