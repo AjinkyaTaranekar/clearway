@@ -76,12 +76,12 @@ func (r *ReservationRepo) Insert(ctx context.Context, tx *sql.Tx, res *model.Res
 
 	const q = `
 		INSERT INTO capacity.reservations
-			(reservation_id, journey_id, segment_id, time_window_start, time_window_end,
+			(crdb_region, reservation_id, journey_id, segment_id, time_window_start, time_window_end,
 			 vehicle_type, slots_used, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW())`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', NOW())`
 
 	_, err := tx.ExecContext(ctx, q,
-		res.ReservationID, res.JourneyID, res.SegmentID,
+		res.CRDBRegion, res.ReservationID, res.JourneyID, res.SegmentID,
 		res.TimeWindowStart, res.TimeWindowEnd,
 		string(res.VehicleType), res.SlotsUsed,
 	)
@@ -310,4 +310,52 @@ func (r *ReservationRepo) CheckAvailability(
 		Float64("reserved_slots", reservedSlots).
 		Msg("checked availability aggregates")
 	return maxCapacity, reservedSlots, nil
+}
+
+// ReleaseByReservationID marks all active rows with the given reservation_id as
+// released and returns the affected segment windows for cache invalidation.
+// Used by the Saga coordinator to compensate a previously-committed regional
+// sub-transaction when a later region fails.
+func (r *ReservationRepo) ReleaseByReservationID(ctx context.Context, reservationID string) ([]model.SegmentReservation, error) {
+	log := logWithTrace(ctx)
+	log.Info().
+		Str("repository", "ReservationRepo.ReleaseByReservationID").
+		Str("reservation_id", reservationID).
+		Msg("compensating saga: releasing reservations by reservation_id")
+
+	const q = `
+		UPDATE capacity.reservations
+		SET    status = 'released', released_at = NOW()
+		WHERE  reservation_id = $1 AND status = 'active'
+		RETURNING segment_id, time_window_start, time_window_end`
+
+	rows, err := r.master.QueryContext(ctx, q, reservationID)
+	if err != nil {
+		log.Error().
+			Str("repository", "ReservationRepo.ReleaseByReservationID").
+			Err(err).
+			Str("reservation_id", reservationID).
+			Msg("failed to release reservations by reservation_id")
+		return nil, fmt.Errorf("reservation_repo.ReleaseByReservationID: %w", err)
+	}
+	defer rows.Close()
+
+	var affected []model.SegmentReservation
+	for rows.Next() {
+		var sr model.SegmentReservation
+		if err := rows.Scan(&sr.SegmentID, &sr.TimeWindowStart, &sr.TimeWindowEnd); err != nil {
+			return nil, fmt.Errorf("reservation_repo.ReleaseByReservationID scan: %w", err)
+		}
+		affected = append(affected, sr)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	log.Info().
+		Str("repository", "ReservationRepo.ReleaseByReservationID").
+		Str("reservation_id", reservationID).
+		Int("released_count", len(affected)).
+		Msg("saga compensation complete")
+	return affected, nil
 }

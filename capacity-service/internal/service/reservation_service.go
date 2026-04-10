@@ -13,6 +13,7 @@ import (
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/repository"
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/logger"
+	capacitypostgres "github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/pkg/postgres"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
@@ -20,14 +21,16 @@ import (
 
 // ReservationService handles the core capacity reservation logic.
 type ReservationService struct {
-	db          *sql.DB
-	segmentRepo *repository.SegmentRepo
-	reservRepo  *repository.ReservationRepo
-	closureRepo *repository.ClosureRepo
-	idempRepo   *repository.IdempotencyRepo
-	redis       *redis.Client
-	cacheTTL    time.Duration
-	log         *logger.Logger
+	db            *sql.DB
+	segmentRepo   *repository.SegmentRepo
+	reservRepo    *repository.ReservationRepo
+	closureRepo   *repository.ClosureRepo
+	idempRepo     *repository.IdempotencyRepo
+	sagaRepo      *repository.SagaRepo
+	regionalPools *capacitypostgres.RegionalPools // per-region DB pools for saga coordinator
+	redis         *redis.Client
+	cacheTTL      time.Duration
+	log           *logger.Logger
 }
 
 const (
@@ -45,25 +48,35 @@ type SegmentRegistration struct {
 }
 
 // NewReservationService creates a new ReservationService.
+// regionalPools provides per-region CockroachDB master connections for the saga
+// coordinator; if nil a default single-pool setup using db is used.
 func NewReservationService(
 	db *sql.DB,
 	segmentRepo *repository.SegmentRepo,
 	reservRepo *repository.ReservationRepo,
 	closureRepo *repository.ClosureRepo,
 	idempRepo *repository.IdempotencyRepo,
+	sagaRepo *repository.SagaRepo,
+	regionalPools *capacitypostgres.RegionalPools,
 	redisClient *redis.Client,
 	cacheTTL time.Duration,
 	log *logger.Logger,
 ) *ReservationService {
+	if regionalPools == nil {
+		// Single-cell fallback: all regions use the same master pool.
+		regionalPools = &capacitypostgres.RegionalPools{EU: db, US: db, APAC: db}
+	}
 	return &ReservationService{
-		db:          db,
-		segmentRepo: segmentRepo,
-		reservRepo:  reservRepo,
-		closureRepo: closureRepo,
-		idempRepo:   idempRepo,
-		redis:       redisClient,
-		cacheTTL:    cacheTTL,
-		log:         log,
+		db:            db,
+		segmentRepo:   segmentRepo,
+		reservRepo:    reservRepo,
+		closureRepo:   closureRepo,
+		idempRepo:     idempRepo,
+		sagaRepo:      sagaRepo,
+		regionalPools: regionalPools,
+		redis:         redisClient,
+		cacheTTL:      cacheTTL,
+		log:           log,
 	}
 }
 
@@ -125,6 +138,24 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		return s.replayFromCache(cached)
 	}
 
+	// --- Route: single-region fast path vs. multi-region saga ---
+	// Group segments by crdb_region.  If all segments are in the same region,
+	// use the existing single serialisable transaction (fast path).
+	// If segments span multiple regions, delegate to the saga coordinator.
+	groups, regionOrder := groupByRegion(reservations)
+
+	if len(groups) > 1 {
+		log.Info().
+			Str("service", "ReservationService.Reserve").
+			Str("journey_id", req.JourneyID).
+			Strs("regions", regionOrder).
+			Msg("cross-regional journey detected; routing to saga coordinator")
+		return s.executeSaga(ctx, req, groups, regionOrder, slotsNeeded, priorityLevel)
+	}
+
+	// Single-region fast path: determine the crdb_region for the INSERT.
+	crdbRegion := regionOrder[0]
+
 	// --- Transaction with CRDB serialization-error retry ---
 	// CockroachDB may return "restart transaction" (SQLSTATE 40001) when a
 	// serializable transaction hits a read/write conflict. The correct response
@@ -136,7 +167,7 @@ func (s *ReservationService) Reserve(ctx context.Context, req *model.ReserveRequ
 		txErr    error
 	)
 	for attempt := 0; attempt <= maxTxRetries; attempt++ {
-		txResult, txStatus, txErr = s.doReserveTx(ctx, req, reservations, slotsNeeded, priorityLevel)
+		txResult, txStatus, txErr = s.doReserveTx(ctx, req, reservations, crdbRegion, slotsNeeded, priorityLevel)
 		if txErr == nil || !isCRDBRetryError(txErr) {
 			break
 		}
@@ -157,6 +188,7 @@ func (s *ReservationService) doReserveTx(
 	ctx context.Context,
 	req *model.ReserveRequest,
 	reservations []model.SegmentReservation,
+	crdbRegion string,
 	slotsNeeded float64,
 	priorityLevel string,
 ) (interface{}, int, error) {
@@ -351,6 +383,7 @@ func (s *ReservationService) doReserveTx(
 			ReservationID:   reservationID,
 			JourneyID:       req.JourneyID,
 			SegmentID:       r.SegmentID,
+			CRDBRegion:      crdbRegion,
 			TimeWindowStart: r.TimeWindowStart,
 			TimeWindowEnd:   r.TimeWindowEnd,
 			VehicleType:     req.VehicleType,

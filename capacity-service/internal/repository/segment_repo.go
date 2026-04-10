@@ -5,9 +5,30 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
 )
+
+// segmentCRDBRegionFromID derives the geo-partition key from the segment ID prefix.
+// Convention:
+//   - "US-*"              → us
+//   - "JP-*", "AP-*", "SG-*", "CN-*" → apac
+//   - everything else (IE-*, seg_*, coord-*) → eu
+func segmentCRDBRegionFromID(segmentID string) string {
+	lower := strings.ToLower(segmentID)
+	switch {
+	case strings.HasPrefix(lower, "us-"):
+		return "us"
+	case strings.HasPrefix(lower, "jp-"),
+		strings.HasPrefix(lower, "ap-"),
+		strings.HasPrefix(lower, "sg-"),
+		strings.HasPrefix(lower, "cn-"):
+		return "apac"
+	default:
+		return "eu"
+	}
+}
 
 // SegmentRepo handles database operations for road segments.
 type SegmentRepo struct {
@@ -27,7 +48,7 @@ func (r *SegmentRepo) GetAll(ctx context.Context) ([]model.Segment, error) {
 		Msg("querying all capacity segments")
 
 	const q = `
-		SELECT segment_id, segment_name, region, max_capacity, version, created_at, updated_at
+		SELECT segment_id, segment_name, region, crdb_region, max_capacity, version, created_at, updated_at
 		FROM capacity.segments
 		ORDER BY segment_id`
 
@@ -45,7 +66,7 @@ func (r *SegmentRepo) GetAll(ctx context.Context) ([]model.Segment, error) {
 	for rows.Next() {
 		var s model.Segment
 		if err := rows.Scan(
-			&s.SegmentID, &s.SegmentName, &s.Region,
+			&s.SegmentID, &s.SegmentName, &s.Region, &s.CRDBRegion,
 			&s.MaxCapacity, &s.Version, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
 			log.Error().
@@ -173,12 +194,15 @@ func (r *SegmentRepo) SetDefaultMaxCapacity(ctx context.Context, maxCapacity flo
 func (r *SegmentRepo) InsertIfMissingTx(ctx context.Context, tx *sql.Tx, segmentID, segmentName, region string, maxCapacity float64) error {
 	const q = `
 		INSERT INTO capacity.segments (
-			segment_id, segment_name, region, max_capacity, version, created_at, updated_at
+			segment_id, segment_name, region, crdb_region, max_capacity, version, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, 1, NOW(), NOW())
+		VALUES ($1, $2, $3, $4, $5, 1, NOW(), NOW())
 		ON CONFLICT (segment_id) DO NOTHING`
 
-	if _, err := tx.ExecContext(ctx, q, segmentID, segmentName, region, maxCapacity); err != nil {
+	// crdb_region is derived from the segment_id prefix at registration time.
+	// This avoids a second lookup and is stable for the lifetime of a segment.
+	crdbRegion := segmentCRDBRegionFromID(segmentID)
+	if _, err := tx.ExecContext(ctx, q, segmentID, segmentName, region, crdbRegion, maxCapacity); err != nil {
 		return fmt.Errorf("segment_repo.InsertIfMissingTx(%s): %w", segmentID, err)
 	}
 
