@@ -63,7 +63,7 @@ func (r *Router) Setup() *mux.Router {
 	// Map APIs
 	r.mux.HandleFunc("/api/v1/map/nodes", r.mapHandler.GetNodes).Methods("GET")
 	r.mux.HandleFunc("/api/v1/map/segments", r.mapHandler.GetSegments).Methods("GET")
-	r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET")
+	r.mux.HandleFunc("/api/v1/map/route", r.mapHandler.GetRoute).Methods("GET", "POST")
 	r.mux.HandleFunc("/api/v1/routes/compute", r.mapHandler.ComputeRoute).Methods("POST")
 
 	// Geocoding proxy - search is unauthenticated so the booking form can call it without a JWT
