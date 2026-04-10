@@ -1,262 +1,395 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run-chaos-suite.sh — Full GCP Swarm Chaos Suite for VCS
+# run-chaos-suite.sh — Full VCS Chaos Engineering Suite
 # =============================================================================
 #
-# Run from GCP Cloud Shell. Executes a planned sequence of chaos experiments
-# against the live deployed stack, with health verification and cool-down
-# between each experiment to allow the system to fully recover.
+# Runs a planned sequence of chaos experiments against the live GCP stack,
+# verifies health between each experiment, and generates a combined report.
 #
-# Usage:
+# Run from the project root in GCP Cloud Shell:
 #   ./scripts/chaos/run-chaos-suite.sh [OPTIONS]
 #
 # Options:
-#   --cell     eu|us|apac    Cell to test against (default: eu)
-#   --dry-run                Preview all actions without executing
-#   --duration SECONDS       Length of each experiment (default: 60)
-#   --pause    SECONDS       Cool-down between experiments (default: 45)
+#   --cell    eu|us|apac      Cell under test (default: eu)
+#   --duration SECONDS        Chaos window per experiment (default: 60)
+#   --pause   SECONDS         Minimum cool-down between experiments (default: 60)
+#   --dry-run                 Preview actions, execute nothing
+#   --skip-node               Skip the drain-node and block-firewall experiments
+#   -h, --help
 #
 # Examples:
-#   # Full suite against EU cell (default)
-#   ./scripts/chaos/run-chaos-suite.sh
+#   ./scripts/chaos/run-chaos-suite.sh                     # EU suite, default timing
+#   ./scripts/chaos/run-chaos-suite.sh --dry-run           # Preview only
+#   ./scripts/chaos/run-chaos-suite.sh --duration 90       # Longer windows
+#   ./scripts/chaos/run-chaos-suite.sh --skip-node         # Service-level only
 #
-#   # Preview the full suite without executing anything
-#   ./scripts/chaos/run-chaos-suite.sh --dry-run
+# Experiment sequence (EU cell):
+#   Phase 1 — App services (scale to 0, tests circuit breakers)
+#     1  capacity-service   → journey CB trips after 10 failures
+#     2  map-service        → journey CB trips after 10 failures
+#     3  iam-service        → auth fails on this node
+#     4  notification-service → notifications fail (journeys still work)
+#   Phase 2 — Infrastructure (scale to 0)
+#     5  redis              → Stream consumer stops (silent capacity leak)
+#     6  db                 → all DB ops fail on this node
+#   Phase 3 — Node-level (requires EU worker node, --skip-node omits these)
+#     7  drain-node         → EU worker evacuated (EU manager still serves)
+#     8  block-firewall     → EU worker network blocked
 #
-#   # Longer experiments against APAC cell
-#   ./scripts/chaos/run-chaos-suite.sh --cell apac --duration 90 --pause 60
-#
-# Experiments in this suite (in order):
-#   1. pause-container capacity-service  (vcs-vm-eu2) → trips journey CB
-#   2. pause-container map-service       (vcs-vm-eu2) → trips journey CB
-#   3. drain-node vcs-vm-eu2            → EU worker goes offline, EU LB still works
-#   4. pause-container iam-service       (vcs-vm-eu1) → auth fails on eu1 only
-#   5. block-firewall vcs-vm-eu1        → GCP denies HTTP to eu1 backend
-#   (Adjust target VMs below if your topology differs)
+# For US and APAC (single-node cells), Phase 3 is ALWAYS skipped.
 #
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CHAOS_BIN="$SCRIPT_DIR/chaos-monkey.sh"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CHAOS_BIN="${SCRIPT_DIR}/chaos-monkey.sh"
+ANALYZE_BIN="${SCRIPT_DIR}/analyze-chaos-results.py"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 CELL="eu"
-DRY_RUN_FLAG=""
 DURATION=60
-PAUSE_BETWEEN=45
+PAUSE_BETWEEN=60
+DRY_RUN=false
+SKIP_NODE=false
 
 # ── Colours ───────────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'
-BOLD='\033[1m'; NC='\033[0m'
-info()  { echo -e "${GREEN}[suite $(date '+%H:%M:%S')]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[suite $(date '+%H:%M:%S')]${NC} $*"; }
-sep()   { echo -e "${BOLD}$(printf '%.0s━' {1..60})${NC}"; }
+RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+
+ts()   { date '+%H:%M:%S'; }
+info() { echo -e "${GREEN}[$(ts)] SUITE  ${NC} $*"; }
+warn() { echo -e "${YELLOW}[$(ts)] SUITE  ${NC} $*"; }
+err()  { echo -e "${RED}[$(ts)] SUITE  ${NC} $*" >&2; }
+sep()  { echo -e "${BOLD}$(printf '%.0s━' {1..64})${NC}"; }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cell)     CELL="$2";         shift 2 ;;
-    --dry-run)  DRY_RUN_FLAG="--dry-run"; shift ;;
-    --duration) DURATION="$2";    shift 2 ;;
-    --pause)    PAUSE_BETWEEN="$2"; shift 2 ;;
-    *) echo "Unknown option: $1"; exit 1 ;;
+    --cell)       CELL="$2";            shift 2 ;;
+    --duration)   DURATION="$2";        shift 2 ;;
+    --pause)      PAUSE_BETWEEN="$2";   shift 2 ;;
+    --dry-run)    DRY_RUN=true;         shift ;;
+    --skip-node)  SKIP_NODE=true;       shift ;;
+    -h|--help)
+      sed -n '3,/^# ====/p' "$0" | head -50 | sed 's/^# \?//'
+      exit 0 ;;
+    *) err "Unknown option: $1"; exit 1 ;;
   esac
 done
 
+# ── Validate ──────────────────────────────────────────────────────────────────
+[[ -f "$CHAOS_BIN" ]] || { err "chaos-monkey.sh not found at $CHAOS_BIN"; exit 1; }
 chmod +x "$CHAOS_BIN"
+cd "$PROJECT_ROOT"
 
-# ── Experiment Definitions ────────────────────────────────────────────────────
-# Format: "<experiment_type>|<target_vm>|<extra_flags>"
-# For pause-container, extra_flags should include --service <svc>
-
-# EU cell experiments (adjust VMs if your cell layout differs)
-EU_EXPERIMENTS=(
-  "pause-container|vcs-vm-eu2|--service capacity-service"
-  "pause-container|vcs-vm-eu2|--service map-service"
-  "drain-node|vcs-vm-eu2|"
-  "pause-container|vcs-vm-eu1|--service iam-service"
-  "block-firewall|vcs-vm-eu2|"
+# ── Cell topology ─────────────────────────────────────────────────────────────
+declare -A CELL_URL=(
+  [eu]="https://35.244.162.92.nip.io"
+  [us]="https://35.227.198.68.nip.io"
+  [apac]="https://34.8.134.246.nip.io"
+)
+declare -A CELL_WORKER=(
+  [eu]="vcs-vm-eu2"       # EU has 2 nodes — eu2 is the worker, eu1 stays as manager
+  [us]=""                  # US: single node — no drain/block experiments
+  [apac]=""                # APAC: single node — no drain/block experiments
+)
+declare -A CELL_MANAGER=(
+  [eu]="vcs-vm-eu1"
+  [us]="vcs-vm-us1"
+  [apac]="vcs-vm-ap1"
 )
 
-# US cell experiments (single node — only service-level chaos, no drain)
-US_EXPERIMENTS=(
-  "pause-container|vcs-vm-us1|--service capacity-service"
-  "pause-container|vcs-vm-us1|--service map-service"
-  "block-firewall|vcs-vm-us1|"
+TARGET_VM="${CELL_MANAGER[$CELL]}"   # default: scale-service targets manager (or only) node
+WORKER_VM="${CELL_WORKER[$CELL]:-}"  # empty for single-node cells
+
+# EU: target the worker for service tests so the manager stays healthy as observer
+[[ "$CELL" == "eu" && -n "$WORKER_VM" ]] && TARGET_VM="$WORKER_VM"
+
+# ── Suite output directory ────────────────────────────────────────────────────
+SUITE_TS=$(date '+%Y%m%dT%H%M%SZ')
+SUITE_DIR="debug-artifacts/chaos/suite-${SUITE_TS}"
+SUITE_MANIFEST="${SUITE_DIR}/manifest.csv"
+SUITE_LOG="${SUITE_DIR}/suite.log"
+
+# ── Experiment table ──────────────────────────────────────────────────────────
+# Format: "phase|label|experiment_type|extra_flags"
+# SERVICE_EXPERIMENTS are always run.
+# NODE_EXPERIMENTS are run only when WORKER_VM is set and --skip-node is false.
+
+SERVICE_EXPERIMENTS=(
+  "1|capacity-service|scale-service|--service capacity-service"
+  "1|map-service|scale-service|--service map-service"
+  "1|iam-service|scale-service|--service iam-service"
+  "1|notification-service|scale-service|--service notification-service"
+  "2|redis|scale-service|--service redis"
+  "2|db|scale-service|--service db"
 )
 
-# APAC cell experiments (single node)
-APAC_EXPERIMENTS=(
-  "pause-container|vcs-vm-ap1|--service capacity-service"
-  "pause-container|vcs-vm-ap1|--service map-service"
-  "block-firewall|vcs-vm-ap1|"
+NODE_EXPERIMENTS=(
+  "3|drain-node|drain-node|"
+  "3|block-firewall|block-firewall|"
 )
 
-# Select experiment list based on cell
-case "$CELL" in
-  eu)   EXPERIMENTS=("${EU_EXPERIMENTS[@]}") ;;
-  us)   EXPERIMENTS=("${US_EXPERIMENTS[@]}") ;;
-  apac) EXPERIMENTS=("${APAC_EXPERIMENTS[@]}") ;;
-  *)    echo "Unknown cell: $CELL"; exit 1 ;;
-esac
+# Build the final ordered list based on flags
+EXPERIMENTS=()
+for exp in "${SERVICE_EXPERIMENTS[@]}"; do
+  EXPERIMENTS+=("$exp")
+done
+if ! $SKIP_NODE && [[ -n "$WORKER_VM" ]]; then
+  for exp in "${NODE_EXPERIMENTS[@]}"; do
+    EXPERIMENTS+=("$exp")
+  done
+else
+  if $SKIP_NODE; then
+    warn "Phase 3 (node-level) skipped — --skip-node flag set."
+  elif [[ -z "$WORKER_VM" ]]; then
+    warn "Phase 3 (node-level) skipped — $CELL cell has only one node; drain/block would cause total outage."
+  fi
+fi
+
+TOTAL="${#EXPERIMENTS[@]}"
 
 # ── Tracking ──────────────────────────────────────────────────────────────────
-PASS=0; FAIL=0; SKIP=0
-TOTAL="${#EXPERIMENTS[@]}"
-REPORT_FILE="chaos-suite-report-$(date '+%Y%m%dT%H%M%S').txt"
+PASS=0; FAIL=0
+declare -a RUN_DIRS=()   # paths to each chaos-monkey.sh report directory
+declare -a RUN_LABELS=()
+declare -a RUN_RESULTS=()
 
-# ── Health gate: check all cells before starting ──────────────────────────────
-preflight_suite() {
-  info "Suite pre-flight: verifying all cells are healthy..."
-  declare -A CELL_URLS=(
-    [eu]="https://35.244.162.92.nip.io"
-    [us]="https://35.227.198.68.nip.io"
-    [apac]="https://34.8.134.246.nip.io"
-  )
-  local all_ok=true
+# ── Helper: health gate ───────────────────────────────────────────────────────
+all_cells_healthy() {
+  local ok=true
   for c in eu us apac; do
-    local status
-    status=$(curl -sf --max-time 5 "${CELL_URLS[$c]}/nginx-health" 2>/dev/null \
-      && echo "healthy" || echo "UNREACHABLE")
-    if [[ "$status" != "healthy" ]]; then
-      warn "  Cell $c is $status — suite will still proceed but results may be inaccurate"
-      all_ok=false
-    else
-      info "  Cell $c: OK"
-    fi
+    local h
+    h=$(curl -sf --max-time 5 "${CELL_URL[$c]}/nginx-health" &>/dev/null && echo "healthy" || echo "down")
+    [[ "$h" != "healthy" ]] && ok=false
   done
-  $all_ok || warn "Not all cells were healthy at suite start. Review results carefully."
+  $ok
 }
 
-# ── Between-experiment health check ──────────────────────────────────────────
-wait_for_recovery() {
-  local max_wait=120
-  local elapsed=0
-  info "Recovery wait: up to ${max_wait}s for all cells to return healthy..."
-
-  declare -A CELL_URLS=(
-    [eu]="https://35.244.162.92.nip.io"
-    [us]="https://35.227.198.68.nip.io"
-    [apac]="https://34.8.134.246.nip.io"
-  )
-
-  while [[ $elapsed -lt $max_wait ]]; do
-    local all_ok=true
-    for c in eu us apac; do
-      local s
-      s=$(curl -sf --max-time 5 "${CELL_URLS[$c]}/nginx-health" 2>/dev/null \
-        && echo "ok" || echo "fail")
-      [[ "$s" != "ok" ]] && all_ok=false
-    done
-
-    if $all_ok; then
-      info "All cells healthy after ${elapsed}s of recovery."
+wait_for_suite_recovery() {
+  local max="${1:-120}" elapsed=0
+  info "Waiting up to ${max}s for all cells to return healthy..."
+  while [[ $elapsed -lt $max ]]; do
+    if all_cells_healthy; then
+      info "All cells healthy after ${elapsed}s."
       return 0
     fi
-
     sleep 10
     elapsed=$((elapsed + 10))
-    info "  Still recovering... ${elapsed}s elapsed"
+    info "  Still recovering... ${elapsed}s"
   done
-
-  warn "System did not fully recover within ${max_wait}s — continuing to next experiment anyway"
+  warn "Not all cells healthy after ${max}s — continuing anyway."
   return 1
 }
 
+# Find the most recently created directory under debug-artifacts/chaos/
+# that is NOT our own suite dir. Used to locate the report chaos-monkey.sh made.
+find_latest_chaos_dir() {
+  find debug-artifacts/chaos -mindepth 1 -maxdepth 1 -type d \
+    ! -name "suite-*" \
+    -newer "${SUITE_DIR}" \
+    -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn | head -1 | awk '{print $2}'
+}
+
+# ── Log tee ───────────────────────────────────────────────────────────────────
+log_tee() { tee -a "$SUITE_LOG"; }
+
 # ── Run a single experiment ───────────────────────────────────────────────────
 run_experiment() {
-  local num="$1"
-  local exp_type="$2"
-  local target_vm="$3"
-  local extra_flags="$4"
-
-  sep
-  info "Experiment ${num}/${TOTAL}: ${BOLD}$exp_type${NC} → ${BOLD}$target_vm${NC}"
-  [[ -n "$extra_flags" ]] && info "  Extra flags: $extra_flags"
-  sep
-
-  local cmd="bash '$CHAOS_BIN' \
-    --cell '$CELL' \
-    --duration '$DURATION' \
-    --recover 120 \
-    $DRY_RUN_FLAG \
-    $extra_flags \
-    '$exp_type' '$target_vm'"
-
-  info "Running: $cmd"
-  echo ""
-
-  if eval "$cmd"; then
-    PASS=$((PASS + 1))
-    info "Experiment ${num} — ${GREEN}PASSED${NC}"
-  else
-    FAIL=$((FAIL + 1))
-    warn "Experiment ${num} — ${RED}FAILED${NC} (exit code $?)"
+  local num="$1" phase="$2" label="$3" exp_type="$4" extra_flags="$5"
+  local vm; vm="$TARGET_VM"
+  # drain-node and block-firewall target the worker, not the manager
+  if [[ "$exp_type" == "drain-node" || "$exp_type" == "block-firewall" ]]; then
+    vm="${WORKER_VM:-$TARGET_VM}"
   fi
 
-  echo "${num}/${TOTAL} | $exp_type | $target_vm | $(date '+%H:%M:%S')" >> "$REPORT_FILE"
+  sep | log_tee
+  info "[$num/$TOTAL] Phase ${phase} — ${BOLD}${label}${NC}  (${exp_type} → ${vm})" | log_tee
+  sep | log_tee
+  echo "" | log_tee
+
+  # Touch a marker so find_latest_chaos_dir can locate the new directory
+  local ts_before; ts_before=$(date '+%Y%m%dT%H%M%SZ')
+  touch "${SUITE_DIR}/.before_${num}"
+
+  local dry_flag=""
+  $DRY_RUN && dry_flag="--dry-run"
+
+  local exit_code=0
+  # shellcheck disable=SC2086
+  bash "$CHAOS_BIN" \
+    --cell "$CELL" \
+    --duration "$DURATION" \
+    --recover 120 \
+    --max-cell-fails 2 \
+    $dry_flag \
+    $extra_flags \
+    "$exp_type" "$vm" 2>&1 | log_tee || exit_code=$?
+
+  echo "" | log_tee
+
+  # Locate report directory produced by this chaos-monkey.sh run
+  local run_dir=""
+  if ! $DRY_RUN; then
+    run_dir=$(find debug-artifacts/chaos -mindepth 1 -maxdepth 1 -type d \
+      ! -name "suite-*" \
+      -newer "${SUITE_DIR}/.before_${num}" \
+      -printf '%T@ %p\n' 2>/dev/null \
+      | sort -rn | head -1 | awk '{print $2}')
+  fi
+
+  RUN_DIRS+=("${run_dir:-}")
+  RUN_LABELS+=("$label")
+
+  if [[ $exit_code -eq 0 ]]; then
+    PASS=$((PASS + 1))
+    RUN_RESULTS+=("PASS")
+    info "[$num/$TOTAL] ${GREEN}PASSED${NC} — ${label}" | log_tee
+  else
+    FAIL=$((FAIL + 1))
+    RUN_RESULTS+=("FAIL(${exit_code})")
+    warn "[$num/$TOTAL] ${RED}FAILED (exit ${exit_code})${NC} — ${label}" | log_tee
+  fi
+
+  # Append to manifest
+  printf '%s,%s,%s,%s,%s,%s\n' \
+    "$num" "$phase" "$label" "$exp_type" "${run_dir:-none}" "${RUN_RESULTS[-1]}" \
+    >> "$SUITE_MANIFEST"
 }
 
 # =============================================================================
 # MAIN
 # =============================================================================
 
+# ── Suite header ──────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}${RED}╔══════════════════════════════════════════════════════════╗"
-echo -e "║          VCS CHAOS MONKEY — FULL SUITE (GCP)            ║"
-echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
-echo ""
-info "Cell          : ${BOLD}${CELL^^}${NC}"
-info "Experiments   : ${BOLD}$TOTAL${NC}"
-info "Duration each : ${BOLD}${DURATION}s${NC}"
-info "Cool-down     : ${BOLD}${PAUSE_BETWEEN}s${NC}"
-info "Report file   : ${BOLD}$REPORT_FILE${NC}"
-[[ -n "$DRY_RUN_FLAG" ]] && warn "DRY-RUN MODE — no real changes will be made"
+echo -e "${BOLD}${RED}╔══════════════════════════════════════════════════════════════╗"
+echo -e "║        VCS CHAOS MONKEY — FULL SUITE  (v3)                  ║"
+echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-echo "VCS Chaos Suite — $(date '+%Y-%m-%dT%H:%M:%S')" > "$REPORT_FILE"
-echo "Cell: $CELL | Experiments: $TOTAL" >> "$REPORT_FILE"
-echo "$(printf '%.0s─' {1..60})" >> "$REPORT_FILE"
+mkdir -p "$SUITE_DIR"
+echo "# VCS Chaos Suite Log — ${SUITE_TS}" > "$SUITE_LOG"
 
-[[ -z "$DRY_RUN_FLAG" ]] && preflight_suite
+info "Suite directory  : ${SUITE_DIR}"
+info "Cell             : ${BOLD}${CELL^^}${NC}"
+info "Target VM        : ${BOLD}${TARGET_VM}${NC}"
+[[ -n "$WORKER_VM" ]] && info "Worker VM (node) : ${BOLD}${WORKER_VM}${NC}"
+info "Experiments      : ${BOLD}${TOTAL}${NC}"
+info "Duration each    : ${BOLD}${DURATION}s${NC}"
+info "Cool-down        : ${BOLD}${PAUSE_BETWEEN}s${NC}"
+$DRY_RUN && warn "DRY-RUN MODE — no real changes will be made"
+echo ""
 
-# ── Run all experiments ───────────────────────────────────────────────────────
-for i in "${!EXPERIMENTS[@]}"; do
-  exp_def="${EXPERIMENTS[$i]}"
-  IFS='|' read -r exp_type target_vm extra_flags <<< "$exp_def"
+# ── Print plan ────────────────────────────────────────────────────────────────
+echo -e "${BOLD}Planned experiment sequence:${NC}"
+printf "  %-4s %-8s %-24s %s\n" "Num" "Phase" "Label" "Experiment type"
+printf "  %-4s %-8s %-24s %s\n" "───" "─────" "──────────────────────" "──────────────────"
+idx=0
+for exp_def in "${EXPERIMENTS[@]}"; do
+  idx=$((idx + 1))
+  IFS='|' read -r phase label exp_type extra_flags <<< "$exp_def"
+  printf "  %-4s Phase%-3s %-24s %s\n" "$idx" "$phase" "$label" "$exp_type"
+done
+echo ""
 
-  run_experiment "$((i+1))" "$exp_type" "$target_vm" "$extra_flags"
+# ── Confirmation ──────────────────────────────────────────────────────────────
+if ! $DRY_RUN; then
+  echo -e "${YELLOW}${BOLD}This will inject real failures into the live ${CELL^^} cell.${NC}"
+  echo -e "${YELLOW}All experiments restore automatically. The suite cannot be interrupted"
+  echo -e "mid-experiment without a partial restore — always let it complete.${NC}"
+  echo ""
+  read -r -p "  Type 'yes' to start, anything else to cancel: " confirm
+  if [[ "$confirm" != "yes" ]]; then
+    info "Cancelled."
+    exit 0
+  fi
+  echo ""
+fi
 
-  # Cool-down between experiments (not after the last one)
-  if [[ $((i+1)) -lt $TOTAL ]]; then
-    echo ""
-    info "Cool-down: waiting ${PAUSE_BETWEEN}s before next experiment..."
-    if [[ -z "$DRY_RUN_FLAG" ]]; then
-      sleep "$PAUSE_BETWEEN"
-      wait_for_recovery || true
+# ── Initialise manifest ───────────────────────────────────────────────────────
+printf '%s\n' "num,phase,label,experiment_type,report_dir,result" > "$SUITE_MANIFEST"
+
+# ── Pre-flight ────────────────────────────────────────────────────────────────
+if ! $DRY_RUN; then
+  sep
+  info "PRE-FLIGHT — verifying all cells are healthy before starting"
+  sep
+
+  local_ok=true
+  for c in eu us apac; do
+    h=$(curl -sf --max-time 5 "${CELL_URL[$c]}/nginx-health" &>/dev/null && echo "healthy" || echo "UNREACHABLE")
+    if [[ "$h" == "healthy" ]]; then
+      info "  ${c}: ${GREEN}healthy${NC}"
+    else
+      warn "  ${c}: ${RED}${h}${NC}"
+      local_ok=false
     fi
-    echo ""
+  done
+
+  if ! $local_ok; then
+    err "Not all cells healthy. Fix the cluster before running the suite."
+    err "Re-run with --dry-run to preview without executing."
+    exit 1
+  fi
+  info "All cells healthy — starting suite."
+  echo ""
+fi
+
+# ── Run experiments ───────────────────────────────────────────────────────────
+exp_num=0
+for exp_def in "${EXPERIMENTS[@]}"; do
+  exp_num=$((exp_num + 1))
+  IFS='|' read -r phase label exp_type extra_flags <<< "$exp_def"
+
+  run_experiment "$exp_num" "$phase" "$label" "$exp_type" "$extra_flags"
+
+  # Cool-down + recovery check between experiments
+  if [[ $exp_num -lt $TOTAL ]]; then
+    echo "" | log_tee
+    info "Cool-down: ${PAUSE_BETWEEN}s before next experiment..." | log_tee
+    if ! $DRY_RUN; then
+      sleep "$PAUSE_BETWEEN"
+      wait_for_suite_recovery 120 | log_tee || true
+    fi
+    echo "" | log_tee
   fi
 done
 
-# ── Final summary ─────────────────────────────────────────────────────────────
-sep
-echo ""
-echo -e "${BOLD}CHAOS SUITE COMPLETE${NC}"
-echo ""
-printf "  %-20s %s\n" "Total experiments:" "$TOTAL"
-printf "  %-20s ${GREEN}%s${NC}\n" "Passed:" "$PASS"
-printf "  %-20s ${RED}%s${NC}\n" "Failed:" "$FAIL"
-echo ""
-info "Detailed report: $REPORT_FILE"
-echo ""
+# ── Suite summary ─────────────────────────────────────────────────────────────
+sep | log_tee
+echo "" | log_tee
+echo -e "${BOLD}CHAOS SUITE COMPLETE — $(date '+%Y-%m-%dT%H:%M:%S')${NC}" | log_tee
+echo "" | log_tee
+printf "  %-28s %s\n" "Total experiments:" "$TOTAL" | log_tee
+printf "  %-28s ${GREEN}%s${NC}\n" "Passed:" "$PASS" | log_tee
+printf "  %-28s ${RED}%s${NC}\n"   "Failed:" "$FAIL" | log_tee
+echo "" | log_tee
 
+info "Suite log     : ${SUITE_LOG}" | log_tee
+info "Manifest      : ${SUITE_MANIFEST}" | log_tee
+echo "" | log_tee
+
+# ── Invoke the analyzer ───────────────────────────────────────────────────────
+if [[ -f "$ANALYZE_BIN" ]] && ! $DRY_RUN; then
+  info "Running analysis..." | log_tee
+  python3 "$ANALYZE_BIN" \
+    --suite-dir "$SUITE_DIR" \
+    --manifest "$SUITE_MANIFEST" \
+    2>&1 | log_tee || warn "Analyzer exited with errors — check output above."
+else
+  $DRY_RUN && info "[DRY-RUN] Would run analyzer: python3 ${ANALYZE_BIN} --suite-dir ${SUITE_DIR}"
+  [[ ! -f "$ANALYZE_BIN" ]] && warn "Analyzer not found at ${ANALYZE_BIN} — skipping analysis."
+fi
+
+echo "" | log_tee
 if [[ $FAIL -eq 0 ]]; then
-  echo -e "${GREEN}${BOLD}ALL EXPERIMENTS PASSED — System demonstrates solid fault tolerance${NC}"
+  echo -e "${GREEN}${BOLD}ALL EXPERIMENTS PASSED${NC}" | log_tee
   exit 0
 else
-  echo -e "${YELLOW}${BOLD}$FAIL EXPERIMENT(S) FAILED — Review output above${NC}"
+  echo -e "${YELLOW}${BOLD}${FAIL} EXPERIMENT(S) FAILED — review ${SUITE_LOG}${NC}" | log_tee
   exit 1
 fi

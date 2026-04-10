@@ -65,22 +65,22 @@ for vm in "${ALL_VMS[@]}"; do
     /root/vcs/observability/loki \
     /root/vcs/observability/promtail"
 
-  gcloud compute scp \
+  gcloud compute scp --recurse \
     "$REPO_ROOT/observability/prometheus.yml" \
     "$REPO_ROOT/observability/loki/local-config.yaml" \
     "$REPO_ROOT/observability/promtail/config.yml" \
-    "$REPO_ROOT/observability/grafana/provisioning/dashboards/dashboards.yml" \
-    "$REPO_ROOT/observability/grafana/provisioning/dashboards/vcs-overview.json" \
-    "$REPO_ROOT/observability/grafana/provisioning/datasources/datasources.yml" \
+    "$REPO_ROOT/observability/grafana/provisioning/dashboards" \
+    "$REPO_ROOT/observability/grafana/provisioning/datasources" \
     "$vm":~/ --project="$PROJECT" --zone="$ZONE" 2>/dev/null
 
   remote "$vm" "
     sudo mv ~/prometheus.yml     /root/vcs/observability/prometheus.yml
     sudo mv ~/local-config.yaml  /root/vcs/observability/loki/local-config.yaml
     sudo mv ~/config.yml         /root/vcs/observability/promtail/config.yml
-    sudo mv ~/dashboards.yml     /root/vcs/observability/grafana/provisioning/dashboards/dashboards.yml
-    sudo mv ~/vcs-overview.json  /root/vcs/observability/grafana/provisioning/dashboards/vcs-overview.json
-    sudo mv ~/datasources.yml    /root/vcs/observability/grafana/provisioning/datasources/datasources.yml
+    sudo rm -rf /root/vcs/observability/grafana/provisioning/dashboards
+    sudo rm -rf /root/vcs/observability/grafana/provisioning/datasources
+    sudo mv ~/dashboards         /root/vcs/observability/grafana/provisioning/dashboards
+    sudo mv ~/datasources        /root/vcs/observability/grafana/provisioning/datasources
   "
 done
 

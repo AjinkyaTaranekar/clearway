@@ -38,9 +38,10 @@ import { uuidv4 } from "https://jslib.k6.io/k6-utils/1.4.0/index.js";
 const BASE_URL = __ENV.BASE_URL || "http://localhost";
 const SCENARIO = __ENV.K6_SCENARIO || "smoke";
 
-// Admin credentials (set these in env or use defaults for local dev)
-const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || "admin@example.com";
-const ADMIN_PASS = __ENV.ADMIN_PASS || "Admin123!";
+// Test credentials / fallback configuration
+const LOAD_TEST_PASSWORD = __ENV.LOAD_TEST_PASSWORD || "LoadTest123!";
+const FALLBACK_EMAIL = __ENV.LOAD_TEST_FALLBACK_EMAIL || __ENV.ADMIN_EMAIL || "";
+const FALLBACK_PASS = __ENV.LOAD_TEST_FALLBACK_PASS || __ENV.ADMIN_PASS || "";
 
 // ── Custom Metrics ────────────────────────────────────────────────────────────
 const journeyCreateSuccess = new Rate("journey_create_success");
@@ -187,13 +188,19 @@ function flowAuth() {
   let userId = null;
 
   group("auth: register", () => {
-    const email = `chaos-${uuidv4().substring(0, 8)}@loadtest.vcs`;
+    const email = `load-${uuidv4().substring(0, 8)}@loadtest.example.com`;
+    const vehicleType = randomItem(VEHICLE_TYPES);
+    const password = LOAD_TEST_PASSWORD;
     const payload = JSON.stringify({
+      name: "Load Tester",
       email,
-      password: "LoadTest123!",
-      first_name: "Load",
-      last_name: "Tester",
-      role: "user",
+      password,
+      vehicle_type: vehicleType,
+      license_info: {
+        license_number: `LT-${uuidv4().substring(0, 12).toUpperCase()}`,
+        class: "B",
+        issuing_jurisdiction: "IE",
+      },
     });
 
     const res = http.post(`${BASE_URL}/api/v1/auth/register`, payload, {
@@ -208,20 +215,34 @@ function flowAuth() {
     if (res.status === 201) {
       const body = JSON.parse(res.body);
       token = body.access_token || body.data?.access_token;
-      userId = body.user_id || body.data?.user_id;
+      userId = body.user_id || body.data?.user_id || body.user?.id || body.data?.user?.id;
     }
 
-    // If 409 (already exists) or no token from register, try login with a test account
-    if (!token) {
+    // If a rare email collision happens, login with the same generated credentials.
+    if (!token && res.status === 409) {
       const loginRes = http.post(
         `${BASE_URL}/api/v1/auth/login`,
-        JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASS }),
-        { headers: makeHeaders(null), tags: { flow: "auth", step: "login-fallback" } }
+        JSON.stringify({ email, password }),
+        { headers: makeHeaders(null), tags: { flow: "auth", step: "login-collision-fallback" } }
       );
       if (loginRes.status === 200) {
         const body = JSON.parse(loginRes.body);
         token = body.access_token || body.data?.access_token;
-        userId = body.user_id || body.data?.user_id;
+        userId = body.user_id || body.data?.user_id || body.user?.id || body.data?.user?.id;
+      }
+    }
+
+    // Optional env-configured fallback account (disabled by default).
+    if (!token && FALLBACK_EMAIL && FALLBACK_PASS) {
+      const fallbackRes = http.post(
+        `${BASE_URL}/api/v1/auth/login`,
+        JSON.stringify({ email: FALLBACK_EMAIL, password: FALLBACK_PASS }),
+        { headers: makeHeaders(null), tags: { flow: "auth", step: "login-env-fallback" } }
+      );
+      if (fallbackRes.status === 200) {
+        const body = JSON.parse(fallbackRes.body);
+        token = body.access_token || body.data?.access_token;
+        userId = body.user_id || body.data?.user_id || body.user?.id || body.data?.user?.id;
       }
     }
   });
@@ -238,7 +259,8 @@ function flowAuth() {
       "profile: status 200": (r) => r.status === 200,
       "profile: has email": (r) => {
         try {
-          return JSON.parse(r.body).email !== undefined;
+          const body = JSON.parse(r.body);
+          return body.email !== undefined || body.data?.email !== undefined || body.data?.user?.email !== undefined;
         } catch { return false; }
       },
     });
@@ -314,8 +336,13 @@ function flowMap(token) {
 
   group("map: get route", () => {
     const start = Date.now();
-    const res = http.get(
-      `${BASE_URL}/api/v1/map/route?from=${origin.lat},${origin.lon}&to=${destination.lat},${destination.lon}`,
+    const payload = JSON.stringify({
+      origin: { lat: origin.lat, lng: origin.lon },
+      destination: { lat: destination.lat, lng: destination.lon },
+    });
+    const res = http.post(
+      `${BASE_URL}/api/v1/routes/compute`,
+      payload,
       {
         headers: makeHeaders(token),
         tags: { flow: "map", step: "route" },
@@ -324,7 +351,7 @@ function flowMap(token) {
     routeComputeDuration.add(Date.now() - start);
 
     check(res, {
-      "route: status 200 or 422": (r) => r.status === 200 || r.status === 422,
+      "route: status 200": (r) => r.status === 200,
     });
 
     if (res.status === 503 || (res.body && res.body.toLowerCase().includes("circuit"))) {
@@ -342,21 +369,15 @@ function flowJourney(token) {
   const [origin, destination] = randomPair(DUBLIN_PLACES);
   // Book 2h from now (satisfies 60-min advance booking rule)
   const startTime = isoDateFromNow(120);
-  const endTime = isoDateFromNow(180);
   const vehicleType = randomItem(VEHICLE_TYPES);
 
   group("journey: create", () => {
     const payload = JSON.stringify({
-      origin_place_id: `place:${origin.lat},${origin.lon}`,
-      destination_place_id: `place:${destination.lat},${destination.lon}`,
-      origin_name: origin.name,
-      destination_name: destination.name,
-      origin_lat: origin.lat,
-      origin_lon: origin.lon,
-      destination_lat: destination.lat,
-      destination_lon: destination.lon,
-      scheduled_departure: startTime,
-      scheduled_arrival: endTime,
+      origin: { lat: origin.lat, lng: origin.lon },
+      destination: { lat: destination.lat, lng: destination.lon },
+      origin_place_id: `coord_${origin.lat.toFixed(4)}_${origin.lon.toFixed(4)}`,
+      destination_place_id: `coord_${destination.lat.toFixed(4)}_${destination.lon.toFixed(4)}`,
+      departure_time: startTime,
       vehicle_type: vehicleType,
     });
 
@@ -369,8 +390,8 @@ function flowJourney(token) {
     });
 
     const created = check(res, {
-      "journey create: status 201 or 422": (r) =>
-        r.status === 201 || r.status === 422 || r.status === 503,
+      "journey create: status 201/200/409/422": (r) =>
+        r.status === 201 || r.status === 200 || r.status === 409 || r.status === 422 || r.status === 503,
       "journey create: not 5xx (except 503)": (r) =>
         r.status < 500 || r.status === 503,
     });

@@ -1,0 +1,348 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {
+            "auth: register": {
+                "name": "auth: register",
+                "path": "::auth: register",
+                "id": "6feaeb925b49356ace595382d41bd173",
+                "groups": {},
+                "checks": {
+                        "register: status 201 or 409": {
+                            "name": "register: status 201 or 409",
+                            "path": "::auth: register::register: status 201 or 409",
+                            "id": "1301d8c9433717c19e5b64f4aca85a72",
+                            "passes": 7,
+                            "fails": 0
+                        }
+                    }
+            },
+            "auth: get profile": {
+                "name": "auth: get profile",
+                "path": "::auth: get profile",
+                "id": "03c573b34eb1847f6eddbb2ed53fe8eb",
+                "groups": {},
+                "checks": {
+                        "profile: status 200": {
+                            "name": "profile: status 200",
+                            "path": "::auth: get profile::profile: status 200",
+                            "id": "a296c9f11392efb20fe070cad1cce72a",
+                            "passes": 7,
+                            "fails": 0
+                        },
+                        "profile: has email": {
+                            "id": "944e715dc44db8e734807816acba06e4",
+                            "passes": 7,
+                            "fails": 0,
+                            "name": "profile: has email",
+                            "path": "::auth: get profile::profile: has email"
+                        }
+                    }
+            },
+            "map: search places": {
+                "groups": {},
+                "checks": {
+                        "search: status 200 or 429": {
+                            "name": "search: status 200 or 429",
+                            "path": "::map: search places::search: status 200 or 429",
+                            "id": "f03e9a2dcddc732f6249c3117410ea7b",
+                            "passes": 5,
+                            "fails": 0
+                        }
+                    },
+                "name": "map: search places",
+                "path": "::map: search places",
+                "id": "709aa18f001c9bc7d7b470827104200e"
+            },
+            "map: get route": {
+                "id": "1cd38d147eed23771b61df1ffc859639",
+                "groups": {},
+                "checks": {
+                        "route: status 200 or 422": {
+                            "name": "route: status 200 or 422",
+                            "path": "::map: get route::route: status 200 or 422",
+                            "id": "dee334bfab07739c7f3028a1f7a32f3c",
+                            "passes": 0,
+                            "fails": 5
+                        }
+                    },
+                "name": "map: get route",
+                "path": "::map: get route"
+            },
+            "capacity: check availability": {
+                "checks": {
+                    "segments: status 200": {
+                        "name": "segments: status 200",
+                        "path": "::capacity: check availability::segments: status 200",
+                        "id": "cb128a3d3c63548bbd8b32592e2b3dc5",
+                        "passes": 4,
+                        "fails": 0
+                    },
+                    "segments: is array": {
+                        "name": "segments: is array",
+                        "path": "::capacity: check availability::segments: is array",
+                        "id": "b898aa4e133f0439330d3feb4ece0a53",
+                        "passes": 4,
+                        "fails": 0
+                    }
+                },
+                "name": "capacity: check availability",
+                "path": "::capacity: check availability",
+                "id": "61b48e4d26210603b94c02c75ae7b284",
+                "groups": {}
+            },
+            "capacity: occupancy": {
+                "path": "::capacity: occupancy",
+                "id": "cf2bd792306fdd263f9d832bd763d2e7",
+                "groups": {},
+                "checks": {
+                        "occupancy: status 200": {
+                            "id": "fce868b79a0f2dc81466a59a9a540ef3",
+                            "passes": 4,
+                            "fails": 0,
+                            "name": "occupancy: status 200",
+                            "path": "::capacity: occupancy::occupancy: status 200"
+                        }
+                    },
+                "name": "capacity: occupancy"
+            },
+            "journey: create": {
+                "name": "journey: create",
+                "path": "::journey: create",
+                "id": "4ed2202be70e8afcc0ef4de16eb494e2",
+                "groups": {},
+                "checks": {
+                        "journey create: status 201 or 422": {
+                            "name": "journey create: status 201 or 422",
+                            "path": "::journey: create::journey create: status 201 or 422",
+                            "id": "5b594102f9f1911a74c698ae70715488",
+                            "passes": 0,
+                            "fails": 4
+                        },
+                        "journey create: not 5xx (except 503)": {
+                            "path": "::journey: create::journey create: not 5xx (except 503)",
+                            "id": "0c3ca380237dc2e8a81a3108420a4292",
+                            "passes": 4,
+                            "fails": 0,
+                            "name": "journey create: not 5xx (except 503)"
+                        }
+                    }
+            },
+            "health: gateway": {
+                "path": "::health: gateway",
+                "id": "516d56bec84d3cf8c55f7d7eb79fb2e2",
+                "groups": {},
+                "checks": {
+                        "nginx healthy: status 200": {
+                            "path": "::health: gateway::nginx healthy: status 200",
+                            "id": "9db5d8cd55cdb5ac51cb81516ccaa993",
+                            "passes": 1,
+                            "fails": 0,
+                            "name": "nginx healthy: status 200"
+                        }
+                    },
+                "name": "health: gateway"
+            },
+            "notifications: list": {
+                "path": "::notifications: list",
+                "id": "70fe53e9d5e5fcc4d15c589905c35216",
+                "groups": {},
+                "checks": {
+                        "notifications: status 200": {
+                            "name": "notifications: status 200",
+                            "path": "::notifications: list::notifications: status 200",
+                            "id": "7fc6c0af0b4083f42ff6a167f11ca86a",
+                            "passes": 1,
+                            "fails": 0
+                        }
+                    },
+                "name": "notifications: list"
+            },
+            "notifications: mark all read": {
+                "groups": {},
+                "checks": {
+                        "mark-read: status 200 or 204": {
+                            "name": "mark-read: status 200 or 204",
+                            "path": "::notifications: mark all read::mark-read: status 200 or 204",
+                            "id": "f08f23a43f49953e348b86f866a8cd35",
+                            "passes": 1,
+                            "fails": 0
+                        }
+                    },
+                "name": "notifications: mark all read",
+                "path": "::notifications: mark all read",
+                "id": "f9abbfe5861e1b742cba96f3918ecc5e"
+            }
+        },
+        "checks": {}
+    },
+    "metrics": {
+        "data_sent": {
+            "count": 12705,
+            "rate": 373.267984133048
+        },
+        "iteration_duration": {
+            "avg": 3781.6280033333333,
+            "min": 0.130543,
+            "med": 3757.762424,
+            "max": 8375.002228,
+            "p(90)": 7049.6896472,
+            "p(95)": 7712.345937599999
+        },
+        "http_req_failed": {
+            "passes": 9,
+            "fails": 31,
+            "thresholds": {
+                "rate<0.05": true
+            },
+            "value": 0.225
+        },
+        "http_req_duration": {
+            "p(90)": 406.7527098,
+            "p(95)": 488.5560643499997,
+            "avg": 174.63671165,
+            "min": 3.816253,
+            "med": 45.77531400000001,
+            "max": 615.851195,
+            "thresholds": {
+                "p(95)<1000": false,
+                "p(99)<3000": false
+            }
+        },
+        "http_req_connecting": {
+            "med": 0,
+            "max": 0.477484,
+            "p(90)": 0,
+            "p(95)": 0.02197834999999875,
+            "avg": 0.022926275000000003,
+            "min": 0
+        },
+        "http_req_waiting": {
+            "med": 19.1930895,
+            "max": 615.168729,
+            "p(90)": 387.1111417,
+            "p(95)": 417.8506702499995,
+            "avg": 126.92834197500001,
+            "min": 3.620253
+        },
+        "route_compute_duration": {
+            "avg": 18.6,
+            "min": 6,
+            "med": 6,
+            "max": 68,
+            "p(90)": 43.60000000000001,
+            "p(95)": 55.79999999999999,
+            "thresholds": {
+                "p(95)<2000": false
+            }
+        },
+        "auth_success": {
+            "passes": 7,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.95": false
+            },
+            "value": 1
+        },
+        "capacity_check_duration": {
+            "avg": 298.5,
+            "min": 235,
+            "med": 238,
+            "max": 483,
+            "p(90)": 410.40000000000003,
+            "p(95)": 446.69999999999993,
+            "thresholds": {
+                "p(95)<800": false
+            }
+        },
+        "data_received": {
+            "count": 193312,
+            "rate": 5679.431762985264
+        },
+        "iterations": {
+            "count": 7,
+            "rate": 0.20565729153335977
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0.22022669999998748,
+            "avg": 0.235271425,
+            "min": 0,
+            "med": 0,
+            "max": 5.006323
+        },
+        "http_reqs": {
+            "count": 40,
+            "rate": 1.1751845230477702
+        },
+        "vus_max": {
+            "min": 1,
+            "max": 1,
+            "value": 1
+        },
+        "http_req_receiving": {
+            "avg": 47.577218599999995,
+            "min": 0.079424,
+            "med": 0.134062,
+            "max": 465.24573,
+            "p(90)": 220.1654979,
+            "p(95)": 240.60752879999976
+        },
+        "journey_create_success": {
+            "passes": 0,
+            "fails": 4,
+            "thresholds": {
+                "rate>0.90": true
+            },
+            "value": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(90)": 409.262367,
+            "p(95)": 535.0414275,
+            "avg": 206.3296102580645,
+            "min": 3.816253,
+            "med": 235.543005,
+            "max": 615.851195
+        },
+        "checks": {
+            "passes": 45,
+            "fails": 9,
+            "value": 0.8333333333333334
+        },
+        "group_duration": {
+            "p(95)": 496.0360151000001,
+            "avg": 179.8005911025641,
+            "min": 4.092597,
+            "med": 67.85985,
+            "max": 621.504766,
+            "p(90)": 407.87827660000005
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_blocked": {
+            "p(95)": 0.25579344999998577,
+            "avg": 0.2916298000000001,
+            "min": 0.000348,
+            "med": 0.0007075,
+            "max": 6.624467,
+            "p(90)": 0.0010226
+        },
+        "http_req_sending": {
+            "p(90)": 0.20221570000000003,
+            "p(95)": 0.23584269999999985,
+            "avg": 0.13115107500000003,
+            "min": 0.063282,
+            "med": 0.114326,
+            "max": 0.334304
+        }
+    },
+    "setup_data": {
+        "baseUrl": "https://35.244.162.92.nip.io",
+        "scenario": "smoke"
+    }
+}
