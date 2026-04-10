@@ -25,6 +25,15 @@ function formatTime(ts: string) {
   }
 }
 
+function formatDeliveryReason(notification: AdminApiNotification): string {
+  const raw = (notification.last_error ?? '').trim();
+  if (!raw) return '';
+  if (raw === 'no active device tokens') return 'No active push token is registered for this driver.';
+  if (raw === 'fcm client not configured') return 'FCM is not configured in this environment.';
+  if (raw === 'driver_disabled') return 'Push notifications were disabled by the driver.';
+  return raw;
+}
+
 export default function AdminNotificationsPage() {
   const [notifications, setNotifications] = useState<AdminApiNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,10 +124,25 @@ export default function AdminNotificationsPage() {
                       {notification.message}
                     </p>
 
+                    {formatDeliveryReason(notification) && (
+                      <div
+                        className="mt-2 px-3 py-2 rounded-lg"
+                        style={{ background: '#F8F6F2', color: '#4E5953', fontSize: '0.8125rem' }}
+                      >
+                        <strong style={{ color: '#1F2421' }}>Delivery reason:</strong> {formatDeliveryReason(notification)}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap items-center gap-2 mt-2" style={{ color: '#4E5953', fontSize: '0.8125rem' }}>
                       <span>Driver: {notification.driver_id}</span>
                       <span>·</span>
                       <span>Journey: {notification.journey_id}</span>
+                      {typeof notification.retry_count === 'number' && notification.retry_count > 0 && (
+                        <>
+                          <span>·</span>
+                          <span>Retries: {notification.retry_count}</span>
+                        </>
+                      )}
                       <span>·</span>
                       <span>{formatTime(notification.timestamp)}</span>
                     </div>
