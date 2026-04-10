@@ -1,0 +1,318 @@
+{
+    "metrics": {
+        "http_req_blocked": {
+            "med": 0.0005794999999999999,
+            "max": 6.92476,
+            "p(90)": 1.8368285000000044,
+            "p(95)": 6.240653649999999,
+            "avg": 0.7252932777777777,
+            "min": 0.000367
+        },
+        "vus": {
+            "max": 1,
+            "value": 1,
+            "min": 1
+        },
+        "vus_max": {
+            "max": 1,
+            "value": 1,
+            "min": 1
+        },
+        "iterations": {
+            "rate": 0.09026267198009218,
+            "count": 3
+        },
+        "http_req_connecting": {
+            "avg": 0.06114516666666667,
+            "min": 0,
+            "med": 0,
+            "max": 0.64628,
+            "p(90)": 0.1362999000000003,
+            "p(95)": 0.4831250499999997
+        },
+        "iteration_duration": {
+            "p(95)": 17188.3898862,
+            "avg": 6646.799814,
+            "min": 0.182821,
+            "med": 1061.067426,
+            "max": 17958.892179,
+            "p(90)": 16417.8875934
+        },
+        "group_duration": {
+            "p(90)": 4375.369460600001,
+            "p(95)": 6475.443317199999,
+            "avg": 1477.7479571764704,
+            "min": 97.148931,
+            "med": 500.799617,
+            "max": 7490.455974
+        },
+        "http_req_duration": {
+            "min": 96.730236,
+            "med": 466.4210485,
+            "max": 7489.957648,
+            "p(90)": 4067.216722000002,
+            "p(95)": 6411.584548249998,
+            "avg": 1399.8441843333333,
+            "thresholds": {
+                "p(95)<1000": true,
+                "p(99)<3000": true
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 1399.8441843333333,
+            "min": 96.730236,
+            "med": 466.4210485,
+            "max": 7489.957648,
+            "p(90)": 4067.216722000002,
+            "p(95)": 6411.584548249998
+        },
+        "route_compute_duration": {
+            "avg": 2546.5,
+            "min": 1949,
+            "med": 2546.5,
+            "max": 3144,
+            "p(90)": 3024.5,
+            "p(95)": 3084.25,
+            "thresholds": {
+                "p(95)<2000": true
+            }
+        },
+        "data_received": {
+            "count": 222458,
+            "rate": 6693.217827782449
+        },
+        "http_reqs": {
+            "count": 18,
+            "rate": 0.5415760318805531
+        },
+        "auth_success": {
+            "passes": 3,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.95": false
+            },
+            "value": 1
+        },
+        "http_req_tls_handshaking": {
+            "min": 0,
+            "med": 0,
+            "max": 5.268115,
+            "p(90)": 1.565883000000004,
+            "p(95)": 5.22688575,
+            "avg": 0.5826513888888889
+        },
+        "http_req_waiting": {
+            "max": 7489.680591,
+            "p(90)": 4048.3012718000023,
+            "p(95)": 6411.264936849998,
+            "avg": 1389.4128784444445,
+            "min": 96.529953,
+            "med": 447.68517199999997
+        },
+        "journey_create_success": {
+            "fails": 2,
+            "passes": 0,
+            "thresholds": {
+                "rate>0.90": true
+            },
+            "value": 0
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 18,
+            "thresholds": {
+                "rate<0.05": false
+            },
+            "value": 0
+        },
+        "checks": {
+            "passes": 24,
+            "fails": 0,
+            "value": 1
+        },
+        "capacity_check_duration": {
+            "p(90)": 339.2,
+            "p(95)": 345.1,
+            "avg": 292,
+            "min": 233,
+            "med": 292,
+            "max": 351,
+            "thresholds": {
+                "p(95)<800": false
+            }
+        },
+        "http_req_sending": {
+            "max": 0.237254,
+            "p(90)": 0.18760500000000005,
+            "p(95)": 0.23470314999999997,
+            "avg": 0.13221311111111111,
+            "min": 0.076022,
+            "med": 0.1234655
+        },
+        "http_req_receiving": {
+            "avg": 10.299092777777776,
+            "min": 0.085029,
+            "med": 0.162569,
+            "max": 78.845577,
+            "p(90)": 25.8430959,
+            "p(95)": 34.56879649999993
+        },
+        "data_sent": {
+            "count": 7488,
+            "rate": 225.2956292623101
+        }
+    },
+    "setup_data": {
+        "baseUrl": "https://35.227.198.68.nip.io",
+        "scenario": "smoke"
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {
+            "auth: register": {
+                "path": "::auth: register",
+                "id": "6feaeb925b49356ace595382d41bd173",
+                "groups": {},
+                "checks": {
+                        "register: status 201 or 409": {
+                            "name": "register: status 201 or 409",
+                            "path": "::auth: register::register: status 201 or 409",
+                            "id": "1301d8c9433717c19e5b64f4aca85a72",
+                            "passes": 3,
+                            "fails": 0
+                        }
+                    },
+                "name": "auth: register"
+            },
+            "auth: get profile": {
+                "id": "03c573b34eb1847f6eddbb2ed53fe8eb",
+                "groups": {},
+                "checks": {
+                        "profile: status 200": {
+                            "passes": 3,
+                            "fails": 0,
+                            "name": "profile: status 200",
+                            "path": "::auth: get profile::profile: status 200",
+                            "id": "a296c9f11392efb20fe070cad1cce72a"
+                        },
+                        "profile: has email": {
+                            "fails": 0,
+                            "name": "profile: has email",
+                            "path": "::auth: get profile::profile: has email",
+                            "id": "944e715dc44db8e734807816acba06e4",
+                            "passes": 3
+                        }
+                    },
+                "name": "auth: get profile",
+                "path": "::auth: get profile"
+            },
+            "map: search places": {
+                "name": "map: search places",
+                "path": "::map: search places",
+                "id": "709aa18f001c9bc7d7b470827104200e",
+                "groups": {},
+                "checks": {
+                        "search: status 200 or 429": {
+                            "name": "search: status 200 or 429",
+                            "path": "::map: search places::search: status 200 or 429",
+                            "id": "f03e9a2dcddc732f6249c3117410ea7b",
+                            "passes": 2,
+                            "fails": 0
+                        }
+                    }
+            },
+            "map: get route": {
+                "name": "map: get route",
+                "path": "::map: get route",
+                "id": "1cd38d147eed23771b61df1ffc859639",
+                "groups": {},
+                "checks": {
+                        "route: status 200": {
+                            "name": "route: status 200",
+                            "path": "::map: get route::route: status 200",
+                            "id": "517f6e507118024b30964b946045e365",
+                            "passes": 2,
+                            "fails": 0
+                        }
+                    }
+            },
+            "capacity: check availability": {
+                "name": "capacity: check availability",
+                "path": "::capacity: check availability",
+                "id": "61b48e4d26210603b94c02c75ae7b284",
+                "groups": {},
+                "checks": {
+                        "segments: status 200": {
+                            "name": "segments: status 200",
+                            "path": "::capacity: check availability::segments: status 200",
+                            "id": "cb128a3d3c63548bbd8b32592e2b3dc5",
+                            "passes": 2,
+                            "fails": 0
+                        },
+                        "segments: is array": {
+                            "name": "segments: is array",
+                            "path": "::capacity: check availability::segments: is array",
+                            "id": "b898aa4e133f0439330d3feb4ece0a53",
+                            "passes": 2,
+                            "fails": 0
+                        }
+                    }
+            },
+            "capacity: occupancy": {
+                "checks": {
+                    "occupancy: status 200": {
+                        "name": "occupancy: status 200",
+                        "path": "::capacity: occupancy::occupancy: status 200",
+                        "id": "fce868b79a0f2dc81466a59a9a540ef3",
+                        "passes": 2,
+                        "fails": 0
+                    }
+                },
+                "name": "capacity: occupancy",
+                "path": "::capacity: occupancy",
+                "id": "cf2bd792306fdd263f9d832bd763d2e7",
+                "groups": {}
+            },
+            "journey: create": {
+                "checks": {
+                    "journey create: status 201/200/409/422": {
+                        "name": "journey create: status 201/200/409/422",
+                        "path": "::journey: create::journey create: status 201/200/409/422",
+                        "id": "f3365e45fca313c7485f56f80fd62cdd",
+                        "passes": 2,
+                        "fails": 0
+                    },
+                    "journey create: not 5xx (except 503)": {
+                        "name": "journey create: not 5xx (except 503)",
+                        "path": "::journey: create::journey create: not 5xx (except 503)",
+                        "id": "0c3ca380237dc2e8a81a3108420a4292",
+                        "passes": 2,
+                        "fails": 0
+                    }
+                },
+                "name": "journey: create",
+                "path": "::journey: create",
+                "id": "4ed2202be70e8afcc0ef4de16eb494e2",
+                "groups": {}
+            },
+            "health: gateway": {
+                "name": "health: gateway",
+                "path": "::health: gateway",
+                "id": "516d56bec84d3cf8c55f7d7eb79fb2e2",
+                "groups": {},
+                "checks": {
+                        "nginx healthy: status 200": {
+                            "passes": 1,
+                            "fails": 0,
+                            "name": "nginx healthy: status 200",
+                            "path": "::health: gateway::nginx healthy: status 200",
+                            "id": "9db5d8cd55cdb5ac51cb81516ccaa993"
+                        }
+                    }
+            }
+        },
+        "checks": {}
+    }
+}

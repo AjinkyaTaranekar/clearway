@@ -1,0 +1,4 @@
+run_id=20260410T102719Z-fixed-full-suite
+artifact_dir=debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite
+total_runs=9
+failed_runs=9

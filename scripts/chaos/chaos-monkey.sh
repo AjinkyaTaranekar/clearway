@@ -482,12 +482,22 @@ get_node_availability() {
   swarm_safe "node inspect $node_id --format '{{.Spec.Availability}}'" || echo "unknown"
 }
 
-# Count how many CRDB (db) tasks are in running state across the swarm.
+# Count how many CRDB nodes are globally live, by querying CRDB's own node status.
+# This avoids the Swarm-local blind spot: a Swarm manager only sees its own cell's
+# tasks, so "service ps vcs_db" on the EU manager returns 2 (eu1+eu2), not the full
+# 4-node cluster.  "cockroach node status" is cluster-wide and reports all nodes.
 count_live_crdb_nodes() {
-  swarm_safe "service ps ${STACK_NAME}_db \
-    --filter desired-state=running \
-    --format '{{.CurrentState}}'" \
-    | grep -c "Running" 2>/dev/null || echo "0"
+  local mgr="${CELL_MANAGER[$CELL]}" zone="${CELL_ZONE[$CELL]}" stack="$STACK_NAME"
+  local remote_cmd
+  remote_cmd="CID=\$(sudo docker ps --filter name=${stack}_db --format '{{.ID}}' | head -1) \
+    && [ -n \"\$CID\" ] \
+    && sudo docker exec \"\$CID\" /cockroach/cockroach node status \
+         --insecure --host=localhost:26257 --format=csv 2>/dev/null \
+       | tail -n +2 | awk -F',' '{print \$NF}' | grep -c '^true' \
+    || echo 0"
+  local result
+  result=$(gcp_ssh_safe "$mgr" "$zone" "$remote_cmd" 2>/dev/null)
+  echo "${result:-0}"
 }
 
 # =============================================================================
@@ -873,7 +883,13 @@ monitor_loop() {
     for check_cell in eu us apac; do
       # Skip the expected-to-fail cell (only for node-level experiments)
       [[ "$EXPERIMENT" != "scale-service" && "$check_cell" == "${TARGET_CELL:-none}" ]] && continue
-      local ch_health; eval "ch_health=\${${check_cell}_h}"
+      local ch_health
+      case "$check_cell" in
+        eu)   ch_health="$eu_h" ;;
+        us)   ch_health="$us_h" ;;
+        apac) ch_health="$ap_h" ;;
+        *)    ch_health="" ;;
+      esac
       if [[ "$ch_health" == "unreachable" ]]; then
         non_target_fail=true
         break
@@ -1110,7 +1126,7 @@ experiment_scale_service() {
       --project=$GCP_PROJECT \
       --zone=$zone \
       --quiet \
-      --command='sudo docker service update --constraint-rm ${constraint} ${full_svc} 2>/dev/null || true' \
+      --command='sudo docker service update --detach --constraint-rm ${constraint} ${full_svc} 2>/dev/null || true' \
       2>/dev/null || true"
 
     chaos "$(printf '%.0s━' {1..56})"
@@ -1123,7 +1139,7 @@ experiment_scale_service() {
       --project=$GCP_PROJECT \
       --zone=$zone \
       --quiet \
-      --command='sudo docker service update --constraint-add ${constraint} ${full_svc}' \
+      --command='sudo docker service update --detach --constraint-add ${constraint} ${full_svc}' \
       2>/dev/null"
 
     if ! $DRY_RUN; then
@@ -1157,7 +1173,7 @@ experiment_scale_service() {
       --project=$GCP_PROJECT \
       --zone=$zone \
       --quiet \
-      --command='sudo docker service update --constraint-rm ${constraint} ${full_svc} 2>/dev/null || true' \
+      --command='sudo docker service update --detach --constraint-rm ${constraint} ${full_svc} 2>/dev/null || true' \
       2>/dev/null"
 
     if ! $DRY_RUN; then

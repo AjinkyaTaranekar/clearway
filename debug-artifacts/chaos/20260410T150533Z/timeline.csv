@@ -1,0 +1,7 @@
+timestamp,elapsed_s,eu_health,us_health,apac_health,endpoint_status,notes
+15:06:10,0,healthy,healthy,healthy,"ERROR (502000)",""
+15:06:21,10,healthy,healthy,healthy,"ERROR (502000)",""
+15:06:31,20,healthy,healthy,healthy,"ERROR (502000)",""
+15:06:42,30,healthy,healthy,healthy,"ERROR (502000)",""
+15:06:55,40,healthy,healthy,healthy,"ERROR (502000)",""
+15:07:06,50,healthy,healthy,healthy,"ERROR (502000)",""

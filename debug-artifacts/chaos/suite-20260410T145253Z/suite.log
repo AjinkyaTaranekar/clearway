@@ -1,0 +1,601 @@
+# VCS Chaos Suite Log — 20260410T145253Z
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:52:53] SUITE  [0m [1/8] Phase 1 — [1mcapacity-service[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:52:53][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:52:53][0m Experiment    : [1mscale-service[0m
+[1m[14:52:53][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:52:53][0m Target cell   : [1meu[0m
+[1m[14:52:53][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:52:53][0m Duration      : [1m60s per service[0m
+[1m[14:52:53][0m Poll interval : [1m10s[0m
+[1m[14:52:53][0m Services      : [1mcapacity-service[0m  (sequential)
+[1m[14:52:53][0m Max cell fails: [1m2[0m before abort
+[1m[14:52:53][0m Dry-run       : [1mtrue[0m
+[1;33m[14:52:53] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:52:53][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:52:53] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145253Z/
+[1m[14:52:53][0m Pre-flight checks...
+[0;32m[14:52:55] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:52:55] INFO   [0m Services to test (sequential): capacity-service
+[0;32m[14:52:55] INFO   [0m Checking all cells are healthy...
+[0;32m[14:52:56] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:52:56] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[14:53:01] INFO   [0m   capacity-service endpoint BEFORE chaos: UP (200)
+
+[0;31m[14:53:01] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:01] CHAOS  [0m INJECTING FAILURE — 14:53:01
+[0;31m[14:53:01] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:01] INFO   [0m Scale-service experiment: capacity-service
+[0;32m[14:53:01] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[0;35m[14:53:01] ──[0m [1/1] Testing: capacity-service
+[0;32m[14:53:04] INFO   [0m Baseline task state for capacity-service:
+  NAME                                             NODE         CURRENT STATE
+  vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan   vcs-vm-eu2   Running 14 hours ago
+  vcs_capacity-service.y9gptw6cifbokbet716ijceda   vcs-vm-eu1   Running 14 hours ago
+
+[0;32m[14:53:07] INFO   [0m Endpoint before chaos: UP (200)
+[0;31m[14:53:07] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:07] CHAOS  [0m Scaling capacity-service to 0 — adding impossible constraint
+[0;31m[14:53:07] CHAOS  [0m Constraint: node.hostname==chaos-no-match-1775832781-capacity-service
+[0;31m[14:53:07] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-add node.hostname==chaos-no-match-1775832781-capacity-service vcs_capacity-service'       2>/dev/null[0m
+
+[0;31m[14:53:07] CHAOS  [0m WHAT BREAKS: journey creates fail (capacity CB opens after 10 network failures).
+[0;31m[14:53:07] CHAOS  [0m PROBE: /api/v1/capacity/segments → expect ERROR (502) within ~10s.
+
+[0;32m[14:53:07] INFO   [0m Monitoring for 60s (poll every 10s)...
+[0;32m[14:53:07] INFO   [0m Observing endpoint: capacity-service → /api/v1/capacity/segments
+[0;32m[14:53:07] INFO   [0m Tip: run K6 load tests concurrently to generate traffic and observe circuit breakers.
+
+  [1mTIME     EU-Cell       US-Cell       APAC-Cell     capacity-service endpoint [0m
+  ────────────────────────────────────────────────────────────────────────
+  0s      [0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mUP (200)                  [0m
+/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/chaos/chaos-monkey.sh: line 876: apac_h: unbound variable
+
+[0;36m[14:53:08] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:08] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:53:08] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:08] RESTORE[0m Running: gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832781-capacity-service vcs_capacity-service 2>/dev/null || true'       2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832781-capacity-service vcs_capacity-service 2>/dev/null || true'       2>/dev/null || true[0m
+
+[0;36m[14:53:10] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:53:10] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:53:10] SUITE  [0m [1/8] [0;31mFAILED (exit 1)[0m — capacity-service
+
+[0;32m[14:53:10] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:53:10] SUITE  [0m [2/8] Phase 1 — [1mmap-service[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:53:10][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:53:10][0m Experiment    : [1mscale-service[0m
+[1m[14:53:10][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:53:10][0m Target cell   : [1meu[0m
+[1m[14:53:10][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:53:11][0m Duration      : [1m60s per service[0m
+[1m[14:53:11][0m Poll interval : [1m10s[0m
+[1m[14:53:11][0m Services      : [1mmap-service[0m  (sequential)
+[1m[14:53:11][0m Max cell fails: [1m2[0m before abort
+[1m[14:53:11][0m Dry-run       : [1mtrue[0m
+[1;33m[14:53:11] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:53:11][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:11] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145311Z/
+[1m[14:53:11][0m Pre-flight checks...
+[0;32m[14:53:13] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:53:13] INFO   [0m Services to test (sequential): map-service
+[0;32m[14:53:13] INFO   [0m Checking all cells are healthy...
+[0;32m[14:53:14] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:53:14] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[14:53:17] INFO   [0m   map-service endpoint BEFORE chaos: UP (200)
+
+[0;31m[14:53:17] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:17] CHAOS  [0m INJECTING FAILURE — 14:53:17
+[0;31m[14:53:17] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:17] INFO   [0m Scale-service experiment: map-service
+[0;32m[14:53:17] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[0;35m[14:53:17] ──[0m [1/1] Testing: map-service
+[0;32m[14:53:19] INFO   [0m Baseline task state for map-service:
+  NAME                                        NODE         CURRENT STATE
+  vcs_map-service.ojbjodjz1bhgp5vngzaiugnan   vcs-vm-eu2   Running 3 hours ago
+  vcs_map-service.y9gptw6cifbokbet716ijceda   vcs-vm-eu1   Running 3 hours ago
+
+[0;32m[14:53:22] INFO   [0m Endpoint before chaos: UP (200)
+[0;31m[14:53:22] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:22] CHAOS  [0m Scaling map-service to 0 — adding impossible constraint
+[0;31m[14:53:22] CHAOS  [0m Constraint: node.hostname==chaos-no-match-1775832797-map-service
+[0;31m[14:53:22] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-add node.hostname==chaos-no-match-1775832797-map-service vcs_map-service'       2>/dev/null[0m
+
+[0;31m[14:53:22] CHAOS  [0m WHAT BREAKS: journey creates fail (map CB opens after 10 network failures).
+[0;31m[14:53:22] CHAOS  [0m PROBE: /api/v1/map/segments → expect ERROR (502) within ~10s.
+
+[0;32m[14:53:22] INFO   [0m Monitoring for 60s (poll every 10s)...
+[0;32m[14:53:22] INFO   [0m Observing endpoint: map-service → /api/v1/map/segments
+[0;32m[14:53:22] INFO   [0m Tip: run K6 load tests concurrently to generate traffic and observe circuit breakers.
+
+  [1mTIME     EU-Cell       US-Cell       APAC-Cell     map-service endpoint      [0m
+  ────────────────────────────────────────────────────────────────────────
+  0s      [0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mUP (200)                  [0m
+/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/chaos/chaos-monkey.sh: line 876: apac_h: unbound variable
+
+[0;36m[14:53:23] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:23] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:53:23] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:23] RESTORE[0m Running: gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832797-map-service vcs_map-service 2>/dev/null || true'       2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832797-map-service vcs_map-service 2>/dev/null || true'       2>/dev/null || true[0m
+
+[0;36m[14:53:25] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:53:25] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:53:25] SUITE  [0m [2/8] [0;31mFAILED (exit 1)[0m — map-service
+
+[0;32m[14:53:25] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:53:25] SUITE  [0m [3/8] Phase 1 — [1miam-service[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:53:25][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:53:25][0m Experiment    : [1mscale-service[0m
+[1m[14:53:25][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:53:25][0m Target cell   : [1meu[0m
+[1m[14:53:25][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:53:25][0m Duration      : [1m60s per service[0m
+[1m[14:53:25][0m Poll interval : [1m10s[0m
+[1m[14:53:25][0m Services      : [1miam-service[0m  (sequential)
+[1m[14:53:25][0m Max cell fails: [1m2[0m before abort
+[1m[14:53:25][0m Dry-run       : [1mtrue[0m
+[1;33m[14:53:25] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:53:25][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:25] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145325Z/
+[1m[14:53:25][0m Pre-flight checks...
+[0;32m[14:53:28] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:53:28] INFO   [0m Services to test (sequential): iam-service
+[0;32m[14:53:28] INFO   [0m Checking all cells are healthy...
+[0;32m[14:53:28] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:53:28] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[14:53:32] INFO   [0m   iam-service endpoint BEFORE chaos: UP (200)
+
+[0;31m[14:53:32] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:32] CHAOS  [0m INJECTING FAILURE — 14:53:32
+[0;31m[14:53:32] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:32] INFO   [0m Scale-service experiment: iam-service
+[0;32m[14:53:32] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[0;35m[14:53:32] ──[0m [1/1] Testing: iam-service
+[0;32m[14:53:35] INFO   [0m Baseline task state for iam-service:
+  NAME                                        NODE         CURRENT STATE
+  vcs_iam-service.ojbjodjz1bhgp5vngzaiugnan   vcs-vm-eu2   Running 3 hours ago
+  vcs_iam-service.y9gptw6cifbokbet716ijceda   vcs-vm-eu1   Running 3 hours ago
+
+[0;32m[14:53:37] INFO   [0m Endpoint before chaos: UP (200)
+[0;31m[14:53:37] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:37] CHAOS  [0m Scaling iam-service to 0 — adding impossible constraint
+[0;31m[14:53:37] CHAOS  [0m Constraint: node.hostname==chaos-no-match-1775832812-iam-service
+[0;31m[14:53:37] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-add node.hostname==chaos-no-match-1775832812-iam-service vcs_iam-service'       2>/dev/null[0m
+
+[0;31m[14:53:37] CHAOS  [0m WHAT BREAKS: iam-service unavailable (502 from nginx).
+
+[0;32m[14:53:37] INFO   [0m Monitoring for 60s (poll every 10s)...
+[0;32m[14:53:37] INFO   [0m Observing endpoint: iam-service → /.well-known/jwks.json
+[0;32m[14:53:37] INFO   [0m Tip: run K6 load tests concurrently to generate traffic and observe circuit breakers.
+
+  [1mTIME     EU-Cell       US-Cell       APAC-Cell     iam-service endpoint      [0m
+  ────────────────────────────────────────────────────────────────────────
+  0s      [0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mUP (200)                  [0m
+/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/chaos/chaos-monkey.sh: line 876: apac_h: unbound variable
+
+[0;36m[14:53:38] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:38] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:53:38] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:38] RESTORE[0m Running: gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832812-iam-service vcs_iam-service 2>/dev/null || true'       2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832812-iam-service vcs_iam-service 2>/dev/null || true'       2>/dev/null || true[0m
+
+[0;36m[14:53:40] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:53:40] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:53:40] SUITE  [0m [3/8] [0;31mFAILED (exit 1)[0m — iam-service
+
+[0;32m[14:53:40] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:53:40] SUITE  [0m [4/8] Phase 1 — [1mnotification-service[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:53:40][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:53:40][0m Experiment    : [1mscale-service[0m
+[1m[14:53:40][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:53:40][0m Target cell   : [1meu[0m
+[1m[14:53:40][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:53:40][0m Duration      : [1m60s per service[0m
+[1m[14:53:40][0m Poll interval : [1m10s[0m
+[1m[14:53:40][0m Services      : [1mnotification-service[0m  (sequential)
+[1m[14:53:40][0m Max cell fails: [1m2[0m before abort
+[1m[14:53:40][0m Dry-run       : [1mtrue[0m
+[1;33m[14:53:40] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:53:40][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:40] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145340Z/
+[1m[14:53:40][0m Pre-flight checks...
+[0;32m[14:53:42] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:53:42] INFO   [0m Services to test (sequential): notification-service
+[0;32m[14:53:42] INFO   [0m Checking all cells are healthy...
+[0;32m[14:53:43] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:53:43] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[14:53:46] INFO   [0m   notification-service endpoint BEFORE chaos: ERROR (401000)
+
+[0;31m[14:53:46] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:46] CHAOS  [0m INJECTING FAILURE — 14:53:46
+[0;31m[14:53:46] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:46] INFO   [0m Scale-service experiment: notification-service
+[0;32m[14:53:46] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[0;35m[14:53:46] ──[0m [1/1] Testing: notification-service
+[0;32m[14:53:49] INFO   [0m Baseline task state for notification-service:
+  NAME                                                 NODE         CURRENT STATE
+  vcs_notification-service.ojbjodjz1bhgp5vngzaiugnan   vcs-vm-eu2   Running 3 hours ago
+  vcs_notification-service.y9gptw6cifbokbet716ijceda   vcs-vm-eu1   Running 3 hours ago
+
+[0;32m[14:53:52] INFO   [0m Endpoint before chaos: ERROR (401000)
+[0;31m[14:53:52] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:53:52] CHAOS  [0m Scaling notification-service to 0 — adding impossible constraint
+[0;31m[14:53:52] CHAOS  [0m Constraint: node.hostname==chaos-no-match-1775832826-notification-service
+[0;31m[14:53:52] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-add node.hostname==chaos-no-match-1775832826-notification-service vcs_notification-service'       2>/dev/null[0m
+
+[0;31m[14:53:52] CHAOS  [0m WHAT BREAKS: notification-service unavailable (502 from nginx).
+
+[0;32m[14:53:52] INFO   [0m Monitoring for 60s (poll every 10s)...
+[0;32m[14:53:52] INFO   [0m Observing endpoint: notification-service → /api/v1/notifications
+[0;32m[14:53:52] INFO   [0m Tip: run K6 load tests concurrently to generate traffic and observe circuit breakers.
+
+  [1mTIME     EU-Cell       US-Cell       APAC-Cell     notification-service endpoint[0m
+  ────────────────────────────────────────────────────────────────────────
+  0s      [0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mhealthy      [0m[1;33mERROR (401000)            [0m
+/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/chaos/chaos-monkey.sh: line 876: apac_h: unbound variable
+
+[0;36m[14:53:52] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:52] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:53:52] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:53:52] RESTORE[0m Running: gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832826-notification-service vcs_notification-service 2>/dev/null || true'       2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832826-notification-service vcs_notification-service 2>/dev/null || true'       2>/dev/null || true[0m
+
+[0;36m[14:53:54] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:53:54] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:53:54] SUITE  [0m [4/8] [0;31mFAILED (exit 1)[0m — notification-service
+
+[0;32m[14:53:54] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:53:54] SUITE  [0m [5/8] Phase 2 — [1mredis[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:53:54][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:53:54][0m Experiment    : [1mscale-service[0m
+[1m[14:53:54][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:53:55][0m Target cell   : [1meu[0m
+[1m[14:53:55][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:53:55][0m Duration      : [1m60s per service[0m
+[1m[14:53:55][0m Poll interval : [1m10s[0m
+[1m[14:53:55][0m Services      : [1mredis[0m  (sequential)
+[1m[14:53:55][0m Max cell fails: [1m2[0m before abort
+[1m[14:53:55][0m Dry-run       : [1mtrue[0m
+[1;33m[14:53:55] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:53:55][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:53:55] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145355Z/
+[1m[14:53:55][0m Pre-flight checks...
+[0;32m[14:53:57] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:53:57] INFO   [0m Services to test (sequential): redis
+[0;32m[14:53:57] INFO   [0m Checking all cells are healthy...
+[0;32m[14:53:57] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:53:57] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[14:54:02] INFO   [0m   redis endpoint BEFORE chaos: UP (200)
+
+[0;31m[14:54:02] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:54:02] CHAOS  [0m INJECTING FAILURE — 14:54:02
+[0;31m[14:54:02] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:02] INFO   [0m Scale-service experiment: redis
+[0;32m[14:54:02] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[1;33m[14:54:02] WARN   [0m Redis chaos: HTTP endpoints will remain UP (graceful degradation to DB).
+[1;33m[14:54:02] WARN   [0m Silent failure: journey.events Stream consumer stops → capacity leak.
+[1;33m[14:54:02] WARN   [0m Stream backlog will be checked after restore.
+[0;35m[14:54:02] ──[0m [1/1] Testing: redis
+[0;32m[14:54:05] INFO   [0m Baseline task state for redis:
+  NAME                                  NODE         CURRENT STATE
+  vcs_redis.ojbjodjz1bhgp5vngzaiugnan   vcs-vm-eu2   Running 4 days ago
+  vcs_redis.y9gptw6cifbokbet716ijceda   vcs-vm-eu1   Running 4 days ago
+
+[0;32m[14:54:08] INFO   [0m Endpoint before chaos: UP (200)
+[0;31m[14:54:08] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:54:08] CHAOS  [0m Scaling redis to 0 — adding impossible constraint
+[0;31m[14:54:08] CHAOS  [0m Constraint: node.hostname==chaos-no-match-1775832842-redis
+[0;31m[14:54:08] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-add node.hostname==chaos-no-match-1775832842-redis vcs_redis'       2>/dev/null[0m
+
+[0;31m[14:54:08] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:54:08] CHAOS  [0m WHAT BREAKS when Redis goes to 0 tasks:
+[0;31m[14:54:08] CHAOS  [0m   ★ SILENT FAILURE: journey.events Stream consumer stops.
+[0;31m[14:54:08] CHAOS  [0m     Completed/cancelled journeys NO LONGER release capacity.
+[0;31m[14:54:08] CHAOS  [0m     Slots appear permanently occupied — capacity leak over time.
+[0;31m[14:54:08] CHAOS  [0m     Events pile up in journey-service DB outbox (outbox_relay retries).
+[0;31m[14:54:08] CHAOS  [0m   • Route cache: bypassed (cache miss → direct OSRM call).
+[0;31m[14:54:08] CHAOS  [0m     Increases OSRM latency + risk of Nominatim 429 rate-limiting.
+[0;31m[14:54:08] CHAOS  [0m   • Capacity segment cache: falls back to CockroachDB reads.
+[0;31m[14:54:08] CHAOS  [0m     Slightly slower but functionally correct.
+[0;31m[14:54:08] CHAOS  [0m WHAT STAYS WORKING:
+[0;31m[14:54:08] CHAOS  [0m   • All HTTP endpoints return 200 (Redis failure is transparent to callers)
+[0;31m[14:54:08] CHAOS  [0m   • Reservations still succeed (locking uses CockroachDB SELECT FOR UPDATE)
+[0;31m[14:54:08] CHAOS  [0m   • IAM JWKS endpoint (no Redis dependency)
+[0;31m[14:54:08] CHAOS  [0m PROBE: /api/v1/capacity/segments → expect UP (200) — degraded, not broken.
+[0;31m[14:54:08] CHAOS  [0m Stream backlog will be checked via redis-cli after restore.
+[0;31m[14:54:08] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:08] INFO   [0m Monitoring for 60s (poll every 10s)...
+[0;32m[14:54:08] INFO   [0m Observing endpoint: redis → /api/v1/capacity/segments
+[0;32m[14:54:08] INFO   [0m Tip: run K6 load tests concurrently to generate traffic and observe circuit breakers.
+
+  [1mTIME     EU-Cell       US-Cell       APAC-Cell     redis endpoint            [0m
+  ────────────────────────────────────────────────────────────────────────
+  0s      [0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mUP (200)                  [0m
+/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/chaos/chaos-monkey.sh: line 876: apac_h: unbound variable
+
+[0;36m[14:54:09] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:09] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:54:09] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:09] RESTORE[0m Running: gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832842-redis vcs_redis 2>/dev/null || true'       2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775832842-redis vcs_redis 2>/dev/null || true'       2>/dev/null || true[0m
+
+[0;36m[14:54:11] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:54:11] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:54:11] SUITE  [0m [5/8] [0;31mFAILED (exit 1)[0m — redis
+
+[0;32m[14:54:11] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:54:11] SUITE  [0m [6/8] Phase 2 — [1mdb[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:54:11][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:54:11][0m Experiment    : [1mscale-service[0m
+[1m[14:54:11][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:54:11][0m Target cell   : [1meu[0m
+[1m[14:54:11][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:54:11][0m Duration      : [1m60s per service[0m
+[1m[14:54:11][0m Poll interval : [1m10s[0m
+[1m[14:54:11][0m Services      : [1mdb[0m  (sequential)
+[1m[14:54:11][0m Max cell fails: [1m2[0m before abort
+[1m[14:54:11][0m Dry-run       : [1mtrue[0m
+[1;33m[14:54:11] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:54:11][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:11] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145411Z/
+[1m[14:54:11][0m Pre-flight checks...
+[0;32m[14:54:13] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:54:13] INFO   [0m Services to test (sequential): db
+[0;32m[14:54:13] INFO   [0m Checking all cells are healthy...
+[0;32m[14:54:14] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:54:14] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[14:54:17] INFO   [0m   db endpoint BEFORE chaos: UP (200)
+
+[0;31m[14:54:17] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:54:17] CHAOS  [0m INJECTING FAILURE — 14:54:17
+[0;31m[14:54:17] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:17] INFO   [0m Scale-service experiment: db
+[0;32m[14:54:17] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[0;32m[14:54:17] INFO   [0m CockroachDB quorum guard (scale-service)...
+[0;32m[14:54:19] INFO   [0m   Live CRDB nodes (running tasks): 2
+[0;31m[14:54:20] ERROR  [0m QUORUM GUARD BLOCKED: Only 2 CRDB nodes running.
+[0;31m[14:54:20] ERROR  [0m Scaling db to 0 on one more node would break Raft consensus.
+[0;31m[14:54:20] ERROR  [0m Repair the cluster before running db chaos experiments.
+
+[0;36m[14:54:20] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:20] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:54:20] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:20] RESTORE[0m No cleanup actions registered.
+
+[0;36m[14:54:20] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:54:20] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:54:20] SUITE  [0m [6/8] [0;31mFAILED (exit 1)[0m — db
+
+[0;32m[14:54:20] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:54:20] SUITE  [0m [7/8] Phase 3 — [1mdrain-node[0m  (drain-node → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:54:20][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:54:20][0m Experiment    : [1mdrain-node[0m
+[1m[14:54:20][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:54:20][0m Target cell   : [1meu[0m
+[1m[14:54:20][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:54:20][0m Duration      : [1m60s per service[0m
+[1m[14:54:20][0m Poll interval : [1m10s[0m
+[1m[14:54:20][0m Max cell fails: [1m2[0m before abort
+[1m[14:54:20][0m Dry-run       : [1mtrue[0m
+[1;33m[14:54:20] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:54:20][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:20] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145420Z/
+[1m[14:54:20][0m Pre-flight checks...
+[0;32m[14:54:22] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:54:22] INFO   [0m CockroachDB quorum guard...
+[0;32m[14:54:24] INFO   [0m   Live CRDB nodes (running tasks): 2
+[0;31m[14:54:24] ERROR  [0m QUORUM GUARD BLOCKED: Only 2 CRDB nodes running.
+[0;31m[14:54:24] ERROR  [0m Draining another node would break Raft consensus (need majority of 4 = 3).
+[0;31m[14:54:24] ERROR  [0m Repair the cluster before running drain-node experiments.
+
+[0;36m[14:54:24] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:24] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:54:24] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:24] RESTORE[0m No cleanup actions registered.
+
+[0;36m[14:54:24] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:54:24] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:54:24] SUITE  [0m [7/8] [0;31mFAILED (exit 1)[0m — drain-node
+
+[0;32m[14:54:24] SUITE  [0m Cool-down: 60s before next experiment...
+
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[14:54:24] SUITE  [0m [8/8] Phase 3 — [1mblock-firewall[0m  (block-firewall → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[14:54:24][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[14:54:24][0m Experiment    : [1mblock-firewall[0m
+[1m[14:54:24][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[14:54:24][0m Target cell   : [1meu[0m
+[1m[14:54:24][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[14:54:24][0m Duration      : [1m60s per service[0m
+[1m[14:54:24][0m Poll interval : [1m10s[0m
+[1m[14:54:24][0m Max cell fails: [1m2[0m before abort
+[1m[14:54:24][0m Dry-run       : [1mtrue[0m
+[1;33m[14:54:24] WARN   [0m DRY-RUN MODE — no real changes will be made
+[1m[14:54:24][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:24] INFO   [0m [DRY-RUN] Would create report at debug-artifacts/chaos/20260410T145424Z/
+[1m[14:54:24][0m Pre-flight checks...
+[0;32m[14:54:26] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[14:54:26] INFO   [0m Checking all cells are healthy...
+[0;32m[14:54:27] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[14:54:27] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;35m[14:54:30] ──[0m Target endpoint BEFORE chaos (capacity-service):
+[0;32m[14:54:31] INFO   [0m   UP (200)
+
+[0;31m[14:54:31] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[14:54:31] CHAOS  [0m INJECTING FAILURE — 14:54:31
+[0;31m[14:54:31] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[14:54:31] INFO   [0m Target VM : vcs-vm-eu2 (zone: europe-west1-b)
+[0;32m[14:54:31] INFO   [0m Chaos tag : chaos-block-1775832871
+[0;32m[14:54:31] INFO   [0m FW rule   : chaos-deny-vcs-vm-eu2-1775832871
+[0;31m[14:54:31] CHAOS  [0m Adding temporary network tag 'chaos-block-1775832871' to vcs-vm-eu2
+  [2m[DRY-RUN] gcloud compute instances add-tags vcs-vm-eu2     --tags=chaos-block-1775832871     --zone=europe-west1-b     --project=distributed-capacity-system     --quiet     2>/dev/null[0m
+[0;31m[14:54:31] CHAOS  [0m Creating INGRESS DENY rule: chaos-deny-vcs-vm-eu2-1775832871
+[0;31m[14:54:31] CHAOS  [0m Blocking tcp:80,443,8081-8085 from 0.0.0.0/0 to tag 'chaos-block-1775832871'
+[0;31m[14:54:31] CHAOS  [0m Internal Docker overlay traffic (10.x.x.x) is NOT blocked.
+  [2m[DRY-RUN] gcloud compute firewall-rules create chaos-deny-vcs-vm-eu2-1775832871     --project=distributed-capacity-system     --direction=INGRESS     --priority=500     --network=default     --action=DENY     --rules=tcp:80,tcp:443,tcp:8081,tcp:8082,tcp:8083,tcp:8084,tcp:8085     --source-ranges=0.0.0.0/0     --target-tags=chaos-block-1775832871     --description='VCS chaos-monkey - auto-deleted. Rule for vcs-vm-eu2'     2>/dev/null[0m
+
+[0;32m[14:54:31] INFO   [0m Monitoring for 60s (poll every 10s)...
+[0;32m[14:54:31] INFO   [0m Observing endpoint: capacity-service → /api/v1/capacity/segments
+[0;32m[14:54:31] INFO   [0m Tip: run K6 load tests concurrently to generate traffic and observe circuit breakers.
+
+  [1mTIME     EU-Cell       US-Cell       APAC-Cell     capacity-service endpoint [0m
+  ────────────────────────────────────────────────────────────────────────
+  0s      [0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mhealthy      [0m[0;32mUP (200)                  [0m
+/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/chaos/chaos-monkey.sh: line 876: apac_h: unbound variable
+
+[0;36m[14:54:33] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:33] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[14:54:33] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[14:54:33] RESTORE[0m Running: gcloud compute firewall-rules delete chaos-deny-vcs-vm-eu2-1775832871     --project=distributed-capacity-system     --quiet     2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute firewall-rules delete chaos-deny-vcs-vm-eu2-1775832871     --project=distributed-capacity-system     --quiet     2>/dev/null || true[0m
+[0;36m[14:54:35] RESTORE[0m Running: gcloud compute instances remove-tags vcs-vm-eu2     --tags=chaos-block-1775832871     --zone=europe-west1-b     --project=distributed-capacity-system     --quiet     2>/dev/null || true
+  [2m[DRY-RUN] gcloud compute instances remove-tags vcs-vm-eu2     --tags=chaos-block-1775832871     --zone=europe-west1-b     --project=distributed-capacity-system     --quiet     2>/dev/null || true[0m
+
+[0;36m[14:54:37] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[14:54:37] RESTORE[0m [DRY-RUN] Skipping recovery wait.
+
+[1;33m[14:54:37] SUITE  [0m [8/8] [0;31mFAILED (exit 1)[0m — block-firewall
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+[1mCHAOS SUITE COMPLETE — 2026-04-10T14:54:37[0m
+
+  Total experiments:           8
+  Passed:                      [0;32m0[0m
+  Failed:                      [0;31m8[0m
+
+[0;32m[14:54:37] SUITE  [0m Suite log     : debug-artifacts/chaos/suite-20260410T145253Z/suite.log
+[0;32m[14:54:37] SUITE  [0m Manifest      : debug-artifacts/chaos/suite-20260410T145253Z/manifest.csv
+
+
+[1;33m[1m8 EXPERIMENT(S) FAILED — review debug-artifacts/chaos/suite-20260410T145253Z/suite.log[0m

@@ -1,0 +1,3 @@
+exit_code=99
+summary_source=/home/ajinkyataranekar26/distributed-vehicle-capacity-system/scripts/load-testing/results/summary-smoke-20260410T103220.json
+art_dir=debug-artifacts/load-tests/20260410T102719Z-authfix-smoke-eu-r2

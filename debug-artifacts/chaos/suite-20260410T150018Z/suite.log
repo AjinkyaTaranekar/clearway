@@ -1,0 +1,449 @@
+# VCS Chaos Suite Log — 20260410T150018Z
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+[0;32m[15:00:19] SUITE  [0m [1/8] Phase 1 — [1mcapacity-service[0m  (scale-service → vcs-vm-eu2)
+[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+
+[1m[0;31m╔══════════════════════════════════════════════════════════╗
+║      VCS CHAOS MONKEY — GCP SWARM EDITION (v3)          ║
+╚══════════════════════════════════════════════════════════╝[0m
+
+[1m[15:00:19][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[15:00:19][0m Experiment    : [1mscale-service[0m
+[1m[15:00:19][0m Target VM     : [1mvcs-vm-eu2[0m  (europe-west1-b)
+[1m[15:00:19][0m Target cell   : [1meu[0m
+[1m[15:00:19][0m Cell (health) : [1meu[0m  →  https://35.244.162.92.nip.io
+[1m[15:00:19][0m Duration      : [1m60s per service[0m
+[1m[15:00:19][0m Poll interval : [1m10s[0m
+[1m[15:00:19][0m Services      : [1mcapacity-service[0m  (sequential)
+[1m[15:00:19][0m Max cell fails: [1m2[0m before abort
+[1m[15:00:19][0m Dry-run       : [1mfalse[0m
+[1m[15:00:19][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[15:00:19] INFO   [0m Report directory: debug-artifacts/chaos/20260410T150019Z/
+[1m[15:00:19][0m Pre-flight checks...
+[0;32m[15:00:21] INFO   [0m GCP project: distributed-capacity-system
+[0;32m[15:00:21] INFO   [0m Services to test (sequential): capacity-service
+[0;32m[15:00:21] INFO   [0m Checking all cells are healthy...
+[0;32m[15:00:21] INFO   [0m All cells healthy — ready to proceed.
+[0;35m[15:00:21] ──[0m Swarm nodes BEFORE chaos (cell: eu):
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;32m[15:00:25] INFO   [0m   capacity-service endpoint BEFORE chaos: UP (200)
+
+[0;31m[15:00:25] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[15:00:25] CHAOS  [0m INJECTING FAILURE — 15:00:25
+[0;31m[15:00:25] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;32m[15:00:25] INFO   [0m Scale-service experiment: capacity-service
+[0;32m[15:00:25] INFO   [0m Each service will be scaled to 0 for 60s then restored before the next.
+
+[0;35m[15:00:25] ──[0m [1/1] Testing: capacity-service
+[0;32m[15:00:28] INFO   [0m Baseline task state for capacity-service:
+  NAME                                             NODE         CURRENT STATE
+  vcs_capacity-service.ojbjodjz1bhgp5vngzaiugnan   vcs-vm-eu2   Running 15 hours ago
+  vcs_capacity-service.y9gptw6cifbokbet716ijceda   vcs-vm-eu1   Running 15 hours ago
+
+[0;32m[15:00:31] INFO   [0m Endpoint before chaos: UP (200)
+[0;31m[15:00:31] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;31m[15:00:31] CHAOS  [0m Scaling capacity-service to 0 — adding impossible constraint
+[0;31m[15:00:31] CHAOS  [0m Constraint: node.hostname==chaos-no-match-1775833225-capacity-service
+[0;31m[15:00:31] CHAOS  [0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+vcs_capacity-service
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+
+[0;36m[15:01:19] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[15:01:19] RESTORE[0m RESTORE PHASE — returning system to original state
+[0;36m[15:01:19] RESTORE[0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[0;36m[15:01:19] RESTORE[0m Running: gcloud compute ssh vcs-vm-eu1       --project=distributed-capacity-system       --zone=europe-west1-b       --quiet       --command='sudo docker service update --constraint-rm node.hostname==chaos-no-match-1775833225-capacity-service vcs_capacity-service 2>/dev/null || true'       2>/dev/null || true
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+overall progress: waiting for new tasks
+vcs_capacity-service
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 0 out of 2 tasks
+overall progress: 2 out of 2 tasks
+verify: Waiting 5 seconds to verify that tasks are stable...
+overall progress: 2 out of 2 tasks
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 5 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 4 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 3 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 2 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Waiting 1 seconds to verify that tasks are stable...
+verify: Service vcs_capacity-service converged
+verify: Service vcs_capacity-service converged
+
+[0;36m[15:01:36] RESTORE[0m Waiting up to 120s for all cells to come back healthy...
+[0;36m[15:01:37] RESTORE[0m All cells healthy after 0s.
+[0;32m[15:01:38] INFO   [0m Report written: debug-artifacts/chaos/20260410T150019Z/report.md
+
+[1m[15:01:38][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1m[15:01:38][0m FINAL SWARM STATUS (cell: eu)
+[1m[15:01:38][0m ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[0;35m[15:01:38] ──[0m Nodes:
+  HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
+  vcs-vm-eu1   Ready     Active         Leader
+  vcs-vm-eu2   Ready     Active         Reachable
+
+[0;35m[15:01:41] ──[0m Services (replicas):
+  NAME                       REPLICAS   IMAGE
+  vcs_cadvisor               2/2        gcr.io/cadvisor/cadvisor:latest
+  vcs_capacity-service       2/2        ghcr.io/ajinkyataranekar/clearway/capacity-service:76aa56994866
+  vcs_db                     2/2        cockroachdb/cockroach:v24.1.0
+  vcs_grafana                1/1        grafana/grafana:10.4.0
+  vcs_iam-service            2/2        ghcr.io/ajinkyataranekar/clearway/iam-service:08458519a59a
+  vcs_journey-service        2/2        ghcr.io/ajinkyataranekar/clearway/journey-service:08458519a59a
+  vcs_loki                   1/1        grafana/loki:2.9.4
+  vcs_map-service            2/2        ghcr.io/ajinkyataranekar/clearway/map-service:08458519a59a
+  vcs_nginx                  2/2        ghcr.io/ajinkyataranekar/clearway/nginx:08458519a59a
+  vcs_notification-service   2/2        ghcr.io/ajinkyataranekar/clearway/notification-service:08458519a59a
+  vcs_prometheus             1/1        prom/prometheus:v2.51.0
+  vcs_promtail               2/2        grafana/promtail:2.9.4
+  vcs_redis                  2/2        redis:7-alpine
+  vcs_redis-exporter         2/2        oliver006/redis_exporter:v1.62.0
+
+[0;32m[15:01:43] INFO   [0m Full report: debug-artifacts/chaos/20260410T150019Z/report.md
+[0;32m[15:01:43] INFO   [0m Timeline:    debug-artifacts/chaos/20260410T150019Z/timeline.csv
+

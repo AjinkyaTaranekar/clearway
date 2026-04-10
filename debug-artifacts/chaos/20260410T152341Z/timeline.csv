@@ -1,0 +1,7 @@
+timestamp,elapsed_s,eu_health,us_health,apac_health,endpoint_status,notes
+15:24:21,0,healthy,healthy,healthy,"UP (200)",""
+15:24:32,10,healthy,healthy,healthy,"UP (200)",""
+15:24:43,20,healthy,healthy,healthy,"UP (200)",""
+15:24:54,30,healthy,healthy,healthy,"UP (200)",""
+15:25:08,40,healthy,healthy,healthy,"UP (200)",""
+15:25:19,50,healthy,healthy,healthy,"UP (200)",""

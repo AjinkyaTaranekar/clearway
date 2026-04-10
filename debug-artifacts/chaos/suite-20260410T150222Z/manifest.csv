@@ -1,0 +1,9 @@
+num,phase,label,experiment_type,report_dir,result
+1,1,capacity-service,scale-service,debug-artifacts/chaos/20260410T150223Z,PASS
+2,1,map-service,scale-service,debug-artifacts/chaos/20260410T150533Z,PASS
+3,1,iam-service,scale-service,debug-artifacts/chaos/20260410T150842Z,PASS
+4,1,notification-service,scale-service,debug-artifacts/chaos/20260410T151149Z,PASS
+5,2,redis,scale-service,debug-artifacts/chaos/20260410T151648Z,PASS
+6,2,db,scale-service,debug-artifacts/chaos/20260410T152011Z,PASS
+7,3,drain-node,drain-node,debug-artifacts/chaos/20260410T152341Z,PASS
+8,3,block-firewall,block-firewall,debug-artifacts/chaos/20260410T152642Z,PASS
