@@ -1,0 +1,2406 @@
+{
+  "generated_utc": "2026-04-10T12:02:29.275477+00:00",
+  "artifact_dir": "/home/ajinkyataranekar26/distributed-vehicle-capacity-system/debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite",
+  "completed_runs": 9,
+  "nonzero_exit_runs": 9,
+  "runs": [
+    {
+      "region": "eu",
+      "scenario": "smoke",
+      "base_url": "https://35.244.162.92.nip.io",
+      "exit_code": 99,
+      "duration_sec": 35,
+      "start_utc": "2026-04-10T10:39:46Z",
+      "end_utc": "2026-04-10T10:40:21Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/eu-smoke-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/eu-smoke.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/eu-smoke.log",
+      "metrics": {
+        "total_requests": 32,
+        "total_errors": 0,
+        "overall_error_rate": 0.0,
+        "status_distribution": {
+          "200": 23,
+          "201": 9
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 4,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1121.5540005,
+            "p95_ms": 1385.9468608999998,
+            "p99_ms": 1394.63930498,
+            "avg_ms": 1095.73475325,
+            "max_ms": 1396.812416,
+            "status_distribution": {
+              "201": 4
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 4,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 275.558974,
+            "p95_ms": 754.0072818499998,
+            "p99_ms": 820.4515387699998,
+            "avg_ms": 406.11407725,
+            "max_ms": 837.062603,
+            "status_distribution": {
+              "200": 4
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 5,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 377.38641,
+            "p95_ms": 490.3620178,
+            "p99_ms": 499.86540435999996,
+            "avg_ms": 411.8540924,
+            "max_ms": 502.241251,
+            "status_distribution": {
+              "201": 5
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 4,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 451.6482585,
+            "p95_ms": 462.1890383,
+            "p99_ms": 462.26479406,
+            "avg_ms": 401.03415425000003,
+            "max_ms": 462.283733,
+            "status_distribution": {
+              "200": 4
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 4,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 292.55168349999997,
+            "p95_ms": 396.36830965,
+            "p99_ms": 405.05113873000005,
+            "avg_ms": 285.6729175,
+            "max_ms": 407.221846,
+            "status_distribution": {
+              "200": 4
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 4,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 23.361661499999997,
+            "p95_ms": 43.570423049999995,
+            "p99_ms": 44.83199661,
+            "avg_ms": 25.38416,
+            "max_ms": 45.14739,
+            "status_distribution": {
+              "200": 4
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 5,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 14.090523,
+            "p95_ms": 17.120236,
+            "p99_ms": 17.590499200000004,
+            "avg_ms": 14.2146288,
+            "max_ms": 17.708065,
+            "status_distribution": {
+              "200": 5
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 4.478175,
+            "p95_ms": 4.83273,
+            "p99_ms": 4.864246,
+            "avg_ms": 4.478175,
+            "max_ms": 4.872125,
+            "status_distribution": {
+              "200": 2
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "http_req_failed",
+            "threshold": "rate<0.05"
+          },
+          {
+            "metric": "capacity_check_duration",
+            "threshold": "p(95)<800"
+          },
+          {
+            "metric": "http_req_duration",
+            "threshold": "p(99)<3000"
+          },
+          {
+            "metric": "route_compute_duration",
+            "threshold": "p(95)<2000"
+          },
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          },
+          {
+            "metric": "journey_create_success",
+            "threshold": "rate>0.90"
+          }
+        ],
+        "failing_checks": [],
+        "common_console_issues": [
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 5        \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 100.00% \u2713 44       \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=343.59ms min=4.08ms   med=275.55ms max=1.39s    p(90)=827.65ms p(95)=1.1s",
+            "count": 1
+          },
+          {
+            "message": "\u2713 http_req_failed................: 0.00%   \u2713 0        \u2717 32",
+            "count": 1
+          },
+          {
+            "message": "\u2713 journey_create_success.........: 100.00% \u2713 4        \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T10:40:21Z\" level=error msg=\"thresholds on metrics 'http_req_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "eu",
+      "scenario": "load",
+      "base_url": "https://35.244.162.92.nip.io",
+      "exit_code": 99,
+      "duration_sec": 663,
+      "start_utc": "2026-04-10T10:40:21Z",
+      "end_utc": "2026-04-10T10:51:24Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/eu-load-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/eu-load.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/eu-load.log",
+      "metrics": {
+        "total_requests": 6988,
+        "total_errors": 24,
+        "overall_error_rate": 0.0034344590726960505,
+        "status_distribution": {
+          "200": 5360,
+          "201": 1604,
+          "502": 24
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 449,
+            "error_count": 24,
+            "error_rate": 0.053452115812917596,
+            "p50_ms": 1224.98968,
+            "p95_ms": 5832.006215799996,
+            "p99_ms": 10117.320054399996,
+            "avg_ms": 2146.857907886414,
+            "max_ms": 12641.252941,
+            "status_distribution": {
+              "200": 284,
+              "201": 141,
+              "502": 24
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 661,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 796.563615,
+            "p95_ms": 5347.48908,
+            "p99_ms": 6187.284671199999,
+            "avg_ms": 1570.1239903040848,
+            "max_ms": 7735.90032,
+            "status_distribution": {
+              "200": 661
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 1463,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 647.747743,
+            "p95_ms": 5254.575564199997,
+            "p99_ms": 7005.832590899998,
+            "avg_ms": 1463.6734570533151,
+            "max_ms": 8831.140206,
+            "status_distribution": {
+              "201": 1463
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 762,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 719.3108555,
+            "p95_ms": 3998.1957438499985,
+            "p99_ms": 5023.804150959999,
+            "avg_ms": 1191.145829843832,
+            "max_ms": 6974.288288,
+            "status_distribution": {
+              "200": 762
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 762,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 632.3988959999999,
+            "p95_ms": 3890.158584749999,
+            "p99_ms": 5933.879155449998,
+            "avg_ms": 1045.5280065380578,
+            "max_ms": 7371.02781,
+            "status_distribution": {
+              "200": 762
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 277,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 40.262326,
+            "p95_ms": 464.70294279999996,
+            "p99_ms": 601.4295332800016,
+            "avg_ms": 124.51857930685921,
+            "max_ms": 1518.539233,
+            "status_distribution": {
+              "200": 277
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 1463,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 23.950404,
+            "p95_ms": 452.1858959,
+            "p99_ms": 707.8114457799996,
+            "avg_ms": 104.58541165208477,
+            "max_ms": 986.3172,
+            "status_distribution": {
+              "200": 1463
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 277,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 17.846065,
+            "p95_ms": 206.0567886,
+            "p99_ms": 246.11316732000034,
+            "avg_ms": 47.58928257400722,
+            "max_ms": 445.696675,
+            "status_distribution": {
+              "200": 277
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 661,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 10.742217,
+            "p95_ms": 137.353086,
+            "p99_ms": 196.10477059999988,
+            "avg_ms": 23.137208677760967,
+            "max_ms": 637.659786,
+            "status_distribution": {
+              "200": 661
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 213,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 3.698438,
+            "p95_ms": 6.202024199999997,
+            "p99_ms": 12.291152359999991,
+            "avg_ms": 4.721694112676056,
+            "max_ms": 125.519969,
+            "status_distribution": {
+              "200": 213
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          },
+          {
+            "metric": "http_req_failed",
+            "threshold": "rate<0.05"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 24,
+            "passes": 425
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 24,
+            "passes": 425
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  94% \u2014 \u2713 425 / \u2717 24",
+            "count": 2
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 1463      \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 capacity_check_duration........: avg=1.19s    min=21ms     med=719ms    max=6.97s    p(90)=3.01s    p(95)=3.99s",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 99.50%  \u2713 9613      \u2717 48",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=867.84ms min=2.29ms   med=400.79ms max=12.64s   p(90)=2.69s    p(95)=4.23s",
+            "count": 1
+          },
+          {
+            "message": "\u2713 http_req_failed................: 0.34%   \u2713 24        \u2717 6964",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 31.40%  \u2713 141       \u2717 308",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=1.57s    min=43ms     med=797ms    max=7.73s    p(90)=4.29s    p(95)=5.34s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T10:51:24Z\" level=error msg=\"thresholds on metrics 'capacity_check_duration, http_req_duration, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "eu",
+      "scenario": "stress",
+      "base_url": "https://35.244.162.92.nip.io",
+      "exit_code": 99,
+      "duration_sec": 906,
+      "start_utc": "2026-04-10T10:51:24Z",
+      "end_utc": "2026-04-10T11:06:30Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/eu-stress-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/eu-stress.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/eu-stress.log",
+      "metrics": {
+        "total_requests": 8675,
+        "total_errors": 976,
+        "overall_error_rate": 0.11250720461095101,
+        "status_distribution": {
+          "200": 5989,
+          "201": 1710,
+          "502": 976
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 2500,
+            "error_count": 854,
+            "error_rate": 0.3416,
+            "p50_ms": 13684.8405905,
+            "p95_ms": 30006.20181615,
+            "p99_ms": 30175.51473025,
+            "avg_ms": 15481.908287479999,
+            "max_ms": 30416.967753,
+            "status_distribution": {
+              "201": 1646,
+              "502": 854
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 1643,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 313.022926,
+            "p95_ms": 10716.131336799997,
+            "p99_ms": 27134.40108187998,
+            "avg_ms": 1965.2476105550822,
+            "max_ms": 50394.041934,
+            "status_distribution": {
+              "200": 1643
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 729,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 2711.01096,
+            "p95_ms": 6516.7446746000005,
+            "p99_ms": 7146.185240520001,
+            "avg_ms": 2994.246685674897,
+            "max_ms": 7656.950285,
+            "status_distribution": {
+              "200": 729
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 485,
+            "error_count": 122,
+            "error_rate": 0.2515463917525773,
+            "p50_ms": 3106.496064,
+            "p95_ms": 6018.118316799999,
+            "p99_ms": 7576.394343359997,
+            "avg_ms": 3215.5132405175254,
+            "max_ms": 13366.988292,
+            "status_distribution": {
+              "200": 299,
+              "201": 64,
+              "502": 122
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 827,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1367.543511,
+            "p95_ms": 5233.7720363,
+            "p99_ms": 6042.4342357000005,
+            "avg_ms": 2026.3105832055624,
+            "max_ms": 8280.946356,
+            "status_distribution": {
+              "200": 827
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 827,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1066.959547,
+            "p95_ms": 4937.4550084,
+            "p99_ms": 6193.08371936,
+            "avg_ms": 1531.4899767110037,
+            "max_ms": 9402.2138,
+            "status_distribution": {
+              "200": 827
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 359,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 212.866918,
+            "p95_ms": 995.4727999999999,
+            "p99_ms": 1459.8201249,
+            "avg_ms": 276.3416021699164,
+            "max_ms": 2166.58417,
+            "status_distribution": {
+              "200": 359
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 359,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 33.12978,
+            "p95_ms": 248.6170757,
+            "p99_ms": 483.75287928000023,
+            "avg_ms": 95.69484020891365,
+            "max_ms": 750.442515,
+            "status_distribution": {
+              "200": 359
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 729,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 11.416052,
+            "p95_ms": 162.77911880000005,
+            "p99_ms": 205.5351393200001,
+            "avg_ms": 30.56538556652949,
+            "max_ms": 390.111775,
+            "status_distribution": {
+              "200": 729
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 217,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 4.045065,
+            "p95_ms": 77.72532659999928,
+            "p99_ms": 172.78698812,
+            "avg_ms": 14.170571580645161,
+            "max_ms": 191.316546,
+            "status_distribution": {
+              "200": 217
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "register: status 201 or 409",
+            "path": "::auth: register::register: status 201 or 409",
+            "fails": 854,
+            "passes": 1646
+          },
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 122,
+            "passes": 363
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 122,
+            "passes": 363
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  74% \u2014 \u2713 363 / \u2717 122",
+            "count": 2
+          },
+          {
+            "message": "\u2717 register: status 201 or 409",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  65% \u2014 \u2713 1646 / \u2717 854",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 1643     \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 capacity_check_duration........: avg=2.02s    min=23ms     med=1.36s    max=8.28s    p(90)=4.72s    p(95)=5.23s",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 90.55%  \u2713 10531    \u2717 1098",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=5.62s    min=2.54ms   med=1.09s    max=50.39s   p(90)=27.23s   p(95)=30s",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_failed................: 11.25%  \u2713 976      \u2717 7699",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 13.19%  \u2713 64       \u2717 421",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=2.99s    min=59ms     med=2.71s    max=7.65s    p(90)=6.2s     p(95)=6.51s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T11:06:30Z\" level=error msg=\"thresholds on metrics 'capacity_check_duration, http_req_duration, http_req_failed, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "us",
+      "scenario": "smoke",
+      "base_url": "https://35.227.198.68.nip.io",
+      "exit_code": 99,
+      "duration_sec": 34,
+      "start_utc": "2026-04-10T11:06:30Z",
+      "end_utc": "2026-04-10T11:07:04Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/us-smoke-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/us-smoke.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/us-smoke.log",
+      "metrics": {
+        "total_requests": 18,
+        "total_errors": 0,
+        "overall_error_rate": 0.0,
+        "status_distribution": {
+          "200": 15,
+          "201": 3
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 6855.6205305,
+            "p95_ms": 7426.52393625,
+            "p99_ms": 7477.27090565,
+            "avg_ms": 6855.6205305,
+            "max_ms": 7489.957648,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 2546.5469415,
+            "p95_ms": 3084.29544885,
+            "p99_ms": 3132.09531617,
+            "avg_ms": 2546.5469415,
+            "max_ms": 3144.045283,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 834.3845435000001,
+            "p95_ms": 1324.43994395,
+            "p99_ms": 1368.0004239900002,
+            "avg_ms": 834.3845435000001,
+            "max_ms": 1378.890544,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 3,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 776.616547,
+            "p95_ms": 868.8464689,
+            "p99_ms": 877.0446841800001,
+            "avg_ms": 805.3594353333333,
+            "max_ms": 879.094238,
+            "status_distribution": {
+              "201": 3
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 466.4210485,
+            "p95_ms": 497.02163935,
+            "p99_ms": 499.74169186999995,
+            "avg_ms": 466.4210485,
+            "max_ms": 500.421705,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 291.556733,
+            "p95_ms": 344.8338422,
+            "p99_ms": 349.56958524,
+            "avg_ms": 291.556733,
+            "max_ms": 350.753521,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 3,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 198.085568,
+            "p95_ms": 201.98162299999998,
+            "p99_ms": 202.327939,
+            "avg_ms": 198.44446266666668,
+            "max_ms": 202.414518,
+            "status_distribution": {
+              "200": 3
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 98.362015,
+            "p95_ms": 99.8306161,
+            "p99_ms": 99.96115842,
+            "avg_ms": 98.362015,
+            "max_ms": 99.993794,
+            "status_distribution": {
+              "200": 2
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          },
+          {
+            "metric": "http_req_failed",
+            "threshold": "rate<0.05"
+          },
+          {
+            "metric": "capacity_check_duration",
+            "threshold": "p(95)<800"
+          }
+        ],
+        "failing_checks": [],
+        "common_console_issues": [
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 3        \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 100.00% \u2713 24       \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=1.39s    min=96.73ms  med=466.42ms max=7.48s    p(90)=4.06s    p(95)=6.41s",
+            "count": 1
+          },
+          {
+            "message": "\u2713 http_req_failed................: 0.00%   \u2713 0        \u2717 18",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 0.00%   \u2713 0        \u2717 2",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=2.54s    min=1.94s    med=2.54s    max=3.14s    p(90)=3.02s    p(95)=3.08s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T11:07:04Z\" level=error msg=\"thresholds on metrics 'http_req_duration, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "us",
+      "scenario": "load",
+      "base_url": "https://35.227.198.68.nip.io",
+      "exit_code": 99,
+      "duration_sec": 674,
+      "start_utc": "2026-04-10T11:07:04Z",
+      "end_utc": "2026-04-10T11:18:18Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/us-load-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/us-load.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/us-load.log",
+      "metrics": {
+        "total_requests": 4993,
+        "total_errors": 580,
+        "overall_error_rate": 0.11616262767875025,
+        "status_distribution": {
+          "200": 3341,
+          "201": 1072,
+          "500": 324,
+          "502": 256
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 309,
+            "error_count": 256,
+            "error_rate": 0.8284789644012945,
+            "p50_ms": 5294.897016,
+            "p95_ms": 10903.818344,
+            "p99_ms": 11641.334956880004,
+            "avg_ms": 4419.655952433657,
+            "max_ms": 14535.685035,
+            "status_distribution": {
+              "200": 37,
+              "201": 16,
+              "502": 256
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 506,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 5690.518708,
+            "p95_ms": 5911.0018005,
+            "p99_ms": 5938.8175619,
+            "avg_ms": 5164.498870343874,
+            "max_ms": 6318.492249,
+            "status_distribution": {
+              "200": 506
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 503,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 669.650597,
+            "p95_ms": 4732.563216099999,
+            "p99_ms": 5122.53222762,
+            "avg_ms": 1728.7243280715704,
+            "max_ms": 5204.84407,
+            "status_distribution": {
+              "200": 503
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 503,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 439.45837,
+            "p95_ms": 3731.799946899993,
+            "p99_ms": 5253.730895500002,
+            "avg_ms": 824.8145196282306,
+            "max_ms": 5898.124972,
+            "status_distribution": {
+              "200": 503
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 506,
+            "error_count": 324,
+            "error_rate": 0.6403162055335968,
+            "p50_ms": 1316.2274375000002,
+            "p95_ms": 2032.358977,
+            "p99_ms": 2108.2176382999996,
+            "avg_ms": 1085.0232709011857,
+            "max_ms": 2113.515229,
+            "status_distribution": {
+              "200": 182,
+              "500": 324
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 1056,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 867.7571435,
+            "p95_ms": 1824.187515,
+            "p99_ms": 2847.61183015,
+            "avg_ms": 1025.58507275,
+            "max_ms": 3391.131392,
+            "status_distribution": {
+              "201": 1056
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 197,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 392.318373,
+            "p95_ms": 467.23013819999994,
+            "p99_ms": 588.86556116,
+            "avg_ms": 402.929060213198,
+            "max_ms": 602.873316,
+            "status_distribution": {
+              "200": 197
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 1056,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 198.04968200000002,
+            "p95_ms": 295.62395475,
+            "p99_ms": 421.89593175000016,
+            "avg_ms": 213.7331858617424,
+            "max_ms": 629.519678,
+            "status_distribution": {
+              "200": 1056
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 197,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 197.98847,
+            "p95_ms": 216.49151359999988,
+            "p99_ms": 265.54369143999895,
+            "avg_ms": 201.8618663502538,
+            "max_ms": 398.346269,
+            "status_distribution": {
+              "200": 197
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 160,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 97.184579,
+            "p95_ms": 104.50700214999999,
+            "p99_ms": 302.8304779099999,
+            "avg_ms": 101.726823575,
+            "max_ms": 311.304919,
+            "status_distribution": {
+              "200": 160
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "search: status 200 or 429",
+            "path": "::map: search places::search: status 200 or 429",
+            "fails": 324,
+            "passes": 182
+          },
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 256,
+            "passes": 53
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 256,
+            "passes": 53
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  17% \u2014 \u2713 53 / \u2717 256",
+            "count": 2
+          },
+          {
+            "message": "\u2717 search: status 200 or 429",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  35% \u2014 \u2713 182 / \u2717 324",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 1056     \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 capacity_check_duration........: avg=1.72s    min=210ms    med=670ms    max=5.2s     p(90)=4.33s    p(95)=4.73s",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 87.81%  \u2713 6024     \u2717 836",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=1.45s    min=91.74ms  med=475.93ms max=14.53s   p(90)=5.29s    p(95)=5.7s",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_failed................: 11.61%  \u2713 580      \u2717 4413",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 5.17%   \u2713 16       \u2717 293",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=5.16s    min=1.45s    med=5.69s    max=6.31s    p(90)=5.77s    p(95)=5.91s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T11:18:18Z\" level=error msg=\"thresholds on metrics 'capacity_check_duration, http_req_duration, http_req_failed, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "us",
+      "scenario": "stress",
+      "base_url": "https://35.227.198.68.nip.io",
+      "exit_code": 99,
+      "duration_sec": 913,
+      "start_utc": "2026-04-10T11:18:19Z",
+      "end_utc": "2026-04-10T11:33:32Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/us-stress-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/us-stress.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/us-stress.log",
+      "metrics": {
+        "total_requests": 7731,
+        "total_errors": 2828,
+        "overall_error_rate": 0.36580002586987453,
+        "status_distribution": {
+          "200": 3667,
+          "201": 1236,
+          "500": 583,
+          "502": 1839,
+          "503": 259,
+          "504": 147
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 3057,
+            "error_count": 1826,
+            "error_rate": 0.597317631665031,
+            "p50_ms": 7204.551047,
+            "p95_ms": 30149.823199,
+            "p99_ms": 30201.57966504,
+            "avg_ms": 13001.655848367025,
+            "max_ms": 30362.194756,
+            "status_distribution": {
+              "201": 1231,
+              "502": 1459,
+              "503": 220,
+              "504": 147
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 586,
+            "error_count": 8,
+            "error_rate": 0.013651877133105802,
+            "p50_ms": 6002.3111045,
+            "p95_ms": 6845.89820075,
+            "p99_ms": 7220.816634949999,
+            "avg_ms": 5632.379959464164,
+            "max_ms": 7503.378085,
+            "status_distribution": {
+              "200": 578,
+              "503": 8
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 386,
+            "error_count": 380,
+            "error_rate": 0.9844559585492227,
+            "p50_ms": 615.6250855000001,
+            "p95_ms": 5595.0268855,
+            "p99_ms": 7078.344038999983,
+            "avg_ms": 1495.6696183937825,
+            "max_ms": 10400.51573,
+            "status_distribution": {
+              "200": 1,
+              "201": 5,
+              "502": 380
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 619,
+            "error_count": 2,
+            "error_rate": 0.0032310177705977385,
+            "p50_ms": 500.991629,
+            "p95_ms": 4641.4725837,
+            "p99_ms": 5071.6592307400015,
+            "avg_ms": 1300.285995289176,
+            "max_ms": 5487.365324,
+            "status_distribution": {
+              "200": 617,
+              "503": 2
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 1231,
+            "error_count": 17,
+            "error_rate": 0.01380991064175467,
+            "p50_ms": 709.894768,
+            "p95_ms": 3886.4880645000003,
+            "p99_ms": 6478.350179900001,
+            "avg_ms": 1227.6524589731926,
+            "max_ms": 11299.958778,
+            "status_distribution": {
+              "200": 1214,
+              "503": 17
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 586,
+            "error_count": 586,
+            "error_rate": 1.0,
+            "p50_ms": 1720.2548695,
+            "p95_ms": 2193.6744055,
+            "p99_ms": 2225.78998395,
+            "avg_ms": 1706.4639524692832,
+            "max_ms": 2256.499933,
+            "status_distribution": {
+              "500": 583,
+              "503": 3
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 619,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 830.284264,
+            "p95_ms": 1466.0931745000014,
+            "p99_ms": 5398.62115078,
+            "avg_ms": 900.7031377415185,
+            "max_ms": 6750.449347,
+            "status_distribution": {
+              "200": 619
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 233,
+            "error_count": 5,
+            "error_rate": 0.02145922746781116,
+            "p50_ms": 568.852439,
+            "p95_ms": 1087.7466771999973,
+            "p99_ms": 1397.1241341200005,
+            "avg_ms": 636.6623983733906,
+            "max_ms": 1523.86203,
+            "status_distribution": {
+              "200": 228,
+              "503": 5
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 233,
+            "error_count": 4,
+            "error_rate": 0.017167381974248927,
+            "p50_ms": 253.597245,
+            "p95_ms": 563.7052073999997,
+            "p99_ms": 745.1841222400001,
+            "avg_ms": 308.9495246437768,
+            "max_ms": 968.975783,
+            "status_distribution": {
+              "200": 229,
+              "503": 4
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 181,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 105.089675,
+            "p95_ms": 217.392465,
+            "p99_ms": 244.73495899999995,
+            "avg_ms": 136.87552871823206,
+            "max_ms": 411.817862,
+            "status_distribution": {
+              "200": 181
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "register: status 201 or 409",
+            "path": "::auth: register::register: status 201 or 409",
+            "fails": 1826,
+            "passes": 1231
+          },
+          {
+            "name": "search: status 200 or 429",
+            "path": "::map: search places::search: status 200 or 429",
+            "fails": 586,
+            "passes": 0
+          },
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 380,
+            "passes": 6
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 380,
+            "passes": 6
+          },
+          {
+            "name": "profile: status 200",
+            "path": "::auth: get profile::profile: status 200",
+            "fails": 17,
+            "passes": 1214
+          },
+          {
+            "name": "profile: has email",
+            "path": "::auth: get profile::profile: has email",
+            "fails": 17,
+            "passes": 1214
+          },
+          {
+            "name": "route: status 200",
+            "path": "::map: get route::route: status 200",
+            "fails": 8,
+            "passes": 578
+          },
+          {
+            "name": "notifications: status 200",
+            "path": "::notifications: list::notifications: status 200",
+            "fails": 5,
+            "passes": 228
+          },
+          {
+            "name": "mark-read: status 200 or 204",
+            "path": "::notifications: mark all read::mark-read: status 200 or 204",
+            "fails": 4,
+            "passes": 229
+          },
+          {
+            "name": "segments: status 200",
+            "path": "::capacity: check availability::segments: status 200",
+            "fails": 2,
+            "passes": 617
+          },
+          {
+            "name": "segments: is array",
+            "path": "::capacity: check availability::segments: is array",
+            "fails": 2,
+            "passes": 617
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  98% \u2014 \u2713 1214 / \u2717 17",
+            "count": 2
+          },
+          {
+            "message": "\u21b3  99% \u2014 \u2713 617 / \u2717 2",
+            "count": 2
+          },
+          {
+            "message": "\u21b3  1% \u2014 \u2713 6 / \u2717 380",
+            "count": 2
+          },
+          {
+            "message": "\u2717 register: status 201 or 409",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  40% \u2014 \u2713 1231 / \u2717 1826",
+            "count": 1
+          },
+          {
+            "message": "\u2717 profile: status 200",
+            "count": 1
+          },
+          {
+            "message": "\u2717 profile: has email",
+            "count": 1
+          },
+          {
+            "message": "\u2717 search: status 200 or 429",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  0% \u2014 \u2713 0 / \u2717 586",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route: status 200",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  98% \u2014 \u2713 578 / \u2717 8",
+            "count": 1
+          },
+          {
+            "message": "\u2717 segments: status 200",
+            "count": 1
+          },
+          {
+            "message": "\u2717 segments: is array",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2717 notifications: status 200",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  97% \u2014 \u2713 228 / \u2717 5",
+            "count": 1
+          },
+          {
+            "message": "\u2717 mark-read: status 200 or 204",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  98% \u2014 \u2713 229 / \u2717 4",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 98.61% \u2713 1214     \u2717 17",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "apac",
+      "scenario": "smoke",
+      "base_url": "https://34.8.134.246.nip.io",
+      "exit_code": 99,
+      "duration_sec": 42,
+      "start_utc": "2026-04-10T11:33:32Z",
+      "end_utc": "2026-04-10T11:34:14Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/apac-smoke-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/apac-smoke.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/apac-smoke.log",
+      "metrics": {
+        "total_requests": 16,
+        "total_errors": 1,
+        "overall_error_rate": 0.0625,
+        "status_distribution": {
+          "200": 12,
+          "201": 3,
+          "502": 1
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 1,
+            "error_count": 1,
+            "error_rate": 1.0,
+            "p50_ms": 11234.808061,
+            "p95_ms": 11234.808061,
+            "p99_ms": 11234.808061,
+            "avg_ms": 11234.808061,
+            "max_ms": 11234.808061,
+            "status_distribution": {
+              "502": 1
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 1,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 5927.051384,
+            "p95_ms": 5927.051384,
+            "p99_ms": 5927.051384,
+            "avg_ms": 5927.051384,
+            "max_ms": 5927.051384,
+            "status_distribution": {
+              "200": 1
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 1,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 2024.336633,
+            "p95_ms": 2024.336633,
+            "p99_ms": 2024.336633,
+            "avg_ms": 2024.336633,
+            "max_ms": 2024.336633,
+            "status_distribution": {
+              "200": 1
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 3,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1659.379807,
+            "p95_ms": 1797.6352357,
+            "p99_ms": 1809.92460714,
+            "avg_ms": 1709.0864976666664,
+            "max_ms": 1812.99695,
+            "status_distribution": {
+              "201": 3
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1273.4599455,
+            "p95_ms": 1339.29645885,
+            "p99_ms": 1345.14859337,
+            "avg_ms": 1273.4599455,
+            "max_ms": 1346.611627,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 1,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1049.550902,
+            "p95_ms": 1049.550902,
+            "p99_ms": 1049.550902,
+            "avg_ms": 1049.550902,
+            "max_ms": 1049.550902,
+            "status_distribution": {
+              "200": 1
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 2,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 943.818039,
+            "p95_ms": 1039.6984383000001,
+            "p99_ms": 1048.22114046,
+            "avg_ms": 943.818039,
+            "max_ms": 1050.351816,
+            "status_distribution": {
+              "200": 2
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 3,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 543.196367,
+            "p95_ms": 547.1716724,
+            "p99_ms": 547.52503288,
+            "avg_ms": 543.4579196666667,
+            "max_ms": 547.613373,
+            "status_distribution": {
+              "200": 3
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 1,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 544.399371,
+            "p95_ms": 544.399371,
+            "p99_ms": 544.399371,
+            "avg_ms": 544.399371,
+            "max_ms": 544.399371,
+            "status_distribution": {
+              "200": 1
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 1,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 264.291338,
+            "p95_ms": 264.291338,
+            "p99_ms": 264.291338,
+            "avg_ms": 264.291338,
+            "max_ms": 264.291338,
+            "status_distribution": {
+              "200": 1
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 1,
+            "passes": 0
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 1,
+            "passes": 0
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  0% \u2014 \u2713 0 / \u2717 1",
+            "count": 2
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 3        \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 capacity_check_duration........: avg=944ms    min=838ms    med=944ms    max=1.05s    p(90)=1.02s    p(95)=1.03s",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 90.47%  \u2713 19       \u2717 2",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=2.01s    min=264.29ms med=1.12s    max=11.23s   p(90)=3.97s    p(95)=7.25s",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_failed................: 6.25%   \u2713 1        \u2717 15",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 0.00%   \u2713 0        \u2717 1",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=5.92s    min=5.92s    med=5.92s    max=5.92s    p(90)=5.92s    p(95)=5.92s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T11:34:14Z\" level=error msg=\"thresholds on metrics 'capacity_check_duration, http_req_duration, http_req_failed, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "apac",
+      "scenario": "load",
+      "base_url": "https://34.8.134.246.nip.io",
+      "exit_code": 99,
+      "duration_sec": 662,
+      "start_utc": "2026-04-10T11:34:14Z",
+      "end_utc": "2026-04-10T11:45:16Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/apac-load-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/apac-load.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/apac-load.log",
+      "metrics": {
+        "total_requests": 4127,
+        "total_errors": 436,
+        "overall_error_rate": 0.1056457475163557,
+        "status_distribution": {
+          "200": 2820,
+          "201": 871,
+          "500": 175,
+          "502": 261
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 261,
+            "error_count": 261,
+            "error_rate": 1.0,
+            "p50_ms": 811.3127,
+            "p95_ms": 12368.592018,
+            "p99_ms": 12429.364332000001,
+            "avg_ms": 3744.4726543984675,
+            "max_ms": 12706.562022,
+            "status_distribution": {
+              "502": 261
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 394,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 6871.938028,
+            "p95_ms": 7053.87302225,
+            "p99_ms": 7187.59503723,
+            "avg_ms": 6784.467676662437,
+            "max_ms": 7471.7537,
+            "status_distribution": {
+              "200": 394
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 424,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1152.8466094999999,
+            "p95_ms": 5212.485501849996,
+            "p99_ms": 5898.36264672,
+            "avg_ms": 1420.8676990849056,
+            "max_ms": 6323.80005,
+            "status_distribution": {
+              "200": 424
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 424,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 749.833388,
+            "p95_ms": 4728.596847699999,
+            "p99_ms": 5188.0034779299995,
+            "avg_ms": 1499.4344699929245,
+            "max_ms": 5574.226488,
+            "status_distribution": {
+              "200": 424
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 871,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1749.374579,
+            "p95_ms": 2640.0585675,
+            "p99_ms": 3252.0320727,
+            "avg_ms": 1871.4395990723308,
+            "max_ms": 3359.012302,
+            "status_distribution": {
+              "201": 871
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 394,
+            "error_count": 175,
+            "error_rate": 0.44416243654822335,
+            "p50_ms": 302.396952,
+            "p95_ms": 2176.87413785,
+            "p99_ms": 2235.07868078,
+            "avg_ms": 985.5013512741116,
+            "max_ms": 2292.004558,
+            "status_distribution": {
+              "200": 219,
+              "500": 175
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 173,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1063.886637,
+            "p95_ms": 1129.5585292,
+            "p99_ms": 1281.01147564,
+            "avg_ms": 1071.2933055144508,
+            "max_ms": 1328.425109,
+            "status_distribution": {
+              "200": 173
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 871,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 541.656912,
+            "p95_ms": 595.1631445,
+            "p99_ms": 675.5385071,
+            "avg_ms": 545.6571577543054,
+            "max_ms": 892.486316,
+            "status_distribution": {
+              "200": 871
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 173,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 540.495441,
+            "p95_ms": 551.4171732,
+            "p99_ms": 571.45544252,
+            "avg_ms": 539.3281978439306,
+            "max_ms": 1040.474245,
+            "status_distribution": {
+              "200": 173
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 142,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 267.765129,
+            "p95_ms": 283.77142454999995,
+            "p99_ms": 284.53190192,
+            "avg_ms": 273.89494202816905,
+            "max_ms": 469.707015,
+            "status_distribution": {
+              "200": 142
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 261,
+            "passes": 0
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 261,
+            "passes": 0
+          },
+          {
+            "name": "search: status 200 or 429",
+            "path": "::map: search places::search: status 200 or 429",
+            "fails": 175,
+            "passes": 219
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  0% \u2014 \u2713 0 / \u2717 261",
+            "count": 2
+          },
+          {
+            "message": "\u2717 search: status 200 or 429",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  55% \u2014 \u2713 219 / \u2717 175",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 871      \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 capacity_check_duration........: avg=1.49s    min=610ms    med=750ms    max=5.57s    p(90)=3.95s   p(95)=4.72s",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 87.73%  \u2713 4985     \u2717 697",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=1.86s    min=261.17ms med=1.12s    max=12.7s    p(90)=6.83s   p(95)=6.89s",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_failed................: 10.56%  \u2713 436      \u2717 3691",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 0.00%   \u2713 0        \u2717 261",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=6.78s    min=3.68s    med=6.87s    max=7.47s    p(90)=6.96s   p(95)=7.05s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T11:45:16Z\" level=error msg=\"thresholds on metrics 'capacity_check_duration, http_req_duration, http_req_failed, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "region": "apac",
+      "scenario": "stress",
+      "base_url": "https://34.8.134.246.nip.io",
+      "exit_code": 99,
+      "duration_sec": 932,
+      "start_utc": "2026-04-10T11:45:16Z",
+      "end_utc": "2026-04-10T12:00:48Z",
+      "summary_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/summaries/apac-stress-summary.json",
+      "metrics_file": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/metrics/apac-stress.json",
+      "console_log": "debug-artifacts/load-tests/20260410T102719Z-fixed-full-suite/console/apac-stress.log",
+      "metrics": {
+        "total_requests": 5217,
+        "total_errors": 2647,
+        "overall_error_rate": 0.5073797201456776,
+        "status_distribution": {
+          "200": 1919,
+          "201": 651,
+          "500": 280,
+          "502": 1824,
+          "503": 363,
+          "504": 180
+        },
+        "per_api": [
+          {
+            "endpoint": "POST /api/v1/auth/register",
+            "request_count": 2839,
+            "error_count": 2188,
+            "error_rate": 0.770693906305037,
+            "p50_ms": 16235.838309,
+            "p95_ms": 30352.66777,
+            "p99_ms": 30400.107032660002,
+            "avg_ms": 15590.64870308348,
+            "max_ms": 30589.865466,
+            "status_distribution": {
+              "201": 651,
+              "502": 1645,
+              "503": 363,
+              "504": 180
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/routes/compute",
+            "request_count": 279,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 6912.251443,
+            "p95_ms": 7448.604361599999,
+            "p99_ms": 7794.6564386599985,
+            "avg_ms": 6873.989647444444,
+            "max_ms": 8105.736991,
+            "status_distribution": {
+              "200": 279
+            }
+          },
+          {
+            "endpoint": "POST /api/v1/journeys",
+            "request_count": 179,
+            "error_count": 179,
+            "error_rate": 1.0,
+            "p50_ms": 857.352622,
+            "p95_ms": 5945.3752801,
+            "p99_ms": 7377.674670879999,
+            "avg_ms": 1752.455571916201,
+            "max_ms": 12370.431427,
+            "status_distribution": {
+              "502": 179
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments",
+            "request_count": 308,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 808.5840780000001,
+            "p95_ms": 4784.979267449999,
+            "p99_ms": 5228.01104915,
+            "avg_ms": 1370.979584827922,
+            "max_ms": 5545.252912,
+            "status_distribution": {
+              "200": 308
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/auth/profile",
+            "request_count": 651,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 598.522551,
+            "p95_ms": 3016.0262595,
+            "p99_ms": 4197.931669,
+            "avg_ms": 1225.200617703533,
+            "max_ms": 8461.864849,
+            "status_distribution": {
+              "200": 651
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/map/search",
+            "request_count": 280,
+            "error_count": 280,
+            "error_rate": 1.0,
+            "p50_ms": 1847.9470999999999,
+            "p95_ms": 2259.02493835,
+            "p99_ms": 2286.4238055700002,
+            "avg_ms": 1846.7011588535715,
+            "max_ms": 2396.500377,
+            "status_distribution": {
+              "500": 280
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/capacity/segments/occupancy",
+            "request_count": 308,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1211.7034965,
+            "p95_ms": 2119.6321476999983,
+            "p99_ms": 5590.488411299999,
+            "avg_ms": 1459.171059840909,
+            "max_ms": 5867.006547,
+            "status_distribution": {
+              "200": 308
+            }
+          },
+          {
+            "endpoint": "GET /api/v1/notifications",
+            "request_count": 130,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 1071.3533255,
+            "p95_ms": 1450.0932555999998,
+            "p99_ms": 1690.4809642299988,
+            "avg_ms": 1135.6590778615384,
+            "max_ms": 1839.326522,
+            "status_distribution": {
+              "200": 130
+            }
+          },
+          {
+            "endpoint": "PUT /api/v1/notifications/read-all",
+            "request_count": 130,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 543.9995595,
+            "p95_ms": 708.02763105,
+            "p99_ms": 936.5805901699998,
+            "avg_ms": 576.4365394615385,
+            "max_ms": 1193.333421,
+            "status_distribution": {
+              "200": 130
+            }
+          },
+          {
+            "endpoint": "GET /nginx-health",
+            "request_count": 113,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "p50_ms": 280.901659,
+            "p95_ms": 396.93151179999995,
+            "p99_ms": 407.91338404,
+            "avg_ms": 292.0983259380531,
+            "max_ms": 418.902034,
+            "status_distribution": {
+              "200": 113
+            }
+          }
+        ],
+        "response_payload_recording": {
+          "recorded": false,
+          "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+        }
+      },
+      "issues": {
+        "threshold_failures": [
+          {
+            "metric": "auth_success",
+            "threshold": "rate>0.95"
+          }
+        ],
+        "failing_checks": [
+          {
+            "name": "register: status 201 or 409",
+            "path": "::auth: register::register: status 201 or 409",
+            "fails": 2188,
+            "passes": 651
+          },
+          {
+            "name": "search: status 200 or 429",
+            "path": "::map: search places::search: status 200 or 429",
+            "fails": 280,
+            "passes": 0
+          },
+          {
+            "name": "journey create: status 201/200/409/422",
+            "path": "::journey: create::journey create: status 201/200/409/422",
+            "fails": 179,
+            "passes": 0
+          },
+          {
+            "name": "journey create: not 5xx (except 503)",
+            "path": "::journey: create::journey create: not 5xx (except 503)",
+            "fails": 179,
+            "passes": 0
+          }
+        ],
+        "common_console_issues": [
+          {
+            "message": "\u21b3  0% \u2014 \u2713 0 / \u2717 179",
+            "count": 2
+          },
+          {
+            "message": "\u2717 register: status 201 or 409",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  22% \u2014 \u2713 651 / \u2717 2188",
+            "count": 1
+          },
+          {
+            "message": "\u2717 search: status 200 or 429",
+            "count": 1
+          },
+          {
+            "message": "\u21b3  0% \u2014 \u2713 0 / \u2717 280",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: status 201/200/409/422",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey create: not 5xx (except 503)",
+            "count": 1
+          },
+          {
+            "message": "\u2713 auth_success...................: 100.00% \u2713 651      \u2717 0",
+            "count": 1
+          },
+          {
+            "message": "\u2717 capacity_check_duration........: avg=1.37s    min=634ms    med=808ms    max=5.54s    p(90)=3.61s    p(95)=4.78s",
+            "count": 1
+          },
+          {
+            "message": "checks.........................: 55.52%  \u2713 3528     \u2717 2826",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_duration..............: avg=9.37s    min=261.1ms  med=1.79s    max=30.58s   p(90)=30.28s   p(95)=30.28s",
+            "count": 1
+          },
+          {
+            "message": "\u2717 http_req_failed................: 50.73%  \u2713 2647     \u2717 2570",
+            "count": 1
+          },
+          {
+            "message": "\u2717 journey_create_success.........: 0.00%   \u2713 0        \u2717 179",
+            "count": 1
+          },
+          {
+            "message": "\u2717 route_compute_duration.........: avg=6.87s    min=3.63s    med=6.91s    max=8.1s     p(90)=7.23s    p(95)=7.44s",
+            "count": 1
+          },
+          {
+            "message": "time=\"2026-04-10T12:00:48Z\" level=error msg=\"thresholds on metrics 'capacity_check_duration, http_req_duration, http_req_failed, journey_create_success, route_compute_duration' have been crossed\"",
+            "count": 1
+          }
+        ]
+      }
+    }
+  ],
+  "aggregate": {
+    "total_requests": 37797,
+    "total_errors": 7492,
+    "overall_error_rate": 0.19821678969230364,
+    "status_distribution": {
+      "200": 23146,
+      "201": 7159,
+      "500": 1362,
+      "502": 5181,
+      "503": 622,
+      "504": 327
+    },
+    "per_api": [
+      {
+        "endpoint": "POST /api/v1/auth/register",
+        "request_count": 11797,
+        "error_count": 4868,
+        "error_rate": 0.41264728320759514,
+        "p50_ms": 2300.788807,
+        "p95_ms": 30281.1010964,
+        "p99_ms": 30366.394776399997,
+        "avg_ms": 10814.3327048197,
+        "max_ms": 30589.865466,
+        "status_distribution": {
+          "201": 6929,
+          "502": 3958,
+          "503": 583,
+          "504": 327
+        }
+      },
+      {
+        "endpoint": "POST /api/v1/journeys",
+        "request_count": 2076,
+        "error_count": 1223,
+        "error_rate": 0.5891136801541426,
+        "p50_ms": 1081.7493924999999,
+        "p95_ms": 8498.585902499999,
+        "p99_ms": 12366.85037475,
+        "avg_ms": 2787.471667919075,
+        "max_ms": 14535.685035,
+        "status_distribution": {
+          "200": 623,
+          "201": 230,
+          "502": 1223
+        }
+      },
+      {
+        "endpoint": "POST /api/v1/routes/compute",
+        "request_count": 3162,
+        "error_count": 8,
+        "error_rate": 0.002530044275774826,
+        "p50_ms": 5507.805104499999,
+        "p95_ms": 7004.7402582,
+        "p99_ms": 7261.64362047,
+        "avg_ms": 4344.577827092663,
+        "max_ms": 8105.736991,
+        "status_distribution": {
+          "200": 3154,
+          "503": 8
+        }
+      },
+      {
+        "endpoint": "GET /api/v1/capacity/segments",
+        "request_count": 3451,
+        "error_count": 2,
+        "error_rate": 0.0005795421616922632,
+        "p50_ms": 791.057395,
+        "p95_ms": 4785.270174,
+        "p99_ms": 5446.213382,
+        "avg_ms": 1541.5630705073893,
+        "max_ms": 8280.946356,
+        "status_distribution": {
+          "200": 3449,
+          "503": 2
+        }
+      },
+      {
+        "endpoint": "GET /api/v1/capacity/segments/occupancy",
+        "request_count": 3451,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "p50_ms": 942.037422,
+        "p95_ms": 3985.5870915,
+        "p99_ms": 5880.3320005000005,
+        "avg_ms": 1185.9253278751087,
+        "max_ms": 9402.2138,
+        "status_distribution": {
+          "200": 3451
+        }
+      },
+      {
+        "endpoint": "GET /api/v1/auth/profile",
+        "request_count": 6926,
+        "error_count": 17,
+        "error_rate": 0.0024545192030031764,
+        "p50_ms": 272.750863,
+        "p95_ms": 3279.95531875,
+        "p99_ms": 12227.59577425,
+        "avg_ms": 923.1912315153047,
+        "max_ms": 50394.041934,
+        "status_distribution": {
+          "200": 6909,
+          "503": 17
+        }
+      },
+      {
+        "endpoint": "GET /api/v1/map/search",
+        "request_count": 3163,
+        "error_count": 1365,
+        "error_rate": 0.4315523237432817,
+        "p50_ms": 278.680529,
+        "p95_ms": 2131.0547300999997,
+        "p99_ms": 2235.3316730799997,
+        "avg_ms": 789.0433169389819,
+        "max_ms": 2396.500377,
+        "status_distribution": {
+          "200": 1798,
+          "500": 1362,
+          "503": 3
+        }
+      },
+      {
+        "endpoint": "GET /api/v1/notifications",
+        "request_count": 1370,
+        "error_count": 5,
+        "error_rate": 0.0036496350364963502,
+        "p50_ms": 394.18904,
+        "p95_ms": 1174.19223865,
+        "p99_ms": 1454.71645807,
+        "avg_ms": 507.6179694948905,
+        "max_ms": 2166.58417,
+        "status_distribution": {
+          "200": 1365,
+          "503": 5
+        }
+      },
+      {
+        "endpoint": "PUT /api/v1/notifications/read-all",
+        "request_count": 1370,
+        "error_count": 4,
+        "error_rate": 0.00291970802919708,
+        "p50_ms": 198.1896075,
+        "p95_ms": 549.16221655,
+        "p99_ms": 713.60645941,
+        "avg_ms": 239.469805510219,
+        "max_ms": 1193.333421,
+        "status_distribution": {
+          "200": 1366,
+          "503": 4
+        }
+      },
+      {
+        "endpoint": "GET /nginx-health",
+        "request_count": 1031,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "p50_ms": 96.121252,
+        "p95_ms": 282.58501650000005,
+        "p99_ms": 392.10989730000006,
+        "avg_ms": 113.96863401163918,
+        "max_ms": 469.707015,
+        "status_distribution": {
+          "200": 1031
+        }
+      }
+    ],
+    "response_payload_recording": {
+      "recorded": false,
+      "reason": "k6 --out json captures metrics/tags (status, method, url, timings), not response bodies."
+    }
+  }
+}
