@@ -34,6 +34,8 @@ export interface AdminApiNotification extends ApiNotification {
   event_id: string;
   event_type: string;
   delivery_status: string;
+  retry_count?: number;
+  last_error?: string;
 }
 
 export interface AdminNotificationListResponse {
