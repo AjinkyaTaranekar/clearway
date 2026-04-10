@@ -1,7 +1,7 @@
 # System Test Report — Distributed Vehicle Capacity System
 
 > **Date:** 2026-04-09
-> **Tester:** Senior QA (Deepika Nag)
+> **Tester:** Deepika Nag
 > **Branch:** `iam-auth-service`
 > **Regions tested:** EU (35.187.121.12) · US (34.138.242.217) · APAC (34.80.180.64)
 
