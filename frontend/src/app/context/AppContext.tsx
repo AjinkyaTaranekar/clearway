@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Journey, JourneyStatus, Notification } from '../types';
 import { clearTokens, getRefreshToken, getToken, isAccessTokenExpired, storeTokens } from '../services/auth';
@@ -109,17 +109,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [adminJourneys, setAdminJourneys] = useState<Journey[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lastBookingResult, setLastBookingResult] = useState<BookingResult | null>(null);
+  const hasHydratedNotificationsRef = useRef(false);
+  const seenNotificationIDsRef = useRef<Set<string>>(new Set());
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
   const refreshNotifications = useCallback(async (): Promise<void> => {
     try {
       const res = await notifApi.listNotifications();
-      setNotifications(res.notifications.map(mapApiNotification));
+      const next = res.notifications.map(mapApiNotification);
+
+      // First sync seeds local state without toasting historical entries.
+      if (!hasHydratedNotificationsRef.current) {
+        hasHydratedNotificationsRef.current = true;
+        seenNotificationIDsRef.current = new Set(next.map((n) => n.id));
+        setNotifications(next);
+        return;
+      }
+
+      const unseenUnread = next.filter((n) => !n.read && !seenNotificationIDsRef.current.has(n.id));
+      if (unseenUnread.length > 0) {
+        unseenUnread.slice(0, 3).forEach((n) => {
+          toast(n.title, { description: n.message });
+        });
+        if (unseenUnread.length > 3) {
+          toast.info('More notification updates', {
+            description: `${unseenUnread.length - 3} additional notifications are available in the Notifications page.`,
+          });
+        }
+      }
+
+      seenNotificationIDsRef.current = new Set(next.map((n) => n.id));
+      setNotifications(next);
     } catch {
       // notifications are non-critical - no toast
     }
   }, []);
+
+  useEffect(() => {
+    // Reset notification toast dedupe cache when active user changes.
+    hasHydratedNotificationsRef.current = false;
+    seenNotificationIDsRef.current = new Set();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -154,6 +185,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     load();
   }, [refreshNotifications, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const timer = setInterval(() => {
+      void refreshNotifications();
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, [refreshNotifications, user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -221,6 +262,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAdminJourneys([]);
     setNotifications([]);
     setLastBookingResult(null);
+    hasHydratedNotificationsRef.current = false;
+    seenNotificationIDsRef.current = new Set();
     api.clearJourneyReadCache();
     localStorage.removeItem('cw_user');
     clearTokens();

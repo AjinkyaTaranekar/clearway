@@ -1,0 +1,305 @@
+{
+  "title": "CockroachDB — SQL, Replication & Storage",
+  "uid": "cockroachdb",
+  "description": "CockroachDB cluster health, SQL performance, replication status, and storage",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "graphTooltip": 1,
+  "tags": ["cockroachdb", "database", "replication", "data-layer"],
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "row", "title": "CLUSTER HEALTH",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 2, "type": "stat", "title": "Live Nodes",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "liveness_livenodes{job=\"cockroachdb\"}", "legendFormat": "live nodes", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 3 }] }, "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Unavailable Ranges",
+      "description": "Should always be 0. Non-zero means data is unreachable.",
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "ranges_unavailable{job=\"cockroachdb\"}", "legendFormat": "unavailable", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] }, "color": { "mode": "thresholds" }, "mappings": [{ "type": "value", "options": { "0": { "text": "OK" } } }] }, "overrides": [] }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Under-Replicated Ranges",
+      "description": "Ranges with fewer replicas than required — should be 0 in steady state",
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "ranges_underreplicated{job=\"cockroachdb\"}", "legendFormat": "under-replicated", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] }, "color": { "mode": "thresholds" }, "mappings": [{ "type": "value", "options": { "0": { "text": "OK" } } }] }, "overrides": [] }
+    },
+    {
+      "id": 5, "type": "stat", "title": "Total Replicas",
+      "gridPos": { "x": 12, "y": 1, "w": 3, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "replicas{job=\"cockroachdb\"}", "legendFormat": "replicas", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "blue", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 6, "type": "stat", "title": "Range Leaders",
+      "gridPos": { "x": 15, "y": 1, "w": 3, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "replicas_leaders{job=\"cockroachdb\"}", "legendFormat": "leaders", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "green", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 7, "type": "gauge", "title": "Storage Used",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "(capacity{job=\"cockroachdb\"} - capacity_available{job=\"cockroachdb\"}) / capacity{job=\"cockroachdb\"} * 100", "legendFormat": "used %", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 80 }] }, "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 8, "type": "row", "title": "NODE LIVENESS",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Live Node Count Over Time",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "liveness_livenodes{job=\"cockroachdb\"}", "legendFormat": "Live Nodes", "refId": "A" }],
+      "options": { "legend": { "calcs": ["min", "max", "last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 20 }, "color": { "fixedColor": "green", "mode": "fixed" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 3 }] } }, "overrides": [] }
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Liveness Heartbeats",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(liveness_heartbeatsuccesses{job=\"cockroachdb\"}[1m])", "legendFormat": "Heartbeat Successes/s", "refId": "A" },
+        { "expr": "rate(liveness_heartbeatfailures{job=\"cockroachdb\"}[1m])", "legendFormat": "Heartbeat Failures/s", "refId": "B" }
+      ],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Heartbeat Failures/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }, { "id": "custom.fillOpacity", "value": 20 }] },
+          { "matcher": { "id": "byName", "options": "Heartbeat Successes/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 11, "type": "row", "title": "SQL QUERY PERFORMANCE",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "SQL Query Rate by Type",
+      "gridPos": { "x": 0, "y": 14, "w": 14, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(sql_select_count{job=\"cockroachdb\"}[1m])", "legendFormat": "SELECT", "refId": "A" },
+        { "expr": "rate(sql_insert_count{job=\"cockroachdb\"}[1m])", "legendFormat": "INSERT", "refId": "B" },
+        { "expr": "rate(sql_update_count{job=\"cockroachdb\"}[1m])", "legendFormat": "UPDATE", "refId": "C" },
+        { "expr": "rate(sql_delete_count{job=\"cockroachdb\"}[1m])", "legendFormat": "DELETE", "refId": "D" }
+      ],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 8, "stacking": { "group": "A", "mode": "none" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "SELECT" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "INSERT" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "UPDATE" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "DELETE" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "SQL Errors",
+      "gridPos": { "x": 14, "y": 14, "w": 10, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(sql_failure_count{job=\"cockroachdb\"}[1m])", "legendFormat": "SQL Errors/s", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 20 }, "color": { "fixedColor": "red", "mode": "fixed" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 14, "type": "row", "title": "TRANSACTIONS",
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 15, "type": "timeseries", "title": "Transaction Rate",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(sql_txn_commit_count{job=\"cockroachdb\"}[1m])", "legendFormat": "Commit/s", "refId": "A" },
+        { "expr": "rate(sql_txn_rollback_count{job=\"cockroachdb\"}[1m])", "legendFormat": "Rollback/s", "refId": "B" },
+        { "expr": "rate(sql_txn_abort_count{job=\"cockroachdb\"}[1m])", "legendFormat": "Abort/s", "refId": "C" }
+      ],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 5 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Commit/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Rollback/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Abort/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 16, "type": "timeseries", "title": "Open Transactions",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sql_txns_open{job=\"cockroachdb\"}", "legendFormat": "Open Transactions", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15 }, "color": { "fixedColor": "purple", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 17, "type": "row", "title": "LATENCY",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 18, "type": "timeseries", "title": "SQL Service Latency (P99 / P50)",
+      "description": "Execution time for individual SQL statements",
+      "gridPos": { "x": 0, "y": 33, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, rate(sql_service_latency_bucket{job=\"cockroachdb\"}[1m]))", "legendFormat": "p99 service latency", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, rate(sql_service_latency_bucket{job=\"cockroachdb\"}[1m]))", "legendFormat": "p50 service latency", "refId": "B" }
+      ],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "ns", "custom": { "lineWidth": 2, "fillOpacity": 5 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p99 service latency" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p50 service latency" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 19, "type": "timeseries", "title": "SQL Transaction Latency (P99 / P50)",
+      "description": "End-to-end transaction latency",
+      "gridPos": { "x": 12, "y": 33, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, rate(sql_txn_latency_bucket{job=\"cockroachdb\"}[1m]))", "legendFormat": "p99 txn latency", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, rate(sql_txn_latency_bucket{job=\"cockroachdb\"}[1m]))", "legendFormat": "p50 txn latency", "refId": "B" }
+      ],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "ns", "custom": { "lineWidth": 2, "fillOpacity": 5 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p99 txn latency" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p50 txn latency" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 20, "type": "row", "title": "REPLICATION",
+      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 21, "type": "timeseries", "title": "Replica Count",
+      "gridPos": { "x": 0, "y": 42, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "replicas{job=\"cockroachdb\"}", "legendFormat": "Total Replicas", "refId": "A" },
+        { "expr": "replicas_leaders{job=\"cockroachdb\"}", "legendFormat": "Leaders", "refId": "B" },
+        { "expr": "replicas_leaseholders{job=\"cockroachdb\"}", "legendFormat": "Leaseholders", "refId": "C" }
+      ],
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Replication Events",
+      "gridPos": { "x": 8, "y": 42, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(replication_adds{job=\"cockroachdb\"}[1m])", "legendFormat": "Replica Adds/s", "refId": "A" },
+        { "expr": "rate(replication_removes{job=\"cockroachdb\"}[1m])", "legendFormat": "Replica Removes/s", "refId": "B" }
+      ],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Replica Adds/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Replica Removes/s" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 23, "type": "timeseries", "title": "Range Events",
+      "gridPos": { "x": 16, "y": 42, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "ranges_unavailable{job=\"cockroachdb\"}", "legendFormat": "Unavailable Ranges", "refId": "A" },
+        { "expr": "ranges_underreplicated{job=\"cockroachdb\"}", "legendFormat": "Under-replicated Ranges", "refId": "B" }
+      ],
+      "options": { "legend": { "calcs": ["max", "last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Unavailable Ranges" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Under-replicated Ranges" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "id": 24, "type": "row", "title": "STORAGE",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 25, "type": "timeseries", "title": "Storage Capacity",
+      "gridPos": { "x": 0, "y": 51, "w": 14, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "capacity{job=\"cockroachdb\"}", "legendFormat": "Total Capacity", "refId": "A" },
+        { "expr": "capacity_available{job=\"cockroachdb\"}", "legendFormat": "Available Capacity", "refId": "B" },
+        { "expr": "capacity{job=\"cockroachdb\"} - capacity_available{job=\"cockroachdb\"}", "legendFormat": "Used Capacity", "refId": "C" }
+      ],
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Total Capacity" }, "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }] },
+          { "matcher": { "id": "byName", "options": "Available Capacity" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Used Capacity" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }, { "id": "custom.fillOpacity", "value": 25 }] }
+        ]
+      }
+    },
+    {
+      "id": 26, "type": "timeseries", "title": "Live + Dead Bytes",
+      "description": "Live bytes = useful data. Dead bytes = MVCC garbage awaiting GC.",
+      "gridPos": { "x": 14, "y": 51, "w": 10, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "livebytes{job=\"cockroachdb\"}", "legendFormat": "Live Bytes", "refId": "A" },
+        { "expr": "totalbytes{job=\"cockroachdb\"}", "legendFormat": "Total Bytes", "refId": "B" }
+      ],
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 8 } }, "overrides": [] }
+    },
+    {
+      "id": 27, "type": "row", "title": "SQL CONNECTIONS",
+      "gridPos": { "x": 0, "y": 59, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 28, "type": "timeseries", "title": "SQL Connections",
+      "gridPos": { "x": 0, "y": 60, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sql_conns{job=\"cockroachdb\"}", "legendFormat": "Connections", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15 }, "color": { "fixedColor": "blue", "mode": "fixed" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] } }, "overrides": [] }
+    },
+    {
+      "id": 29, "type": "timeseries", "title": "New Connection Rate",
+      "gridPos": { "x": 12, "y": 60, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(sql_new_conns{job=\"cockroachdb\"}[1m])", "legendFormat": "New Connections/s", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] }
+    }
+  ]
+}

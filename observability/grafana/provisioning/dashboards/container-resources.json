@@ -1,0 +1,182 @@
+{
+  "title": "Container Resources",
+  "uid": "container-resources",
+  "description": "Container-level CPU, memory, network I/O and disk I/O from cAdvisor",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "graphTooltip": 1,
+  "tags": ["infrastructure", "containers", "cpu", "memory"],
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "Container",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(container_cpu_usage_seconds_total{name!=\"\"}, container_label_com_docker_compose_service)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "row", "title": "CPU",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "CPU Usage % per Container",
+      "description": "Rate of CPU seconds consumed (100 = 1 full core). Aggregated per service.",
+      "gridPos": { "x": 0, "y": 1, "w": 16, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service) * 100", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "gradientMode": "opacity" },
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3, "type": "bargauge", "title": "Current CPU % Ranking",
+      "description": "Which containers are consuming the most CPU right now",
+      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[2m])) by (container_label_com_docker_compose_service) * 100", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] }, "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 4, "type": "row", "title": "CPU THROTTLING",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "CPU Throttle Ratio",
+      "description": "Proportion of time the container was CPU throttled. High values mean the container needs more CPU limits.",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(container_cpu_cfs_throttled_seconds_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m]) / rate(container_cpu_cfs_periods_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "lineWidth": 2, "fillOpacity": 15 },
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 0.25 }, { "color": "red", "value": 0.5 }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6, "type": "row", "title": "MEMORY",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Memory Working Set per Container",
+      "description": "Working set = memory that cannot be reclaimed by the kernel. The real memory pressure metric.",
+      "gridPos": { "x": 0, "y": 19, "w": 16, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "gradientMode": "opacity" },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8, "type": "bargauge", "title": "Current Memory Ranking",
+      "gridPos": { "x": 16, "y": 19, "w": 8, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "continuous-BlPu" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Memory RSS (Resident Set Size)",
+      "description": "Physical RAM pages used by the container process",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "container_memory_rss{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 5 }, "color": { "mode": "palette-classic" } }, "overrides": [] }
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Memory Cache (Page Cache)",
+      "description": "OS page cache used by container — can be reclaimed under pressure",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "container_memory_cache{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 5 }, "color": { "mode": "palette-classic" } }, "overrides": [] }
+    },
+    {
+      "id": 11, "type": "row", "title": "NETWORK I/O",
+      "gridPos": { "x": 0, "y": 35, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Network Receive Bytes/s",
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_network_receive_bytes_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "RX {{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2, "fillOpacity": 10 }, "color": { "mode": "palette-classic" } }, "overrides": [] }
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Network Transmit Bytes/s",
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_network_transmit_bytes_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "TX {{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2, "fillOpacity": 10 }, "color": { "mode": "palette-classic" } }, "overrides": [] }
+    },
+    {
+      "id": 14, "type": "timeseries", "title": "Network Receive Errors",
+      "gridPos": { "x": 0, "y": 44, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_network_receive_errors_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "errors/s", "custom": { "lineWidth": 2 }, "color": { "mode": "palette-classic" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 15, "type": "timeseries", "title": "Network Transmit Errors",
+      "gridPos": { "x": 12, "y": 44, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_network_transmit_errors_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "errors/s", "custom": { "lineWidth": 2 }, "color": { "mode": "palette-classic" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 16, "type": "row", "title": "DISK I/O",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 1 }, "collapsed": false
+    },
+    {
+      "id": 17, "type": "timeseries", "title": "Disk Read Bytes/s",
+      "gridPos": { "x": 0, "y": 51, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_fs_reads_bytes_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2, "fillOpacity": 8 }, "color": { "mode": "palette-classic" } }, "overrides": [] }
+    },
+    {
+      "id": 18, "type": "timeseries", "title": "Disk Write Bytes/s",
+      "gridPos": { "x": 12, "y": 51, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(container_fs_writes_bytes_total{container_label_com_docker_compose_service=~\"$container\", name!=\"\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }],
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2, "fillOpacity": 8 }, "color": { "mode": "palette-classic" } }, "overrides": [] }
+    }
+  ]
+}

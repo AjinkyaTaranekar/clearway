@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Globe } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { getRegion } from '../services/mapApi';
 
 type Mode = 'login' | 'register';
 const VEHICLE_TYPES = ['car', 'van', 'truck', 'motorcycle'] as const;
@@ -23,6 +24,8 @@ export default function LoginPage() {
   const { login, register, isAuthenticated, user } = useApp();
 
   const [mode, setMode] = useState<Mode>('login');
+  const [region, setRegion] = useState<string | null>(null);
+  useEffect(() => { getRegion().then(setRegion); }, []);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -151,6 +154,17 @@ export default function LoginPage() {
           <div style={{ color: '#4E5953', fontSize: '0.95rem' }}>
             {mode === 'login' ? 'Sign in to continue.' : 'Create a driver account to book journeys.'}
           </div>
+          {region && (
+            <div className="flex items-center justify-center gap-1.5 mt-2">
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                style={{ background: '#E3EEFB', border: '1px solid #B8D4F0', display: 'inline-flex' }}
+              >
+                <Globe size={11} color="#1A4E80" />
+                <span style={{ color: '#1A4E80', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{region}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl p-8 shadow-sm" style={{ border: '1px solid var(--border)' }}>
