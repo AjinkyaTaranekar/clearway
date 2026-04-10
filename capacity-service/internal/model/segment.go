@@ -7,6 +7,7 @@ type Segment struct {
 	SegmentID   string    `json:"segment_id"`
 	SegmentName string    `json:"segment_name"`
 	Region      string    `json:"region"`
+	CRDBRegion  string    `json:"crdb_region"` // geo-partition key: eu | us | apac
 	MaxCapacity float64   `json:"max_capacity"`
 	Version     int       `json:"version"`
 	CreatedAt   time.Time `json:"created_at"`

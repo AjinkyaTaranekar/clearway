@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -127,6 +128,13 @@ func main() {
 	reservRepo := repository.NewReservationRepo(dbPools.Master, dbPools.Slave)
 	closureRepo := repository.NewClosureRepo(dbPools.Master)
 	idempRepo := repository.NewIdempotencyRepo(dbPools.Master)
+	sagaRepo := repository.NewSagaRepo(dbPools.Master)
+
+	// Regional pools: in a single-cell deployment all regions point to the same
+	// master.  In a 3-cell deployment set VCS_DATABASE_US_HOST /
+	// VCS_DATABASE_APAC_HOST to each cell's CRDB node IP so the saga coordinator
+	// routes each regional sub-transaction to its local leaseholder.
+	regionalPools := buildRegionalPools(cfg, dbPools.Master)
 
 	// Wire up services
 	reservSvc := service.NewReservationService(
@@ -135,6 +143,8 @@ func main() {
 		reservRepo,
 		closureRepo,
 		idempRepo,
+		sagaRepo,
+		regionalPools,
 		redisClient,
 		cacheTTL,
 		log,
@@ -222,6 +232,47 @@ func main() {
 	}
 
 	log.Info().Msg("server exited")
+}
+
+// buildRegionalPools creates per-region CockroachDB master pools for the saga
+// coordinator.  Each region's pool is configured via dedicated env vars:
+//
+//	VCS_DATABASE_EU_HOST   / VCS_DATABASE_EU_PORT   (defaults to master config)
+//	VCS_DATABASE_US_HOST   / VCS_DATABASE_US_PORT
+//	VCS_DATABASE_APAC_HOST / VCS_DATABASE_APAC_PORT
+//
+// If a regional host is not set, the master pool is reused (single-cell mode).
+func buildRegionalPools(cfg *config.Config, master *sql.DB) *postgres.RegionalPools { //nolint:unparam
+	build := func(hostEnv, portEnv string) *sql.DB {
+		host := strings.TrimSpace(os.Getenv(hostEnv))
+		if host == "" {
+			return master // fallback: same CRDB cluster
+		}
+		port := cfg.Database.Master.Port
+		if p := strings.TrimSpace(os.Getenv(portEnv)); p != "" {
+			fmt.Sscanf(p, "%d", &port)
+		}
+		db, err := postgres.Connect(postgres.Config{
+			Host:         host,
+			Port:         port,
+			User:         cfg.Database.Master.User,
+			Password:     cfg.Database.Master.Password,
+			DBName:       cfg.Database.Master.DBName,
+			MaxOpenConns: cfg.Database.Master.MaxOpenConns,
+			MaxIdleConns: cfg.Database.Master.MaxIdleConns,
+		})
+		if err != nil {
+			// Non-fatal: fall back to master pool if regional node is unreachable.
+			return master
+		}
+		return db
+	}
+
+	return &postgres.RegionalPools{
+		EU:   build("VCS_DATABASE_EU_HOST", "VCS_DATABASE_EU_PORT"),
+		US:   build("VCS_DATABASE_US_HOST", "VCS_DATABASE_US_PORT"),
+		APAC: build("VCS_DATABASE_APAC_HOST", "VCS_DATABASE_APAC_PORT"),
+	}
 }
 
 func resolveMigrationsDir() string {

@@ -8,6 +8,7 @@ type Reservation struct {
 	ReservationID   string      `json:"reservation_id"`
 	JourneyID       string      `json:"journey_id"`
 	SegmentID       string      `json:"segment_id"`
+	CRDBRegion      string      `json:"crdb_region"` // geo-partition key: eu | us | apac
 	TimeWindowStart time.Time   `json:"time_window_start"`
 	TimeWindowEnd   time.Time   `json:"time_window_end"`
 	VehicleType     VehicleType `json:"vehicle_type"`
