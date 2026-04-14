@@ -12,9 +12,8 @@ ALTER TABLE capacity.segments
 ALTER TABLE capacity.reservations
     ADD COLUMN IF NOT EXISTS crdb_region VARCHAR(10) NOT NULL DEFAULT 'eu';
 
--- Backfill: every existing segment is in Ireland → eu
-UPDATE capacity.segments     SET crdb_region = 'eu';
-UPDATE capacity.reservations SET crdb_region = 'eu';
+-- No explicit UPDATE needed: ADD COLUMN ... DEFAULT 'eu' backfills existing rows.
+-- Mixing DDL + DML in the same CockroachDB transaction causes "column does not exist".
 
 -- Index used by the Saga compensation query (release by reservation_id)
 CREATE INDEX IF NOT EXISTS idx_reservations_reservation_id
