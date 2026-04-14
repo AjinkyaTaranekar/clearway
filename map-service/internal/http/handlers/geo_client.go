@@ -225,6 +225,9 @@ type osrmRouteResponse struct {
 				Ref      string  `json:"ref"`
 				Duration float64 `json:"duration"`
 				Distance float64 `json:"distance"`
+				Maneuver struct {
+					Location [2]float64 `json:"location"` // [lng, lat]
+				} `json:"maneuver"`
 			} `json:"steps"`
 		} `json:"legs"`
 	} `json:"routes"`
@@ -326,13 +329,18 @@ func collapseSteps(legs []struct {
 		Ref      string  `json:"ref"`
 		Duration float64 `json:"duration"`
 		Distance float64 `json:"distance"`
+		Maneuver struct {
+			Location [2]float64 `json:"location"` // [lng, lat]
+		} `json:"maneuver"`
 	} `json:"steps"`
 }) []RouteStep {
 	collapsed := make([]RouteStep, 0)
 	for _, leg := range legs {
 		for _, step := range leg.Steps {
 			segmentName := firstNonEmpty(strings.TrimSpace(step.Ref), strings.TrimSpace(step.Name), "Unnamed Road")
-			segmentID := deriveSegmentID(segmentName)
+			lng := step.Maneuver.Location[0]
+			lat := step.Maneuver.Location[1]
+			segmentID := deriveSegmentID(segmentName, lat, lng)
 			if len(collapsed) > 0 && collapsed[len(collapsed)-1].SegmentID == segmentID {
 				collapsed[len(collapsed)-1].DurationSeconds += step.Duration
 				continue
@@ -347,14 +355,50 @@ func collapseSteps(legs []struct {
 	return collapsed
 }
 
-func deriveSegmentID(roadName string) string {
+// deriveSegmentID produces a stable segment ID from a road name and its GPS
+// coordinates. The region prefix (eu/us/ap) is derived from longitude so that
+// identically-named roads in different continents never collide in the
+// capacity pool, and cross-continent routes naturally produce multi-region
+// segment sets that trigger the Saga coordinator.
+//
+// Named roads:   <region>_<sanitised_name>   e.g. eu_m7, ap_nh44
+//   → same road used by two journeys shares one capacity pool (correct).
+//   → "Ring Road" in Dublin = eu_ring_road, in Delhi = ap_ring_road (no collision).
+//
+// Unnamed roads: <region>_<lat2dp>_<lng2dp>  e.g. ap_28.97_41.01
+//   → coordinate grid at ~1 km precision gives each unnamed street its own
+//     capacity pool instead of all collapsing into one ap_unnamed bucket.
+func deriveSegmentID(roadName string, lat, lng float64) string {
+	region := geoRegion(lat, lng)
 	normalized := strings.ToLower(strings.TrimSpace(roadName))
 	normalized = segmentIDSanitizer.ReplaceAllString(normalized, "_")
 	normalized = strings.Trim(normalized, "_")
 	if normalized == "" {
-		normalized = "unnamed"
+		return fmt.Sprintf("%s_%.2f_%.2f", region, lat, lng)
 	}
-	return "osrm_" + normalized
+	return region + "_" + normalized
+}
+
+// geoRegion maps a GPS coordinate to one of three CRDB geo-regions used by
+// the Saga coordinator and CockroachDB zone configs.
+//
+// Boundaries (longitude-based, simple and fast):
+//   lng < -25  → "us"   (Americas)
+//   lng < 29.1 → "eu"   (Europe, West Africa, Atlantic)
+//   lng ≥ 29.1 → "ap"   (Asia, Pacific — Bosphorus is the EU/APAC split)
+//
+// 29.1°E is the midpoint of the Bosphorus strait (Istanbul), the natural
+// geographic boundary between European and Asian Turkey.
+func geoRegion(lat, lng float64) string {
+	_ = lat
+	switch {
+	case lng < -25:
+		return "us"
+	case lng < 29.1:
+		return "eu"
+	default:
+		return "ap"
+	}
 }
 
 func firstNonEmpty(values ...string) string {

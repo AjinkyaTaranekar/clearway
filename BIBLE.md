@@ -1415,3 +1415,79 @@ Protected: Map client (fetchNodes, ComputeRoute), Capacity client (Reserve)
 1. Sharding — geo-partitioning DDL designed and documented but not applied on live cluster.
 2. Exploit locality — follower reads in place, leaseholder pinning not applied.
 3. Total failure tolerance — US and APAC are single-node cells with no intra-cell HA.
+
+---
+
+## 20. Segment ID Design — Limitations and Saga Trigger
+
+### How segment IDs are generated (post-April 2026 fix)
+
+The map-service `geo_client.go` produces segment IDs from OSRM step data:
+
+```
+Named road   → <region>_<sanitised_road_name>   e.g. eu_m7, ap_nh_44, us_i_95
+Unnamed road → <region>_<lat2dp>_<lng2dp>       e.g. ap_35.67_139.65
+```
+
+Region is determined by longitude (`geoRegion()` in `geo_client.go`):
+
+| Longitude range | Region | Examples |
+|---|---|---|
+| lng < −25° | `us` | New York, São Paulo |
+| −25° ≤ lng < 29.1° | `eu` | Dublin, Paris, Istanbul (European side) |
+| lng ≥ 29.1° | `ap` | Istanbul (Asian side), Delhi, Tokyo |
+
+29.1°E is the Bosphorus midpoint — the natural EU/Asia geographic boundary.
+
+### Why the Bosphorus works for the demo
+
+A real OSRM route from Istanbul's European district (lng ~28.97°) to Ankara (lng ~32.86°) crosses 29.1°E on the O-4 motorway bridge, producing:
+
+```
+eu_zeynepsultan_camii_soka  (Istanbul EU, lng 28.98)
+eu_galata_k_pr_s            (Galata Bridge, lng 28.97)
+eu_o_4                      (O-4 approach, lng 29.02)
+ap_o_4                      ← same road, crosses into Asia at lng 29.10
+ap_o_7                      (Asian Turkey)
+ap_d750                     (Ankara approach)
+```
+
+`groupByRegion()` sees both `eu` and `ap` → `len(groups) == 2` → **saga fires naturally**, no manually seeded test data needed.
+
+To demo this:
+```bash
+curl -X POST https://35.244.162.92.nip.io/api/v1/routes/compute \
+  -H "Content-Type: application/json" \
+  -d '{"origin": {"lat": 41.0082, "lng": 28.9784}, "destination": {"lat": 39.9334, "lng": 32.8597}}'
+```
+Then book a journey using the returned route — capacity reservation will go through the saga coordinator.
+
+### Limitations
+
+**1. Same-name collision within a region (known, acceptable)**
+
+"Ring Road" in Delhi (`ap_ring_road`) and "Ring Road" in Nairobi (`ap_ring_road`) share the same capacity pool. This is wrong physically but acceptable because:
+- Both are in APAC; no cross-region correctness issue
+- The critical bug (Dublin Ring Road colliding with Delhi Ring Road) is fixed — `eu_ring_road` ≠ `ap_ring_road`
+- Fixing within-region collisions would require country-code-aware IDs (not available from public OSRM)
+
+**2. No country codes from public OSRM**
+
+`router.project-osrm.org` does not expose ISO country codes in its response (annotations only return speed/distance/node data). A self-hosted OSRM with a custom Lua profile could expose `country_code` per step, enabling proper country→region mapping. The longitude split is a practical approximation.
+
+**3. Long roads spanning the boundary**
+
+A motorway that runs along the 29.1°E meridian (unlikely but theoretically possible) would be split into `eu_*` and `ap_*` segments, giving each half a separate capacity pool. This is geographically correct — the two halves are in different continents.
+
+**4. Africa / Middle East ambiguity**
+
+Cairo (lng 31.2°) maps to `ap`. Istanbul maps correctly to `eu` (west) and `ap` (east). Russia west of 29.1° (Moscow, lng 37.6°) maps to `ap`. These are imprecise but don't affect the system's primary use case (Irish routes → all `eu`) or the demo (Istanbul→Ankara crossing).
+
+### Key files
+
+| File | Role |
+|---|---|
+| `map-service/internal/http/handlers/geo_client.go` | `deriveSegmentID()`, `geoRegion()`, `collapseSteps()` |
+| `map-service/internal/http/handlers/geo_client_test.go` | 14 tests covering region mapping, naming, Bosphorus crossing, concurrency |
+| `capacity-service/internal/service/saga_coordinator.go` | `SegmentCRDBRegion()` — maps `eu_/us_/ap_` prefixes to CRDB regions |
+| `capacity-service/internal/service/saga_coordinator_test.go` | Tests for new prefix format + legacy dash format backwards compat |

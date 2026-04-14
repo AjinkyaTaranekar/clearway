@@ -30,19 +30,35 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/AjinkyaTaranekar/distributed-vehicle-capacity-system/capacity-service/internal/model"
 )
 
 // SegmentCRDBRegion maps a segment ID to its geo-region.
-// Convention (segment ID prefix):
-//   "US-*"                      → us
-//   "JP-*", "AP-*", "SG-*", "CN-*" → apac
-//   everything else              → eu   (IE-*, seg_*, coord-*)
+//
+// Segment IDs produced by the map-service use a geographic region prefix
+// derived from the road's GPS coordinates (see geo_client.go: geoRegion):
+//
+//	"eu_*"  → eu   (Europe; lng < 29.1°E)
+//	"us_*"  → us   (Americas; lng < -25°W)
+//	"ap_*"  → apac (Asia/Pacific; lng ≥ 29.1°E)
+//
+// Legacy manually-registered segments may still use the old dash convention
+// (US-, AP-, JP-, etc.) and are recognised for backwards compatibility.
 func SegmentCRDBRegion(segmentID string) string {
+	// New coordinate-based prefix (produced by map-service geo_client.go)
+	switch {
+	case strings.HasPrefix(segmentID, "eu_"):
+		return "eu"
+	case strings.HasPrefix(segmentID, "us_"):
+		return "us"
+	case strings.HasPrefix(segmentID, "ap_"):
+		return "apac"
+	}
+	// Legacy dash-prefixed convention (manually registered segments)
 	if len(segmentID) >= 3 {
-		prefix := segmentID[:3]
-		switch prefix {
+		switch segmentID[:3] {
 		case "US-", "us-":
 			return "us"
 		case "JP-", "jp-", "AP-", "ap-", "SG-", "sg-", "CN-", "cn-":

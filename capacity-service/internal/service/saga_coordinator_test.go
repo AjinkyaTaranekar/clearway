@@ -27,6 +27,51 @@ import (
 // SECTION 1 — SegmentCRDBRegion: ID-prefix → geo-region mapping
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── New geo-prefix format (produced by map-service geo_client.go) ────────────
+
+func TestSegmentCRDBRegion_GeoPrefix_EU(t *testing.T) {
+	// map-service now produces eu_* for European roads
+	for _, id := range []string{"eu_m7", "eu_n8", "eu_r108", "eu_ring_road", "eu_o_4"} {
+		if got := SegmentCRDBRegion(id); got != "eu" {
+			t.Errorf("SegmentCRDBRegion(%q) = %q, want eu", id, got)
+		}
+	}
+}
+
+func TestSegmentCRDBRegion_GeoPrefix_APAC(t *testing.T) {
+	// map-service produces ap_* for Asian/Pacific roads
+	for _, id := range []string{"ap_nh_44", "ap_ring_road", "ap_o_4", "ap_d750", "ap_o_7"} {
+		if got := SegmentCRDBRegion(id); got != "apac" {
+			t.Errorf("SegmentCRDBRegion(%q) = %q, want apac", id, got)
+		}
+	}
+}
+
+func TestSegmentCRDBRegion_GeoPrefix_US(t *testing.T) {
+	for _, id := range []string{"us_i_95", "us_i_90", "us_ring_road"} {
+		if got := SegmentCRDBRegion(id); got != "us" {
+			t.Errorf("SegmentCRDBRegion(%q) = %q, want us", id, got)
+		}
+	}
+}
+
+func TestSegmentCRDBRegion_UnnamedRoadCoordID_CorrectRegion(t *testing.T) {
+	// Unnamed roads use coordinate-based IDs: <region>_<lat>_<lng>
+	// Region is still determined by the prefix, not the coordinates in the ID.
+	cases := map[string]string{
+		"eu_53.35_-6.26": "eu",
+		"ap_35.67_139.65": "apac",
+		"us_40.71_-74.01": "us",
+	}
+	for id, want := range cases {
+		if got := SegmentCRDBRegion(id); got != want {
+			t.Errorf("SegmentCRDBRegion(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+// ── Legacy dash-prefix format (backwards compatibility) ───────────────────────
+
 func TestSegmentCRDBRegion_IrishMotorway_EU(t *testing.T) {
 	for _, id := range []string{"IE-M7", "IE-M1", "IE-N4", "IE-N25", "ie-m8"} {
 		if got := SegmentCRDBRegion(id); got != "eu" {
