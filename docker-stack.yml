@@ -147,9 +147,11 @@ services:
         max_attempts: 5
       resources:
         limits:
-          memory: 128M
+          cpus: '1.00'
+          memory: 384M
         reservations:
-          memory: 64M
+          cpus: '0.20'
+          memory: 128M
     environment:
       VCS_SERVER_PORT: "8082"
       VCS_DATABASE_MASTER_HOST: db
@@ -197,9 +199,11 @@ services:
         max_attempts: 5
       resources:
         limits:
-          memory: 128M
+          cpus: '0.75'
+          memory: 384M
         reservations:
-          memory: 64M
+          cpus: '0.15'
+          memory: 128M
     environment:
       VCS_SERVER_PORT: "8081"
       VCS_DATABASE_MASTER_HOST: db
@@ -242,9 +246,11 @@ services:
         max_attempts: 5
       resources:
         limits:
-          memory: 128M
+          cpus: '0.75'
+          memory: 384M
         reservations:
-          memory: 64M
+          cpus: '0.15'
+          memory: 128M
     environment:
       VCS_SERVER_PORT: "8084"
       VCS_DATABASE_MASTER_HOST: db
@@ -288,9 +294,11 @@ services:
         max_attempts: 5
       resources:
         limits:
-          memory: 128M
+          cpus: '1.00'
+          memory: 512M
         reservations:
-          memory: 64M
+          cpus: '0.20'
+          memory: 192M
     environment:
       VCS_SERVER_PORT: "8083"
       VCS_DATABASE_MASTER_HOST: db
@@ -335,9 +343,11 @@ services:
         max_attempts: 5
       resources:
         limits:
-          memory: 96M
+          cpus: '0.50'
+          memory: 256M
         reservations:
-          memory: 48M
+          cpus: '0.10'
+          memory: 96M
     environment:
       VCS_SERVER_PORT: "8085"
       VCS_DATABASE_MASTER_HOST: db
@@ -370,7 +380,7 @@ services:
   # prometheus + loki + grafana: replicated on manager (centralised)
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:latest
     deploy:
       mode: global
       resources:
