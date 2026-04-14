@@ -1,0 +1,1 @@
+vcs_map-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Failed 48 minutes ago|"task: non-zero exit (1)"

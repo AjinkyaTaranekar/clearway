@@ -39,10 +39,37 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
     metric_relabel_configs:
-      # Keep only container metrics (drop machine-level noise)
+      # Normalize service labels across Compose and Swarm for dashboard queries.
       - source_labels: [container_label_com_docker_compose_service]
+        regex: '(.+)'
+        target_label: container_service
+        replacement: '$1'
+        action: replace
+      - source_labels: [container_service, container_label_com_docker_swarm_service_name]
+        regex: '^$;vcs_(.+)$'
+        target_label: container_service
+        replacement: '$1'
+        action: replace
+      - source_labels: [container_service, container_label_com_docker_swarm_service_name]
+        regex: '^$;(.+)$'
+        target_label: container_service
+        replacement: '$1'
+        action: replace
+      - source_labels: [container_service]
+        regex: '(.+)'
+        target_label: container_label_com_docker_compose_service
+        replacement: '$1'
+        action: replace
+      - source_labels: [container_service]
+        regex: '(.+)'
+        target_label: service
+        replacement: '$1'
+        action: replace
+      - source_labels: [container_service]
         regex: '.+'
         action: keep
+      - regex: 'container_service'
+        action: labeldrop
 
   - job_name: cockroachdb
     metrics_path: /_status/vars
@@ -51,7 +78,7 @@ scrape_configs:
         labels:
           service: cockroachdb
 
-  - job_name: redis-exporter
+  - job_name: redis
     static_configs:
       - targets: ['redis-exporter:9121']
         labels:

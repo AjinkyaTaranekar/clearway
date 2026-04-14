@@ -1,0 +1,6 @@
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Running|Running 47 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 47 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 48 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Failed 48 minutes ago|"task: non-zero exit (1)"
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 48 minutes ago|
+vcs_notification-service.s1b2vzjn5whc30d6x3t0dhvwk|vcs-vm-us1|Shutdown|Shutdown 13 hours ago|

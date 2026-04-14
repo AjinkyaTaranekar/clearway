@@ -1,0 +1,2 @@
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Failed 45 minutes ago|"task: non-zero exit (1)"
+vcs_capacity-service.y9gptw6cifbokbet716ijceda|vcs-vm-eu1|Shutdown|Failed 45 minutes ago|"task: non-zero exit (1)"

@@ -18,12 +18,25 @@ scrape_configs:
       - source_labels: [__meta_docker_container_name]
         regex: '/?(.*)'
         target_label: container
-      # Capture the compose service name
+      # Compose service name (local docker-compose)
       - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: '(.+)'
         target_label: service
-      # Only keep VCS containers (drop infra noise like promtail itself)
-      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
-        regex: 'iam-service|capacity-service|journey-service|map-service|notification-service|nginx|db|redis'
+      # Swarm service name (strip stack prefix, e.g., vcs_iam-service -> iam-service)
+      - source_labels: [service, __meta_docker_container_label_com_docker_swarm_service_name]
+        regex: '^$;vcs_(.+)$'
+        target_label: service
+        replacement: '$1'
+      # Fallback if the Swarm service name has no stack prefix.
+      - source_labels: [service, __meta_docker_container_label_com_docker_swarm_service_name]
+        regex: '^$;(.+)$'
+        target_label: service
+        replacement: '$1'
+      - target_label: job
+        replacement: docker-containers
+      # Keep only VCS containers (drop non-project host/container noise)
+      - source_labels: [service]
+        regex: 'iam-service|capacity-service|journey-service|map-service|notification-service|nginx|db|redis|redis-exporter|prometheus|grafana|loki|promtail|cadvisor'
         action: keep
     pipeline_stages:
       # Parse zerolog JSON logs emitted by our Go services

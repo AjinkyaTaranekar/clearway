@@ -1,0 +1,2 @@
+[log collection failed or timed out]
+region=eu vm=vcs-vm-eu1 service=vcs_nginx

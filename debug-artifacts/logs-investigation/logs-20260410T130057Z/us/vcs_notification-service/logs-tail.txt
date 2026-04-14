@@ -1,0 +1,2 @@
+[log collection failed or timed out]
+region=us vm=vcs-vm-us1 service=vcs_notification-service
