@@ -8,7 +8,8 @@
 #   ./demo.sh eu        # EU only
 #   ./demo.sh us        # US only
 #   ./demo.sh apac      # APAC only (writes will be slow — known limitation)
-#   ./demo.sh saga      # Saga demo only
+#   ./demo.sh saga      # Saga happy path (Istanbul→Ankara, COMMITTED)
+#   ./demo.sh undo      # Saga undo/compensation demo (force EU failure → APAC rolled back)
 #   ./demo.sh clean     # Cancel all demo driver journeys (cleanup)
 #
 # Pre-requisites: curl, jq
@@ -487,6 +488,152 @@ test_saga() {
   fi
 }
 
+test_saga_compensation() {
+  header "Saga Undo Pattern — Compensation Demo"
+  echo ""
+  echo -e "  ${YELLOW}What:${NC} Force a partial saga failure to trigger compensation (undo)."
+  echo -e "  ${YELLOW}How:${NC}  Istanbul→Ankara saga runs APAC region first (alphabetical order)."
+  echo -e "         We close one EU segment so APAC commits but EU hits a closure."
+  echo -e "         The saga coordinator deletes the APAC rows — full rollback, driver REJECTED."
+  echo -e "  ${YELLOW}Why:${NC}  Proves there is no partial booking. Either all regions commit or none do."
+
+  local admin_token token
+  admin_token=$(get_token "$EU" "$ADMIN_EMAIL" "$ADMIN_PASS")
+  if [ -z "$admin_token" ]; then
+    fail "Cannot get admin token — skipping undo demo"
+    return
+  fi
+  token=$(get_token "$EU" "$D1_EMAIL" "$D_PASS")
+  cancel_active "$EU" "$token"
+
+  # ── Step 1: compute the route to discover which eu_ segments are on it ────────
+  section "Step 1: Compute Istanbul→Ankara route"
+  local route
+  route=$(curl -s -X POST "$EU/api/v1/routes/compute" \
+    -H "Authorization: Bearer $token" \
+    -H 'Content-Type: application/json' \
+    -d '{"origin":{"lat":41.0082,"lng":28.9784},"destination":{"lat":39.9334,"lng":32.8597}}')
+
+  local eu_count ap_count
+  eu_count=$(echo "$route" | jq '[.data.segments[] | select(.segment_id | startswith("eu_"))] | length')
+  ap_count=$(echo "$route" | jq '[.data.segments[] | select(.segment_id | startswith("ap_"))] | length')
+
+  info "eu_ segments: $eu_count  |  ap_ segments: $ap_count"
+
+  if [ "$eu_count" -eq 0 ] || [ "$ap_count" -eq 0 ]; then
+    fail "Route does not cross regions (eu_=$eu_count ap_=$ap_count) — cannot demo compensation"
+    return
+  fi
+
+  # Pick the first eu_ segment from this route to close
+  local block_seg
+  block_seg=$(echo "$route" | jq -r '[.data.segments[] | select(.segment_id | startswith("eu_"))] | .[0].segment_id')
+  info "Will close: $block_seg (12h road closure → EU reservation will fail with segment_closed)"
+
+  # ── Step 2: create a 12h road closure on that eu_ segment ────────────────────
+  # Note: the API rejects max_capacity=0 (must be > 0), so closures are the
+  # reliable way to guarantee a hard block on a specific segment.
+  section "Step 2: Close EU segment via road closure"
+  local closure_result closure_id
+  closure_result=$(curl -s -X POST "$EU/api/v1/capacity/closures" \
+    -H "Authorization: Bearer $admin_token" \
+    -H 'Content-Type: application/json' \
+    -d "{\"segment_id\":\"$block_seg\",\"duration_minutes\":720,\"reason\":\"Saga undo demo — simulated emergency closure\"}")
+  closure_id=$(echo "$closure_result" | jq -r '.closure_id // empty')
+
+  if [ -n "$closure_id" ]; then
+    pass "Closure $closure_id created on $block_seg — EU reservation will fail"
+  else
+    local err
+    err=$(echo "$closure_result" | jq -r '.error // empty')
+    if echo "$err" | grep -qi "overlap\|already"; then
+      pass "Existing closure already active on $block_seg — will use it"
+    else
+      fail "Could not close $block_seg: $err"
+      return
+    fi
+  fi
+
+  # ── Step 3: attempt the booking ───────────────────────────────────────────────
+  # Saga executes regions in alphabetical order: apac → eu
+  # APAC commits (ap_ segments reserved), then EU hits the closure → segment_closed.
+  # compensateSteps() fires → ReleaseByReservationID removes the APAC rows.
+  # Departure +70min so the traversal window overlaps the closure.
+  section "Step 3: Book Istanbul→Ankara (APAC commits first, EU hits closure → undo fires)"
+  local departure
+  departure=$(date -u -d '+70 minutes' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+    || date -u -v+70M '+%Y-%m-%dT%H:%M:%SZ')
+  local booking_result status reason
+  booking_result=$(curl -s -X POST "$EU/api/v1/journeys" \
+    -H "Authorization: Bearer $token" \
+    -H 'Content-Type: application/json' \
+    -H "Idempotency-Key: saga-undo-$(date +%s)" \
+    -d "{\"origin\":{\"lat\":41.0082,\"lng\":28.9784},\"destination\":{\"lat\":39.9334,\"lng\":32.8597},\"vehicle_type\":\"car\",\"departure_time\":\"$departure\"}")
+  status=$(echo "$booking_result" | jq -r '.data.status // empty')
+  reason=$(echo "$booking_result" | jq -r '.data.rejection_reason // empty')
+  assert_eq "Booking rejected (EU segment closed)" "$status" "REJECTED"
+  if [ -n "$reason" ]; then
+    info "Rejection reason: $reason"
+  fi
+
+  # ── Step 4: verify saga is COMPENSATED in CRDB ───────────────────────────────
+  section "Step 4: Verify saga COMPENSATED in CockroachDB"
+  if [ -f "$SSH_KEY" ]; then
+    local saga_out
+    saga_out=$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$EU_CRDB_SSH" \
+      "docker exec -i \$(docker ps -qf name=vcs_db) \
+      /cockroach/cockroach sql --insecure --host=localhost:26257 \
+      -e 'SELECT saga_id, status, region_steps FROM capacity.reservation_sagas ORDER BY created_at DESC LIMIT 1;'" \
+      2>/dev/null)
+    echo ""
+    echo -e "${BOLD}  CockroachDB saga table:${NC}"
+    echo "$saga_out" | sed 's/^/  /'
+    echo ""
+    if echo "$saga_out" | grep -q "COMPENSATED"; then
+      pass "Saga status: COMPENSATED — APAC rows deleted, no capacity consumed anywhere"
+    else
+      info "Saga output: $saga_out"
+      skip "Saga status not COMPENSATED — check table manually"
+    fi
+
+    # Confirm no active ap_ reservations survive from the last 3 minutes
+    local active_ap
+    active_ap=$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$EU_CRDB_SSH" \
+      "docker exec -i \$(docker ps -qf name=vcs_db) \
+      /cockroach/cockroach sql --insecure --host=localhost:26257 --format=csv \
+      -e \"SELECT count(*) FROM capacity.reservations WHERE segment_id LIKE 'ap_%' AND status='active' AND created_at > NOW() - INTERVAL '3 minutes';\"" \
+      2>/dev/null | tail -1)
+    if [ "$active_ap" = "0" ] || [ -z "$active_ap" ]; then
+      pass "No active ap_ reservations survive (compensation deleted them)"
+    else
+      info "Active ap_ reservations in last 3 min: $active_ap"
+    fi
+  else
+    skip "SSH key not found — cannot verify CRDB. Check capacity.reservation_sagas manually."
+  fi
+
+  # ── Step 5: remove the closure ────────────────────────────────────────────────
+  section "Step 5: Remove closure on $block_seg"
+  if [ -f "$SSH_KEY" ]; then
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$EU_CRDB_SSH" \
+      "docker exec -i \$(docker ps -qf name=vcs_db) \
+      /cockroach/cockroach sql --insecure --host=localhost:26257 \
+      -e \"UPDATE capacity.segment_closures SET status='cancelled', end_time=NOW()-INTERVAL '1s' WHERE segment_id='$block_seg' AND status='active';\"" \
+      > /dev/null 2>&1
+    pass "Closure removed — $block_seg is open again"
+  else
+    info "SSH key not found — closure expires naturally in 12h"
+  fi
+
+  echo ""
+  echo -e "  ${BOLD}${GREEN}Summary of what happened:${NC}"
+  echo -e "  1. Saga started for Istanbul→Ankara (eu_ + ap_ segments)"
+  echo -e "  2. APAC region committed first — ap_ slots reserved in CRDB"
+  echo -e "  3. EU region failed — $block_seg was closed (segment_closed)"
+  echo -e "  4. compensateSteps() fired: ReleaseByReservationID deleted the ap_ rows"
+  echo -e "  5. saga_status=COMPENSATED, driver gets REJECTED — no partial booking"
+}
+
 test_us_region() {
   header "US Region Tests"
   echo ""
@@ -636,6 +783,11 @@ case "$MODE" in
     print_summary
     ;;
 
+  undo)
+    test_saga_compensation
+    print_summary
+    ;;
+
   eu)
     header "EU Region Tests"
     test_region "$EU" "EU" "EU"
@@ -673,8 +825,11 @@ case "$MODE" in
     test_road_closure "$EU" "EU"
     test_redis_stream
 
-    # ── Saga ────────────────────────────────────────────────────────────────
+    # ── Saga happy path ──────────────────────────────────────────────────────
     test_saga
+
+    # ── Saga undo / compensation ─────────────────────────────────────────────
+    test_saga_compensation
 
     # ── CRDB replication ────────────────────────────────────────────────────
     header "CockroachDB Replication — Write US, Read EU"

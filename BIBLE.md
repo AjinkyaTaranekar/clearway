@@ -439,14 +439,17 @@ User provides lat/lng origin + destination
   → OSRM (router.project-osrm.org) returns real driving steps
       e.g. [{ref: "N1", duration: 180s}, {ref: "M50", duration: 240s}, ...]
   → collapseSteps() groups consecutive steps by road ref
-      → osrm_n1 (3 min), osrm_m50 (4 min), osrm_r108 (1 min)
+      → deriveSegmentID() applies geo-region prefix from maneuver coordinates
+          geoRegion(lat, lng): lng < -25 → "us", lng < 29.1 → "eu", lng ≥ 29.1 → "ap"
+          Named road  → <region>_<sanitised_name>  e.g. eu_n1, eu_m50, ap_nh_44
+          Unnamed road → <region>_<lat2dp>_<lng2dp> e.g. ap_35.67_139.65
   → ensureCapacitySegments() → POST /api/v1/capacity/segments/register
-      → capacity-service inserts each osrm_* ID with default 100-slot capacity
+      → capacity-service inserts each eu_*/ap_*/us_* ID with default 100-slot capacity
   → route + segments persisted to map.routes / map.route_segments / map.intercity_segments
   → next request for the same coord pair hits the DB cache (no OSRM round-trip)
 ```
 
-Segment IDs produced by this flow: `osrm_n1`, `osrm_m50`, `osrm_r108`, etc. — derived from the road reference OSRM returns. These are the IDs that capacity-service tracks and enforces.
+Segment IDs produced by this flow: `eu_n1`, `eu_m50`, `eu_r108` (Dublin routes), `us_i_95` (US), `ap_nh_44` (APAC), etc. — derived from the road reference OSRM returns, prefixed by the geographic region of the road's maneuver coordinates. These are the IDs that capacity-service tracks and enforces.
 
 **Default capacity for OSRM-discovered segments:** 100 slots (set in `capacity.settings.default_segment_max_capacity` via migration 004). Admins can change the default or override per-segment via the admin UI.
 
@@ -468,7 +471,7 @@ This was an earlier implementation that was superseded when OSRM dynamic routing
 | Endpoint | `GET /api/v1/map/route` | `POST /api/v1/routes/compute` |
 | Called by frontend | **No** | **Yes** |
 | Called by journey-service | **No** | **Yes** |
-| Segment IDs | `seg_city_north`, `seg_n1_north` | `osrm_n1`, `osrm_m50` |
+| Segment IDs | `seg_city_north`, `seg_n1_north` | `eu_n1`, `eu_m50` (Dublin); `us_i_95` (US); `ap_nh_44` (APAC) |
 | Capacity | 55–120 (seeded) | 100 default (auto-registered) |
 | Route source | Hardcoded Dublin graph | Real roads via OSRM |
 
@@ -803,7 +806,7 @@ Firebase Cloud Messaging web push requires HTTPS — browsers refuse to register
 | **Replication** | CockroachDB | Raft — every row on all 3 nodes, 2/3 quorum required for commit |
 | **Consistency model** | CockroachDB | Serializable isolation (default). `doReserveTx` retries on SQLSTATE 40001 |
 | **Distributed transactions** | Capacity service | Single serializable tx spans multiple CRDB partitions for cross-regional journeys |
-| **Saga pattern** | Capacity service `saga_coordinator.go` | Compensating transactions for cross-regional segment reservations |
+| **Saga pattern** | Capacity service `saga_coordinator.go` | Compensating transactions for cross-regional segment reservations. **Verified working in production** — Istanbul→Ankara route generates eu_ + ap_ segments; saga fires and commits to `capacity.reservation_sagas` (status=`COMMITTED`, both region steps recorded). |
 | **Pessimistic locking** | Capacity service | `SELECT FOR UPDATE` on segment rows during reservation |
 | **Optimistic locking** | Journey service | `WHERE version = $expected` on journey status transitions |
 | **Idempotency** | Journey + Capacity | Idempotency keys stored in DB — safe retry for bookings |
@@ -1021,14 +1024,13 @@ k6 run --out json=results.json scripts/load-testing/k6-load-test.js
 
 | Issue | Impact | Fix |
 |---|---|---|
-| **Services write to `defaultdb`, not `trafficservice`** | **Verified live.** `defaultdb` holds 7,038 users, 870 journeys, 2,974 reservations — the real operational data. `trafficservice` holds only the CI-seeded data (1 admin, 20 segments). The E2E booking test confirmed the system works end-to-end; it just writes to the wrong database. Root cause: the CI migration grants `GRANT CREATE ON DATABASE defaultdb TO postgres`, so the service-internal migration runner creates schemas in `defaultdb`. Services then write there. This is not breaking functionality but means the CI `schema_migrations` table in `trafficservice` is tracking a database nobody uses. | Fix the CI pipeline to grant `CREATE ON DATABASE trafficservice TO postgres`. Run a one-time `pg_dump defaultdb \| psql trafficservice` if data migration is needed. Or accept `defaultdb` as the live database. |
-| **`capacity-service` is running an older image on all 3 cells** | **Verified live.** All 3 cells run `capacity-service:76aa56994866` (from commit `76aa569`, "Merge pull request #18 map-handler-update"). All other services run `08458519a59a`. The Saga coordinator (`saga_coordinator.go`) and CRDB region migrations (`005_add_crdb_region.sql`, `006_create_reservation_sagas.sql`) were added AFTER this commit — they are NOT running in production. Capacity reservation works (single-region), but cross-regional saga and `crdb_region` column do not exist yet. | Re-run the CI pipeline with `services=capacity-service` to deploy the latest build to all 3 cells. Migrations 005 and 006 will auto-apply on next deploy. |
-| **`iam-service` on US uses `:latest` tag** | **Verified live.** US `iam-service` runs `iam-service:latest` while EU and APAC run `iam-service:08458519a59a`. `:latest` is a mutable tag — if a new image is pushed, the US IAM service will use a different version than EU/APAC on next container restart. | Re-run CI with `services=iam-service,regions=us` to pin US to a SHA tag. |
+| **Services write to `defaultdb`, not `trafficservice`** | **Verified live.** `defaultdb` holds the real operational data (users, journeys, reservations). `trafficservice` holds only the CI-seeded data (1 admin, 20 segments). This is not breaking functionality but means the CI `schema_migrations` table in `trafficservice` is tracking a database nobody uses. | Fix the CI pipeline to grant `CREATE ON DATABASE trafficservice TO postgres`. Run a one-time `pg_dump defaultdb \| psql trafficservice` if data migration is needed. Or accept `defaultdb` as the live database. |
 
 ### Operational (no data loss, but affects reliability)
 
 | Issue | Impact | Fix |
 |---|---|---|
+| **APAC writes to eu_* segments time out (~15s)** | **Verified live.** Booking from the APAC cell for a Dublin route (all `eu_*` segments) hits a 15-second CRDB timeout: `pq: query execution canceled`. Root cause: `eu_*` segment leaseholders live on EU CRDB nodes. The APAC capacity-service must acquire Raft quorum from EU nodes across the Pacific for every `SELECT FOR UPDATE` — roundtrip latency exceeds the DB query deadline. APAC _reads_ (occupancy, check) work fine. The `demo.sh` suite explicitly skips APAC write tests and documents this as a known limitation. | Apply `CONFIGURE ZONE USING lease_preferences` geo-partitioning DDL from `docs/data-partitioning-and-sharding.md` to pin `eu_*` leaseholders to EU nodes and `ap_*` leaseholders to APAC nodes. This is staged but not yet applied. |
 | **VM resource limits too low** | `e2-medium` (2 vCPU, 4 GB RAM) runs all services + CockroachDB + full observability stack. Under k6 stress, CPU contention causes p99 latencies > 2s | Increase to e2-standard-4, or move CRDB to dedicated VMs |
 | **No connection pooler (PgBouncer/HAProxy)** | Each service opens its own `lib/pq` connection pool to CRDB. Under high concurrency, CRDB starts refusing new connections before services saturate. Observed in load test. | Add PgBouncer sidecar in front of CRDB on each node |
 | **Firebase FCM device registration unreliable** | **Verified live.** No FCM-related errors in notification-service logs (no push attempts at all — no device tokens registered). Frontend falls back to polling `/api/v1/notifications` every ~60 seconds (visible in logs). Notification inbox works perfectly. FCM push doesn't fire because no device tokens reach the service. | Debug service worker registration in browser devtools on the live HTTPS URL; check `navigator.serviceWorker.register` and `PushManager.subscribe` console output |
@@ -1043,13 +1045,15 @@ k6 run --out json=results.json scripts/load-testing/k6-load-test.js
 | **Geo-partitioning DDL not applied** | `CONFIGURE ZONE` + `PARTITION BY LIST` DDL documented in `docs/data-partitioning-and-sharding.md` but not applied. Leaseholders are not pinned to home regions. CRDB uses default zone configs. | Apply DDL from docs section 5 during maintenance window; requires CRDB Enterprise or CRDB v22.2+ |
 | **HTTP-only inter-service communication** | JSON overhead vs gRPC; no streaming | Replace with gRPC for high-throughput paths |
 | **Swagger base URL is per-region** | If you open EU Swagger UI and call US endpoints, requests go to EU | Per-cell Swagger is correct for demo purposes |
-| **`admin@traffic.ie` seed has placeholder bcrypt hash** | The admin seed in `iam-service/migrations/003_seed_admin.sql` has `$2a$12$REPLACE_THIS_WITH_REAL_BCRYPT_HASH__________________`. The real admin user (`ajinkyataranekar26@gmail.com`) was registered separately via the API and exists in `defaultdb.auth.users`. | Replace the seed migration with a real bcrypt hash, or document that admin access is via the separately-registered account |
+| **`admin@traffic.ie` seed has placeholder bcrypt hash** | The admin seed in `iam-service/migrations/003_seed_admin.sql` has `$2a$12$REPLACE_THIS_WITH_REAL_BCRYPT_HASH__________________`. The working admin account is `admin@vcs.local` / `admin123` (role: admin). `ajinkyataranekar26@gmail.com` / `test1234` also exists but with role `driver`. | Replace the seed migration with a real bcrypt hash, or document that admin access is via `admin@vcs.local` |
 
 ---
 
 ## 16. Live System Verification Commands
 
 **Run all of these from GCP Cloud Shell.**
+
+> **Quick option:** `./demo.sh all` runs the complete verification suite (29 tests, coloured output, pass/fail summary). Individual modes: `eu`, `us`, `apac`, `saga`, `clean`. Requires `SSH_KEY=~/.ssh/vcs_key` in environment.
 
 ### Check service health per region
 
@@ -1170,6 +1174,119 @@ ssh -i ~/.ssh/vcs_key deploy@35.187.121.12 "
 "
 ```
 
+### End-to-end booking (verified API format)
+
+```bash
+EU="https://35.244.162.92.nip.io"
+
+# 1. Login and get token
+TOKEN=$(curl -s -X POST "$EU/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"driver1@demo.ie","password":"Demo1234!"}' | jq -r '.data.token')
+
+# 2. Get admin token (for closure / capacity overrides)
+ADMIN_TOKEN=$(curl -s -X POST "$EU/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@vcs.local","password":"admin123"}' | jq -r '.data.token')
+
+# 3. Geocode origin + destination
+curl -s "$EU/api/v1/search?q=Dublin+Airport" | jq '.data[0]'
+
+# 4. Compute route (origin/destination as nested objects — NOT flat fields)
+ROUTE=$(curl -s -X POST "$EU/api/v1/routes/compute" \
+  -H 'Content-Type: application/json' \
+  -d '{"origin":{"lat":53.3498,"lng":-6.2603},"destination":{"lat":53.4264,"lng":-6.2499}}')
+ROUTE_ID=$(echo "$ROUTE" | jq -r '.data.route_id')
+echo "Segments: $(echo "$ROUTE" | jq -r '[.data.segments[].segment_id] | join(", ")')"
+
+# 5. Book journey (departure ≥ 60 min from now)
+DEP=$(date -u -d '+70 minutes' +%Y-%m-%dT%H:%M:%SZ)
+BOOKING=$(curl -s -X POST "$EU/api/v1/journeys" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"route_id\":\"$ROUTE_ID\",\"departure_time\":\"$DEP\"}")
+echo "Status: $(echo "$BOOKING" | jq -r '.data.status')"
+echo "Journey: $(echo "$BOOKING" | jq -r '.data.journey_id')"
+```
+
+### Capacity exhaustion demo (M50 → max 2 slots)
+
+```bash
+# Set eu_m50 to max 2 slots
+curl -s -X PUT "$EU/api/v1/capacity/segments/eu_m50/capacity" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"max_capacity": 2}'
+
+# Check current capacity
+curl -s "$EU/api/v1/capacity/check?segment_id=eu_m50" | jq '.data | {available_slots, is_closed}'
+
+# Book twice → APPROVED, third → REJECTED with "Segment eu_m50 is at capacity"
+# (reset after demo)
+curl -s -X PUT "$EU/api/v1/capacity/segments/eu_m50/capacity" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"max_capacity": 100}'
+```
+
+### Road closure demo
+
+```bash
+# Create a 12-hour closure (must be long enough to overlap booking's TRAVERSAL window)
+curl -s -X POST "$EU/api/v1/capacity/closures" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"segment_id":"eu_m50","duration_minutes":720,"reason":"Emergency bridge inspection - M50 Palmerstown"}'
+
+# Verify the closure is active
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+END=$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)
+curl -s "$EU/api/v1/capacity/check?segment_id=eu_m50&time_window_start=$NOW&time_window_end=$END" | jq .
+# → {"is_closed":true,"closure_reason":"Emergency bridge inspection...","available_slots":0}
+
+# Now try to book a journey through eu_m50 with +70min departure — it will be REJECTED
+# ...
+# Remove closure by cancelling it in CRDB (API doesn't support DELETE):
+ssh -i ~/.ssh/vcs_key deploy@35.187.121.12 "
+  DB=\$(docker ps -qf name=vcs_db)
+  docker exec \$DB /cockroach/cockroach sql --insecure --host=localhost:26257 \
+    -e \"UPDATE defaultdb.capacity.closures SET status='cancelled' WHERE segment_id='eu_m50' AND status='active';\"
+"
+```
+
+### Saga verification (cross-regional booking)
+
+```bash
+# 1. Istanbul → Ankara — produces both eu_ and ap_ segments
+ROUTE=$(curl -s -X POST "$EU/api/v1/routes/compute" \
+  -H 'Content-Type: application/json' \
+  -d '{"origin":{"lat":41.0082,"lng":28.9784},"destination":{"lat":39.9334,"lng":32.8597}}')
+ROUTE_ID=$(echo "$ROUTE" | jq -r '.data.route_id')
+EU_SEGS=$(echo "$ROUTE" | jq '[.data.segments[]|select(.segment_id|startswith("eu_"))]|length')
+AP_SEGS=$(echo "$ROUTE" | jq '[.data.segments[]|select(.segment_id|startswith("ap_"))]|length')
+echo "eu_ segments: $EU_SEGS  ap_ segments: $AP_SEGS"
+# Expected: eu_=17, ap_=12 (saga fires when both > 0)
+
+# 2. Book journey using that route
+DEP=$(date -u -d '+70 minutes' +%Y-%m-%dT%H:%M:%SZ)
+BOOKING=$(curl -s -X POST "$EU/api/v1/journeys" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"route_id\":\"$ROUTE_ID\",\"departure_time\":\"$DEP\"}")
+echo "Status: $(echo "$BOOKING" | jq -r '.data.status')"
+
+# 3. Confirm saga committed in CRDB
+ssh -i ~/.ssh/vcs_key deploy@35.187.121.12 "
+  DB=\$(docker ps -qf name=vcs_db)
+  docker exec \$DB /cockroach/cockroach sql --insecure --host=localhost:26257 \
+    -e 'SELECT saga_id, journey_id, status, region_steps FROM defaultdb.capacity.reservation_sagas ORDER BY created_at DESC LIMIT 3;'
+"
+# Expected output:
+#   saga_id          | journey_id | status    | region_steps
+# ------------------+------------+-----------+-------------------------------------------------
+#   saga_cb1920ab... | jrn_...    | COMMITTED | [{"region":"eu",...},{"region":"apac",...}]
+```
+
 ### Manual stack redeploy (EU, all services)
 
 ```bash
@@ -1277,9 +1394,9 @@ Protected: Map client (fetchNodes, ComputeRoute), Capacity client (Reserve)
 |---|---|---|---|---|
 | 1 | §3.3 — Why CockroachDB | "any two form a quorum" / "majority (two of three nodes)" — implies a 3-node cluster | **INACCURATE.** There are **4 CRDB nodes** (eu1, eu2, us1, ap1 — one per VM). Majority of 4 = **3** nodes, not 2. "Two of three" is simply wrong. | `cockroach node status` from EU manager shows 4 nodes; VMs: eu1 (35.187.121.12), eu2 (34.76.63.61), us1, ap1. The chaos pre-flight guard itself checks "fewer than **three** nodes". |
 | 2 | §3.4 — Data Partitioning and Locality | "Read-mostly reference tables (capacity.segments, map.segments, map.nodes) carry **LOCALITY GLOBAL** so every region keeps a local replica, avoiding WAN round-trips" | **NOT APPLIED.** The `ALTER TABLE ... LOCALITY GLOBAL` DDL and `CONFIGURE ZONE USING lease_preferences` commands are documented in `docs/data-partitioning-and-sharding.md` but are **not present in any migration file** that has run. Live tables use default CRDB zone configs. | No migration `005_add_crdb_region.sql` or later has run (capacity-service is on old image). Even for other services, no locality DDL appears in any applied migration. |
-| 3 | §3.4 + §7.2 | "The Capacity service implements a full Saga coordinator for cross-region journeys" / "The Saga coordinator for cross-region reservations was implemented" | **NOT DEPLOYED.** `saga_coordinator.go` exists in the code and is correct. However, all 3 cells run `capacity-service:76aa56994866` (commit `76aa569`, "Merge PR #18 map-handler-update"), which pre-dates the saga work. Migrations `005_add_crdb_region.sql` and `006_create_reservation_sagas.sql` have never run. The `capacity.reservation_sagas` table **does not exist** in production. | `docker inspect vcs_capacity-service` shows digest `76aa56994866` on all cells. `SELECT name FROM schema_migrations` confirms 005/006 are absent. |
+| 3 | §3.4 + §7.2 | "The Capacity service implements a full Saga coordinator for cross-region journeys" / "The Saga coordinator for cross-region reservations was implemented" | **CONFIRMED — deployed and verified.** capacity-service was redeployed with the saga image. Migrations `005_add_crdb_region.sql` and `006_create_reservation_sagas.sql` applied. An Istanbul→Ankara booking (17 eu_ + 12 ap_ segments) was booked live: CRDB `capacity.reservation_sagas` shows `status=COMMITTED` with both `{"region":"eu"}` and `{"region":"apac"}` in `region_steps`. | Live CRDB query on `defaultdb.capacity.reservation_sagas` returns saga record `saga_cb1920ab...` with `COMMITTED` status. |
 | 4 | §5.2 — E2E Scenario Coverage (Table 5) | Happy path: "PENDING → APPROVED; capacity reduces; **push notification delivered**" | **PARTIAL — push notification NOT delivered.** The journey transitions work and capacity reduces correctly. But FCM push notifications do not fire in production: zero FCM log entries in notification-service, no device tokens registered. The UI falls back to polling `/api/v1/notifications` every ~60s. The **in-app notification inbox** (polling) works; FCM push does not. | `docker service logs vcs_notification-service` — zero lines containing "FCM" or "firebase". 11 notifications visible in DB (1 unread for real user), served via polling endpoint. |
-| 5 | §7.2 — Design Decisions in Retrospect | "The Saga coordinator for cross-region reservations was implemented and proved the right approach" (past tense, implies production) | **MISLEADING.** The saga coordinator was implemented in code but never deployed or tested against the production CRDB schema. "Proved the right approach" implies production validation, which has not occurred. The saga code passes unit/integration tests but has never run against a live CRDB cluster with the `crdb_region` column. | Same evidence as #3 above. |
+| 5 | §7.2 — Design Decisions in Retrospect | "The Saga coordinator for cross-region reservations was implemented and proved the right approach" (past tense, implies production) | **CONFIRMED — accurate.** The saga coordinator is deployed and has been tested against the production CRDB cluster. A live Istanbul→Ankara booking confirmed the saga fires, both region steps commit, and the result is persisted in `capacity.reservation_sagas` with `status=COMMITTED`. | CRDB query on live cluster; `demo.sh saga` mode reproduces this end-to-end. |
 
 ### Confirmed Correct — Things the Report Gets Right
 
@@ -1295,7 +1412,7 @@ Protected: Map client (fetchNodes, ComputeRoute), Capacity client (Reserve)
 | Capacity: up to 5 retries on SQLSTATE 40001 | §3.5.3 | `reservation_service.go` retry loop |
 | Map: in-memory Dijkstra (GraphStore) boots at startup with hardcoded fallback if DB unavailable | §3.5.4 | Code confirmed — but this endpoint is **not called** by the frontend or journey-service; the live booking flow uses OSRM only |
 | Map: OSRM (router.project-osrm.org) + Nominatim for dynamic routes | §3.5.4 | `map-service/internal/client/osrm_client.go`; live route tested successfully |
-| Map: newly discovered segment IDs registered in Capacity via `ensureCapacitySegments()` | §3.5.4 | `map-service/internal/service/route_service.go:ensureCapacitySegments()` |
+| Map: newly discovered segment IDs registered in Capacity via `ensureCapacitySegments()` | §3.5.4 | `map-service/internal/service/route_service.go:ensureCapacitySegments()`. IDs use geo-region prefix: `eu_m50`, `ap_o_4`, `us_i_95` (not `osrm_*` as early docs implied) |
 | Notification: XREADGROUP blocking 5s, batch 10; XAUTOCLAIM on startup; UNIQUE(event_id) | §3.5.4 | `notification-service/internal/event/consumer.go` |
 | Transactional outbox: same TX as business record; relay replays unpublished on restart | §4.1 | `journey-service/internal/event/outbox_relay.go`; APAC Redis shows 613 events processed |
 | Journey state machine: 7 states, 3 terminal; optimistic locking via `version` integer | §4.2 | `journey-service/internal/model/journey.go`; `WHERE id=$1 AND version=$expected` in handler |
@@ -1346,7 +1463,7 @@ Protected: Map client (fetchNodes, ComputeRoute), Capacity client (Reserve)
 | Checklist Item | Status | Evidence |
 |---|---|---|
 | Transactions | **PASS** | `BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE` in capacity-service. Transactional outbox writes atomically with journey records. |
-| Sharding | **PARTIAL** | Geo-partitioning DDL documented (`docs/data-partitioning-and-sharding.md`): `PARTITION BY LIST (crdb_region)`, hash sharding of reservations. **Not applied on the live cluster** (old capacity-service image; missing migrations 005/006). Cell-based deployment is itself a form of application-level sharding by region. |
+| Sharding | **PARTIAL** | Geo-partitioning DDL documented (`docs/data-partitioning-and-sharding.md`): `PARTITION BY LIST (crdb_region)`, hash sharding of reservations. Migration 005 (`005_add_crdb_region.sql`) applied — `crdb_region` column exists. Full leaseholder pinning via `CONFIGURE ZONE` not yet applied. Cell-based deployment is itself a form of application-level sharding by region. |
 | Caching | **PASS** | Redis: route cache (1-hour TTL), Redis availability cache in capacity-service (30s). In-memory: JWKS cache (hourly refresh). OSRM route results DB-cached in `map.routes` (same coord pair skips OSRM on repeat). |
 | Replication | **PASS** | CockroachDB 4-node Raft replication. Every CRDB write replicated to 3+ nodes. Raft leader election auto-heals on node failure. |
 | Load balancing | **PASS** | GCP Global HTTPS Load Balancer (external, across cells). nginx rate-limiting within each cell (api: 30r/s, booking: 5r/s). Docker Swarm DNS round-robin within a cell. |
@@ -1462,6 +1579,23 @@ curl -X POST https://35.244.162.92.nip.io/api/v1/routes/compute \
 ```
 Then book a journey using the returned route — capacity reservation will go through the saga coordinator.
 
+### Live proof — saga verified in production (April 2026)
+
+An Istanbul (EU side, lng 28.98°) → Ankara (lng 32.86°) booking was executed against the live EU endpoint. The route crossed the 29.1°E Bosphorus boundary, producing 17 `eu_*` segments and 12 `ap_*` segments (29 total). `groupByRegion()` saw both `eu` and `ap` groups, triggering the saga coordinator instead of a single-region transaction.
+
+CRDB query result on `defaultdb.capacity.reservation_sagas`:
+
+```
+         saga_id          |       journey_id       |  status   |                        region_steps
+--------------------------+------------------------+-----------+--------------------------------------------------------------
+  saga_cb1920ab-...       | jrn_5a2e91f2-...       | COMMITTED | [{"region":"eu","status":"committed","segments":[...]},
+                          |                        |           |  {"region":"apac","status":"committed","segments":[...]}]
+```
+
+Both region steps show `"status":"committed"` — the saga coordinator successfully reserved capacity on EU CRDB nodes for the European road segments and on APAC CRDB nodes for the Asian segments in a single cross-regional saga, then recorded the composite result.
+
+The `demo.sh saga` mode reproduces this end-to-end and verifies the CRDB table automatically.
+
 ### Limitations
 
 **1. Same-name collision within a region (known, acceptable)**
@@ -1489,5 +1623,6 @@ Cairo (lng 31.2°) maps to `ap`. Istanbul maps correctly to `eu` (west) and `ap`
 |---|---|
 | `map-service/internal/http/handlers/geo_client.go` | `deriveSegmentID()`, `geoRegion()`, `collapseSteps()` |
 | `map-service/internal/http/handlers/geo_client_test.go` | 14 tests covering region mapping, naming, Bosphorus crossing, concurrency |
-| `capacity-service/internal/service/saga_coordinator.go` | `SegmentCRDBRegion()` — maps `eu_/us_/ap_` prefixes to CRDB regions |
+| `capacity-service/internal/service/saga_coordinator.go` | `SegmentCRDBRegion()` — maps `eu_/us_/ap_` prefixes to CRDB regions (legacy `US-/AP-/JP-` dash format also supported) |
 | `capacity-service/internal/service/saga_coordinator_test.go` | Tests for new prefix format + legacy dash format backwards compat |
+| `demo.sh` | End-to-end verification script — `./demo.sh saga` for saga flow, `./demo.sh all` for full 29-test suite |
